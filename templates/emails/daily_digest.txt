@@ -1,0 +1,9 @@
+Καλημέρα {{ user.first_name|default:user.email }},
+
+Για τις {{ digest_date|date:'d/m/Y' }} βρέθηκαν {{ companies|length }} νέες επιχειρήσεις.
+
+{% for company in companies %}- {{ company.name }} | ΓΕΜΗ {{ company.gemi_number }} | {{ company.city|default:company.prefecture }}
+{% empty %}Δεν καταγράφηκαν νέες επιχειρήσεις με βάση τα φίλτρα σου.
+{% endfor %}
+
+Συνδέσου στο GEMI Signal για το πλήρες αρχείο.
