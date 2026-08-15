@@ -2,6 +2,22 @@ from django.contrib.auth.models import User
 from django.db import models
 
 
+class ActivityCode(models.Model):
+    code = models.CharField("ΚΑΔ", max_length=20, unique=True)
+    normalized_code = models.CharField(max_length=16, unique=True, db_index=True)
+    description = models.CharField("Περιγραφή δραστηριότητας", max_length=1000)
+    source = models.URLField("Πηγή", max_length=500, blank=True)
+    search_text = models.TextField(editable=False, db_index=True)
+
+    class Meta:
+        ordering = ["code"]
+        verbose_name = "ΚΑΔ"
+        verbose_name_plural = "Κατάλογος ΚΑΔ"
+
+    def __str__(self):
+        return f"{self.code} — {self.description}"
+
+
 class Company(models.Model):
     gemi_number = models.CharField("Αριθμός ΓΕΜΗ", max_length=24, unique=True, db_index=True)
     vat_number = models.CharField("ΑΦΜ", max_length=12, blank=True, db_index=True)
@@ -36,12 +52,29 @@ class Company(models.Model):
         return f"https://publicity.businessportal.gr/company/{self.gemi_number}"
 
 
+class CompanyActivity(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="activity_records")
+    code = models.CharField("ΚΑΔ", max_length=16, db_index=True)
+    description = models.CharField("Περιγραφή", max_length=1000, blank=True)
+    activity_type = models.CharField("Τύπος", max_length=80, blank=True)
+
+    class Meta:
+        ordering = ["company_id", "code"]
+        constraints = [
+            models.UniqueConstraint(fields=["company", "code", "activity_type"], name="unique_company_activity")
+        ]
+
+    def __str__(self):
+        return f"{self.company} · {self.code}"
+
+
 class DigestPreference(models.Model):
     FREQUENCIES = [("daily", "Καθημερινά"), ("weekly", "Εβδομαδιαία"), ("off", "Ανενεργό")]
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="digest_preference")
     frequency = models.CharField(max_length=10, choices=FREQUENCIES, default="daily")
     legal_types = models.JSONField(default=list, blank=True)
     prefectures = models.JSONField(default=list, blank=True)
+    activity_codes = models.JSONField(default=list, blank=True)
     only_active = models.BooleanField(default=True)
     include_empty_digest = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)

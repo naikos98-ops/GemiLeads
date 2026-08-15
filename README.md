@@ -2,12 +2,16 @@
 
 Ένα Django SaaS για καθημερινή εισαγωγή νέων επιχειρήσεων από το επίσημο Open Data API ΓΕΜΗ, ιστορική αναζήτηση, CSV exports και προσωποποιημένα email digests.
 
+> Για Codex/ChatGPT συνεργασία, διάβασε πρώτα το `AGENTS.md`. Είναι η μόνιμη κοινή μνήμη και το handoff του project.
+
 ## Τοπική εκκίνηση
 
-Το απομονωμένο `.venv` είναι ήδη έτοιμο. Από PowerShell:
+Δημιούργησε το απομονωμένο περιβάλλον και εγκατέστησε τις εξαρτήσεις:
 
 ```powershell
-cd "C:\Users\iotel\Documents\Codex\2026-08-02\ai\outputs\gemi_signal"
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe manage.py migrate
 .\run_dev.ps1
 ```
 
@@ -37,6 +41,20 @@ $env:GEMI_API_KEY = [Environment]::GetEnvironmentVariable("GEMI_API_KEY", "User"
 
 ```powershell
 .\.venv\Scripts\python.exe .\manage.py run_daily_pipeline --date 2026-08-01 --skip-email
+```
+
+## Κατάλογος και φίλτρα ΚΑΔ
+
+- Ο κατάλογος ΚΑΔ 2025 περιλαμβάνει 9.651 εγγραφές και βρίσκεται σε κανονικοποιημένη μορφή στο `gemiapp/data/kad_2025.json`.
+- Η migration `0002` τον φορτώνει μία φορά στη βάση. Η εφαρμογή δεν ανοίγει το αρχικό CSV κατά τη λειτουργία της.
+- Οι πραγματικές δραστηριότητες των εταιρειών αποθηκεύονται στον πίνακα `CompanyActivity` και συνδέονται με τους κωδικούς μόνο-ψηφίων του ΓΕΜΗ.
+- Κωδικοί που επιστρέφει το ΓΕΜΗ αλλά λείπουν από τον κατάλογο 2025 προστίθενται αυτόματα ως συμπληρωματικές επιλογές.
+- Το dashboard και οι ρυθμίσεις email υποστηρίζουν πολλαπλή επιλογή ΚΑΔ με λογική OR.
+
+Αν δοθεί νεότερο CSV, ανανέωσε το tracked catalog με:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\build_kad_catalog.py "C:\path\to\kad.csv" "gemiapp\data\kad_2025.json"
 ```
 
 ## Email

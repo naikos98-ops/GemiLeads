@@ -12,7 +12,8 @@ from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
-from .models import Company, DigestDelivery, DigestPreference, ImportRun
+from .kad import display_kad_code, normalize_kad_code, normalize_kad_search
+from .models import ActivityCode, Company, CompanyActivity, DigestDelivery, DigestPreference, ImportRun
 
 
 PAGE_SIZE = 200
@@ -94,13 +95,48 @@ def company_defaults(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def sync_company_activities(company: Company, activities: list[dict[str, Any]]) -> None:
+    records = []
+    catalog_fallbacks = {}
+    seen = set()
+    for activity in activities:
+        code = normalize_kad_code(activity.get("code"))
+        activity_type = str(activity.get("type") or "")
+        identity = (code, activity_type)
+        if not code or identity in seen:
+            continue
+        seen.add(identity)
+        description = str(activity.get("description") or "")
+        catalog_fallbacks.setdefault(code, description)
+        records.append(CompanyActivity(
+            company=company,
+            code=code,
+            description=description,
+            activity_type=activity_type,
+        ))
+    company.activity_records.all().delete()
+    CompanyActivity.objects.bulk_create(records, batch_size=200)
+    existing_codes = set(ActivityCode.objects.filter(normalized_code__in=catalog_fallbacks).values_list("normalized_code", flat=True))
+    ActivityCode.objects.bulk_create([
+        ActivityCode(
+            code=display_kad_code(code),
+            normalized_code=code,
+            description=description or "Δραστηριότητα ΓΕΜΗ",
+            search_text=normalize_kad_search(f"{display_kad_code(code)} {code} {description}"),
+        )
+        for code, description in catalog_fallbacks.items() if code not in existing_codes
+    ], ignore_conflicts=True)
+
+
 def import_for_date(target_date: date) -> ImportRun:
     run = ImportRun.objects.create(target_date=target_date)
     try:
         items = fetch_companies(target_date)
         created = updated = 0
         for item in items:
-            _, was_created = Company.objects.update_or_create(gemi_number=str(item.get("arGemi")), defaults=company_defaults(item))
+            defaults = company_defaults(item)
+            company, was_created = Company.objects.update_or_create(gemi_number=str(item.get("arGemi")), defaults=defaults)
+            sync_company_activities(company, defaults["activities"])
             created += int(was_created)
             updated += int(not was_created)
         run.fetched_count, run.created_count, run.updated_count = len(items), created, updated
@@ -128,6 +164,8 @@ def send_daily_digests(target_date: date) -> tuple[int, int]:
             companies = companies.filter(legal_type__in=preference.legal_types)
         if preference.prefectures:
             companies = companies.filter(prefecture__in=preference.prefectures)
+        if preference.activity_codes:
+            companies = companies.filter(activity_records__code__in=preference.activity_codes).distinct()
         companies = list(companies)
         if not companies and not preference.include_empty_digest:
             DigestDelivery.objects.update_or_create(user=user, digest_date=target_date, defaults={"status": "skipped", "company_count": 0, "error_message": ""})

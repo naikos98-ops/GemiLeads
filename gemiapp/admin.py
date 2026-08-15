@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Company, DigestDelivery, DigestPreference, ImportRun
+from .models import ActivityCode, Company, CompanyActivity, DigestDelivery, DigestPreference, ImportRun
 
 
 @admin.register(Company)
@@ -13,3 +13,15 @@ class CompanyAdmin(admin.ModelAdmin):
 admin.site.register(DigestPreference)
 admin.site.register(DigestDelivery)
 admin.site.register(ImportRun)
+
+
+@admin.register(ActivityCode)
+class ActivityCodeAdmin(admin.ModelAdmin):
+    list_display = ("code", "description")
+    search_fields = ("code", "normalized_code", "description")
+
+
+@admin.register(CompanyActivity)
+class CompanyActivityAdmin(admin.ModelAdmin):
+    list_display = ("company", "code", "activity_type")
+    search_fields = ("company__name", "company__gemi_number", "code", "description")
