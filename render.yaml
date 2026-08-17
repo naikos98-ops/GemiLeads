@@ -1,20 +1,13 @@
-databases:
-  - name: gemileads_db
-    databaseName: gemileads
-    user: gemileads_user
-
 services:
   - type: web
     name: gemileads_web
     runtime: python
     buildCommand: "./scripts/build_render.sh"
     preDeployCommand: "python manage.py migrate"
-    startCommand: "gunicorn config.wsgi:application"
+    startCommand: "honcho start"
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: gemileads_db
-          property: connectionString
+        sync: false
       - key: PYTHON_VERSION
         value: 3.12.0
       - key: DJANGO_SECRET_KEY
@@ -37,61 +30,3 @@ services:
         value: "1"
       - key: DEFAULT_FROM_EMAIL
         value: Gemi Leads <notifications@gemileads.gr>
-
-  - type: worker
-    name: gemileads_worker
-    runtime: python
-    buildCommand: "./scripts/build_render.sh"
-    startCommand: "python manage.py qcluster"
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: gemileads_db
-          property: connectionString
-      - key: PYTHON_VERSION
-        value: 3.12.0
-      - key: DJANGO_SECRET_KEY
-        fromService:
-          type: web
-          name: gemileads_web
-          envVarKey: DJANGO_SECRET_KEY
-      - key: GEMI_API_KEY
-        fromService:
-          type: web
-          name: gemileads_web
-          envVarKey: GEMI_API_KEY
-      - key: EMAIL_HOST_USER
-        fromService:
-          type: web
-          name: gemileads_web
-          envVarKey: EMAIL_HOST_USER
-      - key: EMAIL_HOST_PASSWORD
-        fromService:
-          type: web
-          name: gemileads_web
-          envVarKey: EMAIL_HOST_PASSWORD
-      - key: EMAIL_HOST
-        fromService:
-          type: web
-          name: gemileads_web
-          envVarKey: EMAIL_HOST
-      - key: EMAIL_PORT
-        fromService:
-          type: web
-          name: gemileads_web
-          envVarKey: EMAIL_PORT
-      - key: EMAIL_USE_TLS
-        fromService:
-          type: web
-          name: gemileads_web
-          envVarKey: EMAIL_USE_TLS
-      - key: DEFAULT_FROM_EMAIL
-        fromService:
-          type: web
-          name: gemileads_web
-          envVarKey: DEFAULT_FROM_EMAIL
-      - key: BASE_URL
-        fromService:
-          type: web
-          name: gemileads_web
-          envVarKey: BASE_URL

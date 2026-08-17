@@ -7,3 +7,4 @@ psycopg[binary]
 gunicorn
 whitenoise
 django-q2
+honcho
