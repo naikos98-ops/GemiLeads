@@ -1,10 +1,11 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
-from .models import DigestPreference
+from .models import Company, CustomerRadar, DigestPreference, UserCompanyLead
 
 
 INPUT = "w-full rounded-2xl border border-navy-900/10 bg-white/70 px-4 py-3 text-navy-950 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+MULTI_INPUT = f"{INPUT} min-h-36"
 
 
 class SignupForm(UserCreationForm):
@@ -33,16 +34,95 @@ class SignupForm(UserCreationForm):
         if commit:
             user.save()
             DigestPreference.objects.create(user=user)
+            CustomerRadar.objects.create(user=user, name="Όλες οι νέες επιχειρήσεις")
         return user
 
 
 class DigestPreferenceForm(forms.ModelForm):
     class Meta:
         model = DigestPreference
-        fields = ("frequency", "only_active", "include_empty_digest")
+        fields = ("frequency", "include_empty_digest")
         labels = {
             "frequency": "Συχνότητα email",
-            "only_active": "Μόνο ενεργές επιχειρήσεις",
             "include_empty_digest": "Στείλε ενημέρωση ακόμη και χωρίς νέες εγγραφές",
         }
         widgets = {"frequency": forms.Select(attrs={"class": INPUT})}
+
+
+class CustomerRadarForm(forms.ModelForm):
+    prefectures = forms.MultipleChoiceField(
+        label="Περιφερειακές ενότητες",
+        required=False,
+        widget=forms.SelectMultiple(attrs={"class": MULTI_INPUT}),
+    )
+    legal_types = forms.MultipleChoiceField(
+        label="Νομικές μορφές",
+        required=False,
+        widget=forms.SelectMultiple(attrs={"class": MULTI_INPUT}),
+    )
+
+    class Meta:
+        model = CustomerRadar
+        fields = ("name", "name_query", "prefectures", "legal_types", "only_active", "frequency", "is_active")
+        labels = {
+            "name": "Όνομα Radar",
+            "name_query": "Λέξη ή φράση στην επωνυμία",
+            "only_active": "Μόνο ενεργές επιχειρήσεις",
+            "frequency": "Συχνότητα ενημέρωσης",
+            "is_active": "Το Radar είναι ενεργό",
+        }
+        widgets = {
+            "name": forms.TextInput(attrs={"class": INPUT, "placeholder": "π.χ. Νέα εστιατόρια Αττικής"}),
+            "name_query": forms.TextInput(attrs={"class": INPUT, "placeholder": "Προαιρετικό"}),
+            "frequency": forms.Select(attrs={"class": INPUT}),
+        }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.user = user
+        self.fields["prefectures"].choices = [
+            (value, value)
+            for value in Company.objects.exclude(prefecture="").values_list("prefecture", flat=True).distinct().order_by("prefecture")
+        ]
+        self.fields["legal_types"].choices = [
+            (value, value)
+            for value in Company.objects.exclude(legal_type="").values_list("legal_type", flat=True).distinct().order_by("legal_type")
+        ]
+
+    def clean_name(self):
+        name = " ".join(self.cleaned_data["name"].split())
+        if self.user:
+            duplicates = CustomerRadar.objects.filter(user=self.user, deleted_at__isnull=True)
+            if self.instance.pk:
+                duplicates = duplicates.exclude(pk=self.instance.pk)
+            normalized_name = name.casefold()
+            if any(existing.casefold() == normalized_name for existing in duplicates.values_list("name", flat=True)):
+                raise forms.ValidationError("Υπάρχει ήδη Radar με αυτό το όνομα.")
+        return name
+
+
+class LeadStatusForm(forms.ModelForm):
+    class Meta:
+        model = UserCompanyLead
+        fields = ("status",)
+        widgets = {"status": forms.Select(attrs={"class": INPUT})}
+
+
+class LeadNotesForm(forms.ModelForm):
+    class Meta:
+        model = UserCompanyLead
+        fields = ("notes",)
+        labels = {"notes": "Ιδιωτικές σημειώσεις"}
+        widgets = {
+            "notes": forms.Textarea(attrs={
+                "class": f"{INPUT} min-h-36 resize-y",
+                "maxlength": "5000",
+                "placeholder": "Κατέγραψε επαφή, επόμενο βήμα ή χρήσιμες πληροφορίες…",
+            })
+        }
+
+    def clean_notes(self):
+        notes = self.cleaned_data["notes"].strip()
+        if len(notes) > 5000:
+            raise forms.ValidationError("Οι σημειώσεις μπορούν να έχουν έως 5.000 χαρακτήρες.")
+        return notes

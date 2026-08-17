@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Απεγγραφή · Gemi Leads{% endblock %}
+{% block content %}
+<section class="flex min-h-screen items-center justify-center bg-sand-50 px-5 py-12">
+  <div class="w-full max-w-md rounded-[2rem] border border-navy-900/10 bg-white p-8 text-center shadow-soft" data-reveal>
+    {% if error %}
+    <div class="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-3xl text-red-600">
+      ×
+    </div>
+    <h1 class="text-3xl font-extrabold">Σφάλμα</h1>
+    <p class="mt-4 text-sm text-navy-700/60">{{ error }}</p>
+    {% else %}
+    <div class="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl text-emerald-600">
+      ✓
+    </div>
+    <h1 class="text-3xl font-extrabold">Απεγγραφή επιτυχής</h1>
+    <p class="mt-4 text-sm text-navy-700/60">
+      Δεν θα λαμβάνετε πλέον αυτοματοποιημένα emails (digests) από εμάς. Μπορείτε να ενεργοποιήσετε ξανά τις ειδοποιήσεις οποιαδήποτε στιγμή από τις Ρυθμίσεις του λογαριασμού σας.
+    </p>
+    {% endif %}
+    <a href="{% url 'home' %}" class="mt-8 inline-block rounded-full bg-blue-600 px-8 py-3.5 font-bold text-white transition hover:bg-blue-700">
+      Επιστροφή στην αρχική
+    </a>
+  </div>
+</section>
+{% endblock %}

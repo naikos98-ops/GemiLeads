@@ -1,6 +1,6 @@
 Καλημέρα {{ user.first_name|default:user.email }},
 
-Για τις {{ digest_date|date:'d/m/Y' }} βρέθηκαν {{ company_data|length }} νέες επιχειρήσεις.
+Για την εβδομάδα από {{ start_date|date:'d/m/Y' }} έως {{ end_date|date:'d/m/Y' }} βρέθηκαν {{ company_data|length }} νέες επιχειρήσεις.
 
 {% for item in company_data %}- {{ item.company.name }} | ΓΕΜΗ {{ item.company.gemi_number }} | {{ item.company.city|default:item.company.prefecture }}
   [Ραντάρ: {{ item.radars|join:", " }}]

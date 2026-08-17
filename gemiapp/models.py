@@ -1,5 +1,7 @@
 from django.contrib.auth.models import User
 from django.db import models
+from django.db.models.functions import Lower
+from django.utils import timezone
 
 
 class ActivityCode(models.Model):
@@ -83,6 +85,73 @@ class DigestPreference(models.Model):
         return f"{self.user.email or self.user.username} · {self.get_frequency_display()}"
 
 
+class CustomerRadar(models.Model):
+    FREQUENCIES = [("daily", "Καθημερινά"), ("weekly", "Εβδομαδιαία"), ("off", "Χωρίς email")]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="customer_radars")
+    name = models.CharField("Όνομα Radar", max_length=80)
+    is_active = models.BooleanField("Ενεργό", default=True)
+    name_query = models.CharField("Λέξη στην επωνυμία", max_length=200, blank=True)
+    prefectures = models.JSONField("Περιφερειακές ενότητες", default=list, blank=True)
+    legal_types = models.JSONField("Νομικές μορφές", default=list, blank=True)
+    only_active = models.BooleanField("Μόνο ενεργές επιχειρήσεις", default=True)
+    frequency = models.CharField("Συχνότητα ενημέρωσης", max_length=10, choices=FREQUENCIES, default="daily")
+    monitor_from = models.DateTimeField("Παρακολούθηση από", default=timezone.now)
+    activity_codes = models.ManyToManyField(ActivityCode, blank=True, related_name="customer_radars")
+    deleted_at = models.DateTimeField(null=True, blank=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_active", "name"]
+        indexes = [
+            models.Index(fields=["user", "is_active"], name="radar_user_active_idx"),
+            models.Index(fields=["frequency", "is_active"], name="radar_freq_active_idx"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                Lower("name"),
+                "user",
+                condition=models.Q(deleted_at__isnull=True),
+                name="unique_active_user_radar_name_ci",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user.email or self.user.username} · {self.name}"
+
+
+class UserCompanyLead(models.Model):
+    STATUSES = [
+        ("new", "Νέο"),
+        ("viewed", "Προβλήθηκε"),
+        ("contacted", "Επικοινώνησα"),
+        ("interested", "Ενδιαφέρεται"),
+        ("not_interested", "Δεν ενδιαφέρεται"),
+        ("archived", "Αρχείο"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="company_leads")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="user_leads")
+    status = models.CharField(max_length=20, choices=STATUSES, default="new")
+    is_favorite = models.BooleanField(default=False)
+    notes = models.TextField(blank=True)
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-first_seen_at"]
+        constraints = [models.UniqueConstraint(fields=["user", "company"], name="unique_user_company_lead")]
+        indexes = [
+            models.Index(fields=["user", "status", "-first_seen_at"], name="lead_user_status_seen_idx"),
+            models.Index(fields=["user", "is_favorite"], name="lead_user_favorite_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.user.email or self.user.username} · {self.company}"
+
+
 class ImportRun(models.Model):
     STATUSES = [("running", "Σε εξέλιξη"), ("success", "Επιτυχία"), ("failed", "Αποτυχία")]
     target_date = models.DateField(db_index=True)
@@ -98,9 +167,33 @@ class ImportRun(models.Model):
         ordering = ["-started_at"]
 
 
+class RadarMatch(models.Model):
+    radar = models.ForeignKey(CustomerRadar, on_delete=models.CASCADE, related_name="matches")
+    lead = models.ForeignKey(UserCompanyLead, on_delete=models.CASCADE, related_name="radar_matches")
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="radar_matches")
+    import_run = models.ForeignKey(ImportRun, on_delete=models.SET_NULL, null=True, blank=True, related_name="radar_matches")
+    matched_on = models.DateField(db_index=True)
+    matched_activity_codes = models.JSONField(default=list, blank=True)
+    match_reason = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-matched_on", "-created_at"]
+        constraints = [models.UniqueConstraint(fields=["radar", "company"], name="unique_radar_company_match")]
+        indexes = [
+            models.Index(fields=["radar", "-matched_on"], name="match_radar_date_idx"),
+            models.Index(fields=["lead", "-matched_on"], name="match_lead_date_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.radar.name} · {self.company}"
+
+
 class DigestDelivery(models.Model):
     STATUSES = [("sent", "Εστάλη"), ("skipped", "Παραλείφθηκε"), ("failed", "Απέτυχε")]
+    FREQUENCIES = [("daily", "Καθημερινά"), ("weekly", "Εβδομαδιαία")]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="digest_deliveries")
+    frequency = models.CharField(max_length=10, choices=FREQUENCIES, default="daily")
     digest_date = models.DateField(db_index=True)
     company_count = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=10, choices=STATUSES)
@@ -108,5 +201,34 @@ class DigestDelivery(models.Model):
     sent_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["user", "digest_date"], name="unique_user_daily_digest")]
+        constraints = [models.UniqueConstraint(fields=["user", "digest_date", "frequency"], name="unique_user_digest_delivery")]
         ordering = ["-sent_at"]
+
+
+RADAR_LIMITS = {
+    "free": 1,
+    "pro": 5,
+    "business": 25,
+}
+
+def get_user_radar_limit(user):
+    try:
+        return RADAR_LIMITS.get(user.subscription.tier, 1)
+    except UserSubscription.DoesNotExist:
+        return RADAR_LIMITS["free"]
+
+class UserSubscription(models.Model):
+    TIERS = [("free", "Free"), ("pro", "Pro"), ("business", "Business")]
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="subscription")
+    tier = models.CharField(max_length=20, choices=TIERS, default="free")
+    stripe_customer_id = models.CharField(max_length=100, blank=True)
+    stripe_subscription_id = models.CharField(max_length=100, blank=True)
+    active_until = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.get_tier_display()}"

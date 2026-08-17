@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}{% if radar %}Επεξεργασία{% else %}Νέο Radar{% endif %} · Gemi Leads{% endblock %}
+{% block content %}
+<section class="min-h-screen bg-sand-50 px-5 py-12 lg:px-8">
+  <div class="mx-auto max-w-4xl">
+    <div data-reveal><a href="{% url 'radar_list' %}" class="text-sm font-bold text-blue-700">← Όλα τα Radars</a><h1 class="mt-4 text-4xl font-extrabold">{% if radar %}Επεξεργασία Radar{% else %}Δημιούργησε νέο Radar{% endif %}</h1><p class="mt-3 text-navy-700/55">Οι επιλογές της ίδιας κατηγορίας λειτουργούν με OR, ενώ οι διαφορετικές κατηγορίες συνδυάζονται με AND.</p></div>
+    <form id="radarForm" method="post" class="mt-9 space-y-8 rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft sm:p-9" data-preview-url="{% url 'radar_preview' %}" data-reveal>
+      {% csrf_token %}{% if radar %}<input type="hidden" name="radar_id" value="{{ radar.pk }}">{% endif %}
+      {% if form.non_field_errors %}<div class="rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700">{{ form.non_field_errors }}</div>{% endif %}
+      <fieldset><legend class="text-lg font-extrabold">1. Ταυτότητα</legend><div class="mt-4 grid gap-5 sm:grid-cols-2"><div><label class="mb-2 block text-sm font-bold">{{ form.name.label }}</label>{{ form.name }}{{ form.name.errors }}</div><div><label class="mb-2 block text-sm font-bold">{{ form.name_query.label }}</label>{{ form.name_query }}{{ form.name_query.errors }}</div></div></fieldset>
+      <fieldset><legend class="text-lg font-extrabold">2. Στόχευση</legend><div class="mt-4">{% include 'includes/kad_picker.html' with kad_picker_id='radar-kads' kad_input_name='activity_codes' kad_label='ΚΑΔ που σε ενδιαφέρουν' kad_help='Μπορείς να επιλέξεις έως 25 ΚΑΔ. Μία εταιρεία αρκεί να έχει έναν από αυτούς.' %}</div><div class="mt-6 grid gap-5 sm:grid-cols-2"><div><label class="mb-2 block text-sm font-bold">{{ form.prefectures.label }}</label><p class="mb-2 text-xs text-navy-700/45">Χωρίς επιλογή περιλαμβάνονται όλες. Με Ctrl/Cmd επιλέγεις πολλές.</p>{{ form.prefectures }}{{ form.prefectures.errors }}</div><div><label class="mb-2 block text-sm font-bold">{{ form.legal_types.label }}</label><p class="mb-2 text-xs text-navy-700/45">Χωρίς επιλογή περιλαμβάνονται όλες.</p>{{ form.legal_types }}{{ form.legal_types.errors }}</div></div><label class="mt-5 flex cursor-pointer items-center justify-between gap-5 rounded-2xl bg-sand-50 p-5"><span><b class="block">{{ form.only_active.label }}</b><span class="text-sm text-navy-700/50">Απόκρυψη κλεισμένων ή ανενεργών εγγραφών.</span></span>{{ form.only_active }}</label></fieldset>
+      <fieldset><legend class="text-lg font-extrabold">3. Λειτουργία</legend><div class="mt-4 grid gap-5 sm:grid-cols-2"><div><label class="mb-2 block text-sm font-bold">{{ form.frequency.label }}</label>{{ form.frequency }}{{ form.frequency.errors }}<p class="mt-2 text-xs text-navy-700/45">Το weekly email θα ενεργοποιηθεί στη Φάση 3.</p></div><label class="flex cursor-pointer items-center justify-between gap-5 rounded-2xl bg-sand-50 p-5"><span><b class="block">{{ form.is_active.label }}</b><span class="text-sm text-navy-700/50">Σε παύση δεν δημιουργούνται νέα matches.</span></span>{{ form.is_active }}</label></div></fieldset>
+      <div id="radarPreview" class="hidden rounded-2xl border border-blue-200 bg-blue-50 p-5" aria-live="polite"></div>
+      <div class="flex flex-wrap justify-end gap-3"><button id="previewRadar" type="button" class="rounded-full border border-blue-600 px-6 py-3 font-bold text-blue-700">Προεπισκόπηση</button><button class="rounded-full bg-navy-950 px-7 py-3 font-bold text-white">Αποθήκευση Radar</button></div>
+    </form>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const form = document.getElementById('radarForm'), button = document.getElementById('previewRadar'), output = document.getElementById('radarPreview');
+  button?.addEventListener('click', async () => {
+    button.disabled = true; button.textContent = 'Έλεγχος…'; output.classList.remove('hidden'); output.textContent = 'Υπολογίζονται τα ιστορικά αποτελέσματα…';
+    try {
+      const response = await fetch(form.dataset.previewUrl, {method:'POST', body:new FormData(form), headers:{'X-CSRFToken':form.querySelector('[name=csrfmiddlewaretoken]').value, Accept:'application/json'}});
+      const data = await response.json();
+      if (!response.ok) throw new Error('Έλεγξε τα πεδία της φόρμας.');
+      output.replaceChildren(); const title = document.createElement('p'); title.className = 'font-extrabold text-blue-900'; title.textContent = `${data.count.toLocaleString('el-GR')} ιστορικές εταιρείες ταιριάζουν`;
+      const help = document.createElement('p'); help.className = 'mt-1 text-sm text-blue-900/65'; help.textContent = 'Η προεπισκόπηση δεν δημιουργεί παλιά leads. Το Radar θα παρακολουθεί μόνο επόμενες εισαγωγές.'; output.append(title, help);
+      if (data.samples.length) { const list = document.createElement('ul'); list.className = 'mt-4 space-y-2 text-sm'; data.samples.forEach(item => { const row=document.createElement('li'); row.className='rounded-xl bg-white/70 px-4 py-3'; row.textContent=`${item.name} · ${item.prefecture || 'Χωρίς περιοχή'} · ${item.incorporation_date}`; list.append(row); }); output.append(list); }
+    } catch (error) { output.textContent = error.message; }
+    finally { button.disabled = false; button.textContent = 'Προεπισκόπηση'; }
+  });
+})();
+</script>
+{% endblock %}

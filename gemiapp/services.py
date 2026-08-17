@@ -13,10 +13,29 @@ from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
 from .kad import display_kad_code, normalize_kad_code, normalize_kad_search
-from .models import ActivityCode, Company, CompanyActivity, DigestDelivery, DigestPreference, ImportRun
+from .models import (
+    ActivityCode,
+    Company,
+    CompanyActivity,
+    CustomerRadar,
+    DigestDelivery,
+    DigestPreference,
+    ImportRun,
+    RadarMatch,
+    UserCompanyLead,
+)
 
 
 PAGE_SIZE = 200
+
+
+@dataclass(frozen=True)
+class MatchSummary:
+    radars_checked: int = 0
+    companies_checked: int = 0
+    new_leads: int = 0
+    new_matches: int = 0
+    duplicate_matches: int = 0
 
 
 def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -25,7 +44,7 @@ def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
     query = urllib.parse.urlencode(params, doseq=True)
     request = urllib.request.Request(
         f"{settings.GEMI_API_BASE}{path}?{query}",
-        headers={"api_key": settings.GEMI_API_KEY, "Accept": "application/json", "User-Agent": "GEMI-Signal/1.0"},
+        headers={"api_key": settings.GEMI_API_KEY, "Accept": "application/json", "User-Agent": "Gemi-Leads/1.0"},
     )
     for attempt in range(4):
         try:
@@ -128,6 +147,107 @@ def sync_company_activities(company: Company, activities: list[dict[str, Any]]) 
     ], ignore_conflicts=True)
 
 
+def filter_companies_for_radar(
+    queryset,
+    *,
+    name_query="",
+    prefectures=None,
+    legal_types=None,
+    only_active=True,
+    activity_codes=None,
+):
+    if prefectures:
+        queryset = queryset.filter(prefecture__in=prefectures)
+    if legal_types:
+        queryset = queryset.filter(legal_type__in=legal_types)
+    if only_active:
+        queryset = queryset.filter(is_active=True)
+    if activity_codes:
+        queryset = queryset.filter(activity_records__code__in=activity_codes).distinct()
+    if name_query:
+        normalized_query = normalize_kad_search(name_query)
+        matching_ids = [
+            company_id
+            for company_id, company_name in queryset.values_list("id", "name")
+            if normalized_query in normalize_kad_search(company_name)
+        ]
+        queryset = queryset.filter(pk__in=matching_ids)
+    return queryset
+
+
+def company_matches_radar(company: Company, radar: CustomerRadar) -> tuple[bool, dict[str, Any]]:
+    if radar.only_active and not company.is_active:
+        return False, {}
+    if radar.name_query and normalize_kad_search(radar.name_query) not in normalize_kad_search(company.name):
+        return False, {}
+    if radar.prefectures and company.prefecture not in radar.prefectures:
+        return False, {}
+    if radar.legal_types and company.legal_type not in radar.legal_types:
+        return False, {}
+
+    wanted_codes = {item.normalized_code for item in radar.activity_codes.all()}
+    company_codes = {item.code for item in company.activity_records.all()}
+    matched_codes = sorted(wanted_codes & company_codes)
+    if wanted_codes and not matched_codes:
+        return False, {}
+
+    reason = {
+        "activity_codes": matched_codes,
+        "prefecture": company.prefecture if radar.prefectures else "",
+        "legal_type": company.legal_type if radar.legal_types else "",
+        "name_query": radar.name_query if radar.name_query else "",
+    }
+    return True, reason
+
+
+@transaction.atomic
+def match_imported_companies(import_run: ImportRun) -> MatchSummary:
+    if import_run.status != "success":
+        raise ValueError("Matching μπορεί να εκτελεστεί μόνο μετά από επιτυχημένο import.")
+
+    companies = list(
+        Company.objects.filter(incorporation_date=import_run.target_date).prefetch_related("activity_records")
+    )
+    radars = list(
+        CustomerRadar.objects.filter(is_active=True, deleted_at__isnull=True)
+        .exclude(frequency="off")
+        .select_related("user")
+        .prefetch_related("activity_codes")
+    )
+    new_leads = new_matches = duplicate_matches = 0
+
+    for radar in radars:
+        if import_run.target_date < timezone.localdate(radar.monitor_from):
+            continue
+        for company in companies:
+            matched, reason = company_matches_radar(company, radar)
+            if not matched:
+                continue
+            lead, lead_created = UserCompanyLead.objects.get_or_create(user=radar.user, company=company)
+            new_leads += int(lead_created)
+            _, match_created = RadarMatch.objects.get_or_create(
+                radar=radar,
+                company=company,
+                defaults={
+                    "lead": lead,
+                    "import_run": import_run,
+                    "matched_on": import_run.target_date,
+                    "matched_activity_codes": reason["activity_codes"],
+                    "match_reason": reason,
+                },
+            )
+            new_matches += int(match_created)
+            duplicate_matches += int(not match_created)
+
+    return MatchSummary(
+        radars_checked=len(radars),
+        companies_checked=len(companies),
+        new_leads=new_leads,
+        new_matches=new_matches,
+        duplicate_matches=duplicate_matches,
+    )
+
+
 def import_for_date(target_date: date) -> ImportRun:
     run = ImportRun.objects.create(target_date=target_date)
     try:
@@ -142,6 +262,7 @@ def import_for_date(target_date: date) -> ImportRun:
         run.fetched_count, run.created_count, run.updated_count = len(items), created, updated
         run.status, run.finished_at = "success", timezone.now()
         run.save()
+        match_imported_companies(run)
     except Exception as exc:
         run.status, run.error_message, run.finished_at = "failed", str(exc), timezone.now()
         run.save()
@@ -149,37 +270,70 @@ def import_for_date(target_date: date) -> ImportRun:
     return run
 
 
-def send_daily_digests(target_date: date) -> tuple[int, int]:
+def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]:
+    from datetime import timedelta
     sent = skipped = 0
-    for preference in DigestPreference.objects.select_related("user").filter(frequency="daily", user__is_active=True):
+    if frequency == "weekly":
+        start_date = target_date - timedelta(days=6)
+        end_date = target_date
+    else:
+        start_date = end_date = target_date
+
+    preferences = DigestPreference.objects.select_related("user").exclude(frequency="off").filter(user__is_active=True)
+    for preference in preferences:
         user = preference.user
-        existing = DigestDelivery.objects.filter(user=user, digest_date=target_date).first()
+        existing = DigestDelivery.objects.filter(user=user, digest_date=target_date, frequency=frequency).first()
         if not user.email or (existing and existing.status in {"sent", "skipped"}):
             skipped += 1
             continue
-        companies = Company.objects.filter(incorporation_date=target_date)
-        if preference.only_active:
-            companies = companies.filter(is_active=True)
-        if preference.legal_types:
-            companies = companies.filter(legal_type__in=preference.legal_types)
-        if preference.prefectures:
-            companies = companies.filter(prefecture__in=preference.prefectures)
-        if preference.activity_codes:
-            companies = companies.filter(activity_records__code__in=preference.activity_codes).distinct()
-        companies = list(companies)
-        if not companies and not preference.include_empty_digest:
-            DigestDelivery.objects.update_or_create(user=user, digest_date=target_date, defaults={"status": "skipped", "company_count": 0, "error_message": ""})
-            skipped += 1
-            continue
+
+        matches = RadarMatch.objects.filter(
+            radar__user=user,
+            radar__frequency=frequency,
+            radar__is_active=True,
+            radar__deleted_at__isnull=True,
+            matched_on__gte=start_date,
+            matched_on__lte=end_date
+        ).select_related("company", "radar")
+
+        companies_dict = {}
+        for match in matches:
+            cid = match.company.id
+            if cid not in companies_dict:
+                companies_dict[cid] = {"company": match.company, "radars": []}
+            if match.radar.name not in companies_dict[cid]["radars"]:
+                companies_dict[cid]["radars"].append(match.radar.name)
+
+        company_data = list(companies_dict.values())
+        company_data.sort(key=lambda x: (-x["company"].incorporation_date.toordinal(), x["company"].name))
+
+        if not company_data:
+            has_radars = CustomerRadar.objects.filter(user=user, is_active=True, frequency=frequency, deleted_at__isnull=True).exists()
+            if not (preference.include_empty_digest and has_radars):
+                DigestDelivery.objects.update_or_create(user=user, digest_date=target_date, frequency=frequency, defaults={"status": "skipped", "company_count": 0, "error_message": ""})
+                skipped += 1
+                continue
+
         try:
-            context = {"user": user, "companies": companies, "digest_date": target_date}
-            text_body = render_to_string("emails/daily_digest.txt", context)
-            html_body = render_to_string("emails/daily_digest.html", context)
-            email = EmailMultiAlternatives(f"{len(companies)} νέες επιχειρήσεις · {target_date:%d/%m/%Y}", text_body, settings.DEFAULT_FROM_EMAIL, [user.email])
+            context = {"user": user, "company_data": company_data, "digest_date": target_date, "start_date": start_date, "end_date": end_date, "frequency": frequency}
+            if frequency == "weekly":
+                subject = f"Gemi Leads · {len(company_data)} νέες επιχειρήσεις · Εβδομάδα έως {target_date:%d/%m/%Y}"
+                txt_tmpl = "emails/weekly_digest.txt"
+                html_tmpl = "emails/weekly_digest.html"
+            else:
+                subject = f"Gemi Leads · {len(company_data)} νέες επιχειρήσεις · {target_date:%d/%m/%Y}"
+                txt_tmpl = "emails/daily_digest.txt"
+                html_tmpl = "emails/daily_digest.html"
+            
+            text_body = render_to_string(txt_tmpl, context)
+            html_body = render_to_string(html_tmpl, context)
+            email = EmailMultiAlternatives(subject, text_body, settings.DEFAULT_FROM_EMAIL, [user.email])
+            if settings.EMAIL_REPLY_TO:
+                email.reply_to = [settings.EMAIL_REPLY_TO]
             email.attach_alternative(html_body, "text/html")
             email.send()
-            DigestDelivery.objects.update_or_create(user=user, digest_date=target_date, defaults={"company_count": len(companies), "status": "sent", "error_message": ""})
+            DigestDelivery.objects.update_or_create(user=user, digest_date=target_date, frequency=frequency, defaults={"company_count": len(company_data), "status": "sent", "error_message": ""})
             sent += 1
         except Exception as exc:
-            DigestDelivery.objects.update_or_create(user=user, digest_date=target_date, defaults={"company_count": len(companies), "status": "failed", "error_message": str(exc)})
+            DigestDelivery.objects.update_or_create(user=user, digest_date=target_date, frequency=frequency, defaults={"company_count": len(company_data), "status": "failed", "error_message": str(exc)})
     return sent, skipped

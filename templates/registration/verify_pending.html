@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}Επιβεβαίωση Email · Gemi Leads{% endblock %}
+{% block content %}
+<section class="flex min-h-screen items-center justify-center bg-sand-50 px-5 py-12">
+  <div class="w-full max-w-md rounded-[2rem] border border-navy-900/10 bg-white p-8 text-center shadow-soft" data-reveal>
+    <div class="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-3xl text-blue-600">
+      ✉
+    </div>
+    <h1 class="text-3xl font-extrabold">Ελέγξτε το email σας</h1>
+    <p class="mt-4 text-sm text-navy-700/60">
+      Στείλαμε ένα μήνυμα επιβεβαίωσης στο <b>{{ email }}</b>. Παρακαλώ κάντε κλικ στον σύνδεσμο που περιέχει για να ενεργοποιήσετε τον λογαριασμό σας.
+    </p>
+    <a href="{% url 'login' %}" class="mt-8 inline-block rounded-full bg-blue-600 px-8 py-3.5 font-bold text-white transition hover:bg-blue-700">
+      Επιστροφή στη σύνδεση
+    </a>
+  </div>
+</section>
+{% endblock %}

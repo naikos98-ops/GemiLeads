@@ -9,7 +9,7 @@ class Command(BaseCommand):
     help = "Δημιουργεί demo χρήστη και ενδεικτικές επιχειρήσεις."
 
     def handle(self, *args, **options):
-        user, created = User.objects.get_or_create(username="demo@gemisignal.gr", defaults={"email": "demo@gemisignal.gr", "first_name": "Demo"})
+        user, created = User.objects.get_or_create(username="demo@gemileads.gr", defaults={"email": "demo@gemileads.gr", "first_name": "Demo"})
         if created:
             user.set_password("demo12345")
             user.save()
@@ -29,4 +29,4 @@ class Command(BaseCommand):
                 "is_active": True, "incorporation_date": today - timedelta(days=days), "prefecture": prefecture,
                 "municipality": city, "city": city, "activities": [{"code": "62.01", "description": "Υπηρεσίες τεχνολογίας"}],
             })
-        self.stdout.write(self.style.SUCCESS("Demo: demo@gemisignal.gr / demo12345"))
+        self.stdout.write(self.style.SUCCESS("Demo: demo@gemileads.gr / demo12345"))

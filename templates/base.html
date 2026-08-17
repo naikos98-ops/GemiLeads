@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#081a2c">
-  <title>{% block title %}GEMI Signal{% endblock %}</title>
+  <title>{% block title %}Gemi Leads{% endblock %}</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config={theme:{extend:{colors:{navy:{950:'#071725',900:'#0b2239',800:'#123453',700:'#1b496c'},sand:{50:'#fbf8f1',100:'#f3ecdf',200:'#e6d8c3',300:'#d8c2a2'},signal:'#2878ff'},fontFamily:{sans:['Inter','ui-sans-serif','system-ui']},boxShadow:{soft:'0 24px 80px rgba(7,23,37,.12)',glow:'0 0 40px rgba(40,120,255,.22)'},keyframes:{float:{'0%,100%':{transform:'translateY(0)'},'50%':{transform:'translateY(-12px)'}},shine:{'0%':{transform:'translateX(-150%) skewX(-18deg)'},'100%':{transform:'translateX(250%) skewX(-18deg)'}}},animation:{float:'float 6s ease-in-out infinite',shine:'shine 2.8s ease-in-out infinite'}}}};
@@ -25,11 +25,13 @@
     <div class="mx-auto flex h-18 max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
       <a href="{% url 'home' %}" class="group flex items-center gap-3">
         <span class="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl bg-signal shadow-glow"><span class="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/30 to-transparent group-hover:animate-shine"></span><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17l5-5 4 4 7-8"/><path d="M15 8h5v5"/></svg></span>
-        <span class="text-lg font-extrabold tracking-tight">GEMI<span class="text-blue-400">Signal</span></span>
+        <span class="text-lg font-extrabold tracking-tight">Gemi <span class="text-blue-400">Leads</span></span>
       </a>
       <div class="hidden items-center gap-7 text-sm font-medium md:flex">
         {% if user.is_authenticated %}
           <a href="{% url 'dashboard' %}" class="text-white/70 transition hover:text-white">Dashboard</a>
+          <a href="{% url 'lead_list' %}" class="text-white/70 transition hover:text-white">Leads</a>
+          <a href="{% url 'radar_list' %}" class="text-white/70 transition hover:text-white">Radars</a>
           <a href="{% url 'settings' %}" class="text-white/70 transition hover:text-white">Ρυθμίσεις</a>
           <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="rounded-full border border-white/15 px-5 py-2 transition hover:bg-white/10">Έξοδος</button></form>
         {% else %}
@@ -41,13 +43,13 @@
       <button id="menuButton" class="rounded-xl border border-white/15 p-2 md:hidden" aria-label="Μενού"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
     <div id="mobileMenu" class="hidden border-t border-white/10 px-5 py-4 md:hidden">
-      <div class="flex flex-col gap-4 text-sm">{% if user.is_authenticated %}<a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'settings' %}">Ρυθμίσεις</a>{% else %}<a href="{% url 'login' %}">Σύνδεση</a><a href="{% url 'signup' %}">Δωρεάν έναρξη</a>{% endif %}</div>
+      <div class="flex flex-col gap-4 text-sm">{% if user.is_authenticated %}<a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'lead_list' %}">Leads</a><a href="{% url 'radar_list' %}">Radars</a><a href="{% url 'settings' %}">Ρυθμίσεις</a>{% else %}<a href="{% url 'login' %}">Σύνδεση</a><a href="{% url 'signup' %}">Δωρεάν έναρξη</a>{% endif %}</div>
     </div>
   </nav>
   {% if messages %}<div class="fixed right-5 top-24 z-50 space-y-2">{% for message in messages %}<div data-toast class="rounded-2xl bg-navy-900 px-5 py-4 text-sm text-white shadow-soft">{{ message }}</div>{% endfor %}</div>{% endif %}
   <main class="pt-[72px]">{% block content %}{% endblock %}</main>
   <footer class="border-t border-navy-900/10 bg-sand-100 px-5 py-10">
-    <div class="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-sm text-navy-900/60 sm:flex-row"><p>© 2026 GEMI Signal · Δεδομένα από το επίσημο Open Data API ΓΕΜΗ.</p><p>Καθαρά δεδομένα. Καθημερινά.</p></div>
+    <div class="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-sm text-navy-900/60 sm:flex-row"><p>© 2026 Gemi Leads · Δεδομένα από το επίσημο Open Data API ΓΕΜΗ.</p><p>Καθαρά δεδομένα. Καθημερινά.</p></div>
   </footer>
   <script src="{% static 'js/app.js' %}"></script>
   {% block scripts %}{% endblock %}
