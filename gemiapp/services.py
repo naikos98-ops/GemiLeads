@@ -315,7 +315,13 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
                 continue
 
         try:
-            context = {"user": user, "company_data": company_data, "digest_date": target_date, "start_date": start_date, "end_date": end_date, "frequency": frequency}
+            from django.core.signing import TimestampSigner
+            from django.urls import reverse
+            signer = TimestampSigner()
+            token = signer.sign(user.id)
+            unsubscribe_url = f"{settings.BASE_URL}{reverse('unsubscribe', kwargs={'token': token})}"
+            
+            context = {"user": user, "company_data": company_data, "digest_date": target_date, "start_date": start_date, "end_date": end_date, "frequency": frequency, "unsubscribe_url": unsubscribe_url}
             if frequency == "weekly":
                 subject = f"Gemi Leads · {len(company_data)} νέες επιχειρήσεις · Εβδομάδα έως {target_date:%d/%m/%Y}"
                 txt_tmpl = "emails/weekly_digest.txt"

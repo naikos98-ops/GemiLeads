@@ -95,9 +95,7 @@ def signup(request):
         return redirect("dashboard")
     form = SignupForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
-        user = form.save(commit=False)
-        user.is_active = False
-        user.save()
+        user = form.save()
         
         domain = request.get_host()
         protocol = "https" if request.is_secure() else "http"

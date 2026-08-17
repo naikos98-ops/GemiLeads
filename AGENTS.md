@@ -89,9 +89,7 @@ Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 
 ### Λογαριασμοί, production και QA
 
-9. Email verification, password reset και unsubscribe flow.
-10. PostgreSQL, production server, static build, scheduler/queue, backups και monitoring.
-11. Πραγματικό subscription/billing και εφαρμογή περιορισμών πρόσβασης ανά πλάνο.
+9. Πραγματικό subscription/billing και εφαρμογή περιορισμών πρόσβασης ανά πλάνο.
 
 ## Ιστορικό εργασιών
 
@@ -111,3 +109,5 @@ Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 - 2026-08-17: Ολοκληρώθηκε η Φάση 3 — Digest integration: Μετάβαση σε Radar-based daily και weekly digests, προσθήκη deduplication για εταιρείες που εμφανίζονται σε πολλαπλά ραντάρ, και υποστήριξη empty digests. Δημιουργήθηκαν νέα templates (HTML & TXT) με links στο production URL (`gemileads.gr/leads/`). Ενημερώθηκαν τα tests και περνούν όλα επιτυχώς.
 - 2026-08-17: Ολοκληρώθηκε η Φάση 4 — Plans/production hardening: Μοντέλο UserSubscription, δυναμικά όρια Ραντάρ (Free: 1, Pro: 5, Business: 25) με προστασία δημιουργίας, ενσωμάτωση `django-ratelimit` (στα login/signup), υποστήριξη PostgreSQL μέσω `dj-database-url` και ενσωμάτωση `sentry-sdk`. Τα tests αυξήθηκαν σε 18 και περνούν όλα.
 - 2026-08-17: Ολοκληρώθηκε πλήρως το setup του Email και Domain (Brevo SMTP): Πιστοποίηση του domain `gemileads.gr`, δημιουργία dedicated sender, αποθήκευση SMTP credentials στο `.env` και επιτυχής επαλήθευση αποστολής email σε πραγματικό παραλήπτη.
+- 2026-08-17: Ολοκληρώθηκε η Φάση 5 — Auth Flow: Ενσωμάτωση Email verification κατά την εγγραφή (`is_active=False` default, επιβεβαίωση μέσω token), Password reset (built-in views/templates) και Unsubscribe flow χωρίς login (μέσω `TimestampSigner`). Προσαρμόστηκε η φόρμα Signup ώστε να δημιουργεί με ασφάλεια inactive users και ενημερώθηκαν τα digest templates. Τα tests αυξήθηκαν σε 21 και περνούν όλα επιτυχώς.
+- 2026-08-17: Ολοκληρώθηκε η Φάση 6 — Production Setup: Προετοιμασία υποδομής με προσθήκη `psycopg[binary]`, `gunicorn`, και `whitenoise` στο `requirements.txt` / `settings.py`. Ενσωμάτωση `django-q2` ως scheduler (απευθείας μέσω βάσης) για το daily pipeline. Δημιουργία ολοκληρωμένου `docker-compose.yml`, `Dockerfile`, `entrypoint.sh` και `backup.sh` για deployment. Τα tests περνούν επιτυχώς.

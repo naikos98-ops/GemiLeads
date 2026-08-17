@@ -8,3 +8,6 @@
 {% endfor %}
 
 Συνδέσου στο Gemi Leads Inbox (https://gemileads.gr/leads/) για πλήρη διαχείριση.
+
+Για να σταματήσετε να λαμβάνετε αυτά τα email, κάντε κλικ εδώ:
+{{ unsubscribe_url }}

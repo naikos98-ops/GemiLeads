@@ -148,7 +148,7 @@ class AppTests(TestCase):
             "password1": "VeryStrongPass123!",
             "password2": "VeryStrongPass123!",
         })
-        self.assertRedirects(response, reverse("dashboard"))
+        self.assertEqual(response.status_code, 200)
         radar = CustomerRadar.objects.get(user__email="new@example.com")
         self.assertEqual(radar.name, "Όλες οι νέες επιχειρήσεις")
         self.assertTrue(radar.is_active)
@@ -417,3 +417,54 @@ class AppTests(TestCase):
         
         response3 = self.client.post(reverse("radar_create"), {"name": "Second Radar", "is_active": True, "frequency": "daily"})
         self.assertEqual(response3.status_code, 302)
+
+class AuthFlowTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="testauth@example.com", password="password123", first_name="AuthUser")
+        DigestPreference.objects.create(user=self.user)
+
+    def test_signup_creates_inactive_user(self):
+        response = self.client.post(reverse("signup"), {
+            "first_name": "New",
+            "last_name": "User",
+            "email": "newuser@example.com",
+            "password1": "strongpassword123",
+            "password2": "strongpassword123",
+            "terms": "on"
+        })
+        self.assertEqual(response.status_code, 200) # Form render verify_pending
+        self.assertContains(response, "Ελέγξτε το email σας")
+        
+        new_user = User.objects.get(username="newuser@example.com")
+        self.assertFalse(new_user.is_active)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Επιβεβαίωση email", mail.outbox[0].subject)
+
+    def test_verify_email(self):
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.http import urlsafe_base64_encode
+        from django.utils.encoding import force_bytes
+        
+        self.user.is_active = False
+        self.user.save()
+        
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        token = default_token_generator.make_token(self.user)
+        
+        response = self.client.get(reverse("verify_email", kwargs={"uidb64": uid, "token": token}))
+        self.assertEqual(response.status_code, 302)
+        
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.is_active)
+
+    def test_unsubscribe(self):
+        from django.core.signing import TimestampSigner
+        signer = TimestampSigner()
+        token = signer.sign(self.user.id)
+        
+        response = self.client.get(reverse("unsubscribe", kwargs={"token": token}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Απεγγραφή επιτυχής")
+        
+        self.user.digest_preference.refresh_from_db()
+        self.assertEqual(self.user.digest_preference.frequency, "off")

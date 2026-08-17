@@ -31,12 +31,12 @@ class SignupForm(UserCreationForm):
         user = super().save(commit=False)
         user.email = self.cleaned_data["email"]
         user.username = self.cleaned_data["email"]
+        user.is_active = False
         if commit:
             user.save()
             DigestPreference.objects.create(user=user)
             CustomerRadar.objects.create(user=user, name="Όλες οι νέες επιχειρήσεις")
         return user
-
 
 class DigestPreferenceForm(forms.ModelForm):
     class Meta:
