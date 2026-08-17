@@ -13,7 +13,7 @@ services:
       - key: DJANGO_SECRET_KEY
         generateValue: true
       - key: DJANGO_ALLOWED_HOSTS
-        value: gemileads.gr,gemileads-web.onrender.com
+        value: gemileads.gr,www.gemileads.gr,gemileads-web.onrender.com
       - key: BASE_URL
         value: https://gemileads.gr
       - key: GEMI_API_KEY
