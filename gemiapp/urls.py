@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import billing
 
 urlpatterns = [
     path("", views.home, name="home"),
@@ -23,4 +24,9 @@ urlpatterns = [
     path("export/", views.export_csv, name="export_csv"),
     path("verify/<uidb64>/<token>/", views.verify_email, name="verify_email"),
     path("unsubscribe/<token>/", views.unsubscribe, name="unsubscribe"),
+    # Billing / Stripe
+    path("pricing/", billing.pricing, name="pricing"),
+    path("api/stripe/create-checkout-session/", billing.create_checkout_session, name="create_checkout_session"),
+    path("api/stripe/customer-portal/", billing.customer_portal, name="customer_portal"),
+    path("api/stripe/webhook/", billing.stripe_webhook, name="stripe_webhook"),
 ]

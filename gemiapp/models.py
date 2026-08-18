@@ -232,3 +232,11 @@ class UserSubscription(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.get_tier_display()}"
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender=User)
+def create_user_subscription(sender, instance, created, **kwargs):
+    if created:
+        UserSubscription.objects.create(user=instance)
