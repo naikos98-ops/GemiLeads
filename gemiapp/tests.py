@@ -797,3 +797,17 @@ class SuperadminTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertContains(res, "System Health & Operational Status")
         self.assertContains(res, "Database (SQLite/PostgreSQL)")
+
+    def test_email_or_username_authentication(self):
+        # 1. Login using email address
+        self.client.logout()
+        res_email = self.client.post(reverse("login"), {"username": "admin@gemileads.gr", "password": "SuperPassword123"})
+        self.assertEqual(res_email.status_code, 302)
+
+        # 2. Login using username if different
+        user = User.objects.create_superuser(username="super_user", email="superuser@gemileads.gr", password="Password123!")
+        res_user = self.client.post(reverse("login"), {"username": "superuser@gemileads.gr", "password": "Password123!"})
+        self.assertEqual(res_user.status_code, 302)
+
+        res_user_name = self.client.post(reverse("login"), {"username": "super_user", "password": "Password123!"})
+        self.assertEqual(res_user_name.status_code, 302)

@@ -119,3 +119,7 @@ Q_CLUSTER = {
     "label": "Django Q",
     "orm": "default",
 }
+
+AUTHENTICATION_BACKENDS = [
+    "gemiapp.backends.EmailOrUsernameBackend",
+]
