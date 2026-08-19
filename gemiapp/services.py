@@ -465,3 +465,58 @@ def send_user_yesterday_digest(user) -> int:
         error_message="",
     )
     return total_count
+
+
+def import_companies_since_date(start_date: date = date(2026, 1, 1)) -> tuple[int, int]:
+    """
+    Imports all companies from GEMI API starting from start_date up to today.
+    Returns (created_count, updated_count).
+    """
+    start_iso = start_date.isoformat()
+    created_count = 0
+    updated_count = 0
+
+    for active in (True, False):
+        offset = 0
+        while True:
+            payload = _get("/companies", {
+                "isActive": str(active).lower(),
+                "resultsSortBy": "-incorporationDate",
+                "resultsOffset": offset,
+                "resultsSize": PAGE_SIZE,
+            })
+            results = payload.get("searchResults") or []
+            if not results:
+                break
+
+            stop_pagination = False
+            for item in results:
+                item_date_str = str(item.get("incorporationDate") or "")[:10]
+                if item_date_str and item_date_str < start_iso:
+                    stop_pagination = True
+                    break
+
+                defaults = company_defaults(item)
+                activities = defaults.pop("activities")
+                gemi_number = str(item.get("arGemi"))
+                company, created = Company.objects.update_or_create(
+                    gemi_number=gemi_number,
+                    defaults=defaults,
+                )
+                sync_company_activities(company, activities)
+
+                if created:
+                    created_count += 1
+                else:
+                    updated_count += 1
+
+            if stop_pagination:
+                break
+
+            offset += len(results)
+            total = int((payload.get("searchMetadata") or {}).get("totalCount") or 0)
+            if len(results) < PAGE_SIZE or (total and offset >= total):
+                break
+
+    run_radar_matching(date.today())
+    return created_count, updated_count

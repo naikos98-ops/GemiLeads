@@ -20,6 +20,8 @@ class SignupForm(UserCreationForm):
         for field in self.fields.values():
             field.widget.attrs["class"] = INPUT
         self.fields["first_name"].label = "Όνομα"
+        self.fields["password1"].help_text = "Ο κωδικός πρέπει να περιέχει τουλάχιστον 8 χαρακτήρες, συνδυάζοντας γράμματα και αριθμούς."
+        self.fields["password2"].help_text = ""
 
     def clean_email(self):
         email = self.cleaned_data["email"].lower()
