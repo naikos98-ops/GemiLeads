@@ -389,17 +389,15 @@ def lead_list(request):
 
 @login_required
 def company_detail(request, gemi_number):
-    lead = get_object_or_404(
-        _lead_queryset(request.user).prefetch_related("company__activity_records"),
-        company__gemi_number=gemi_number,
-    )
+    company = get_object_or_404(Company.objects.prefetch_related("activity_records"), gemi_number=gemi_number)
+    lead, _ = UserCompanyLead.objects.get_or_create(user=request.user, company=company)
     if lead.status == "new":
         lead.status = "viewed"
         lead.save(update_fields=["status", "updated_at"])
 
     return render(request, "companies/detail.html", {
         "lead": lead,
-        "company": lead.company,
+        "company": company,
         "status_form": LeadStatusForm(instance=lead),
         "notes_form": LeadNotesForm(instance=lead),
     })

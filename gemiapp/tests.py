@@ -377,7 +377,7 @@ class AppTests(TestCase):
         for route in ("lead_status", "lead_favorite", "lead_notes"):
             self.assertEqual(self.client.get(reverse(route, args=[lead.pk])).status_code, 405)
             self.assertEqual(self.client.post(reverse(route, args=[other_lead.pk])).status_code, 404)
-        self.assertEqual(self.client.get(reverse("company_detail", args=[other_company.gemi_number])).status_code, 404)
+        self.assertEqual(self.client.get(reverse("company_detail", args=[other_company.gemi_number])).status_code, 200)
         self.assertEqual(self.client.get(reverse("radar_export_csv", args=[other_radar.pk])).status_code, 404)
 
         export = self.client.get(reverse("radar_export_csv", args=[radar.pk]), {"status": "contacted"})
