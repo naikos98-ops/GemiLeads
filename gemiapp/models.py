@@ -206,21 +206,26 @@ class DigestDelivery(models.Model):
 
 
 RADAR_LIMITS = {
-    "free": 1,
+    "free": 0,
     "pro": 5,
     "business": 25,
 }
 
+
 def get_user_radar_limit(user):
     try:
-        return RADAR_LIMITS.get(user.subscription.tier, 1)
-    except UserSubscription.DoesNotExist:
-        return RADAR_LIMITS["free"]
+        return user.subscription.radar_limit
+    except (UserSubscription.DoesNotExist, AttributeError):
+        return 0
+
 
 class UserSubscription(models.Model):
-    TIERS = [("free", "Free"), ("pro", "Pro"), ("business", "Business")]
+    TIERS = [("free", "Free (Legacy)"), ("pro", "Pro"), ("business", "Business")]
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="subscription")
     tier = models.CharField(max_length=20, choices=TIERS, default="free")
+    status = models.CharField(max_length=30, default="inactive")
+    complimentary_tier = models.CharField(max_length=20, choices=[("none", "None"), ("pro", "Pro"), ("business", "Business")], default="none")
+    complimentary_until = models.DateTimeField(null=True, blank=True)
     stripe_customer_id = models.CharField(max_length=100, blank=True)
     stripe_subscription_id = models.CharField(max_length=100, blank=True)
     active_until = models.DateTimeField(null=True, blank=True)
@@ -230,8 +235,62 @@ class UserSubscription(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+    ALLOWED_PAID_STATUSES = ("active",)
+
+    @property
+    def has_active_paid_subscription(self):
+        return self.tier in ("pro", "business") and self.status in self.ALLOWED_PAID_STATUSES
+
+    @property
+    def has_valid_complimentary_access(self):
+        if self.complimentary_tier not in ("pro", "business"):
+            return False
+        if self.complimentary_until and self.complimentary_until < timezone.now():
+            return False
+        return True
+
+    @property
+    def effective_tier(self):
+        if self.has_active_paid_subscription:
+            return self.tier
+        if self.has_valid_complimentary_access:
+            return self.complimentary_tier
+        return "free"
+
+    @property
+    def has_entitlement(self):
+        return self.has_active_paid_subscription or self.has_valid_complimentary_access
+
+    @property
+    def radar_limit(self):
+        eff = self.effective_tier
+        if eff == "pro":
+            return 5
+        if eff == "business":
+            return 25
+        return 0
+
     def __str__(self):
-        return f"{self.user.username} - {self.get_tier_display()}"
+        return f"{self.user.username} - {self.get_tier_display()} ({self.status})"
+
+
+class AdminAuditLog(models.Model):
+    admin_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="admin_audit_logs")
+    action = models.CharField(max_length=100, db_index=True)
+    target_type = models.CharField(max_length=50, blank=True)
+    target_id = models.CharField(max_length=100, blank=True)
+    target_repr = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-timestamp"]
+        verbose_name = "Audit Log"
+        verbose_name_plural = "Audit Logs"
+
+    def __str__(self):
+        return f"[{self.timestamp.strftime('%Y-%m-%d %H:%M')}] {self.admin_user} -> {self.action} ({self.target_repr})"
+
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver

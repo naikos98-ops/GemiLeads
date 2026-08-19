@@ -1,0 +1,194 @@
+{% extends 'superadmin/base.html' %}
+
+{% block title %}User: {{ target_user.email }} · Superadmin Control Center{% endblock %}
+{% block page_title %}User Details: {{ target_user.email }}{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <!-- Top Navigation & Action Header -->
+  <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+    <a href="{% url 'superadmin:user_list' %}" class="text-xs font-bold text-navy-700/60 hover:text-navy-950">← Πίσω στη λίστα Χρηστών</a>
+    <div class="flex flex-wrap items-center gap-3">
+      <!-- Impersonation Button -->
+      {% if not target_user.is_superuser %}
+      <form action="{% url 'superadmin:impersonate_start' target_user.id %}" method="post">
+        {% csrf_token %}
+        <button class="rounded-full bg-signal px-5 py-2.5 text-xs font-extrabold text-white shadow-glow transition hover:bg-blue-600">View as User (Impersonate) 👁</button>
+      </form>
+      {% endif %}
+
+      <!-- Deactivate / Reactivate Button -->
+      {% if not target_user.is_superuser %}
+      <form action="{% url 'superadmin:user_toggle_active' target_user.id %}" method="post" onsubmit="return confirm('Είστε βέβαιοι για την αλλαγή κατάστασης του χρήστη;');">
+        {% csrf_token %}
+        {% if target_user.is_active %}
+        <input type="hidden" name="active" value="0">
+        <button class="rounded-full border border-red-200 bg-red-50 px-5 py-2.5 text-xs font-bold text-red-700 hover:bg-red-100 transition">Απενεργοποίηση Λογαριασμού</button>
+        {% else %}
+        <input type="hidden" name="active" value="1">
+        <button class="rounded-full border border-emerald-200 bg-emerald-50 px-5 py-2.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition">Ενεργοποίηση Λογαριασμού</button>
+        {% endif %}
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Account & Subscription Grid -->
+  <div class="grid gap-6 lg:grid-cols-2">
+    <!-- Account Information Card -->
+    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft space-y-4">
+      <div class="border-b border-navy-900/5 pb-3">
+        <h3 class="font-extrabold text-navy-950 text-lg">Προφίλ Χρήστη</h3>
+        <p class="text-xs text-navy-700/50">Βασικά στοιχεία λογαριασμού</p>
+      </div>
+
+      <dl class="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Email / Username</dt>
+          <dd class="mt-1 font-bold text-navy-950">{{ target_user.email }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Ονοματεπώνυμο</dt>
+          <dd class="mt-1 font-bold text-navy-950">{{ target_user.first_name }} {{ target_user.last_name|default:'—' }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Ημερομηνία Εγγραφής</dt>
+          <dd class="mt-1 font-medium text-navy-900">{{ target_user.date_joined|date:"d/m/Y H:i" }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Τελευταία Σύνδεση</dt>
+          <dd class="mt-1 font-medium text-navy-900">{{ target_user.last_login|date:"d/m/Y H:i"|default:"—" }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Κατάσταση</dt>
+          <dd class="mt-1 font-bold">
+            <span class="inline-block rounded-full px-2.5 py-0.5 text-xs {% if target_user.is_active %}bg-emerald-50 text-emerald-700{% else %}bg-amber-50 text-amber-700{% endif %}">
+              {% if target_user.is_active %}Ενεργός (Verified){% else %}Απενεργοποιημένος / Unverified{% endif %}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Digest Preference</dt>
+          <dd class="mt-1 font-medium text-navy-900">{{ target_user.digest_preference.get_frequency_display|default:"Daily" }}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <!-- Subscription & Entitlement Card -->
+    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft space-y-4">
+      <div class="border-b border-navy-900/5 pb-3">
+        <h3 class="font-extrabold text-navy-950 text-lg">Συνδρομή & Access</h3>
+        <p class="text-xs text-navy-700/50">Stripe state & complimentary override</p>
+      </div>
+
+      <dl class="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Stripe Tier</dt>
+          <dd class="mt-1 font-bold text-navy-950">{{ target_user.subscription.get_tier_display }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Stripe Status</dt>
+          <dd class="mt-1 font-bold text-navy-950">{{ target_user.subscription.status }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Stripe Customer ID</dt>
+          <dd class="mt-1 font-mono text-xs text-navy-700/70">{{ target_user.subscription.stripe_customer_id|default:"—" }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Stripe Subscription ID</dt>
+          <dd class="mt-1 font-mono text-xs text-navy-700/70">{{ target_user.subscription.stripe_subscription_id|default:"—" }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Active Paid Entitlement</dt>
+          <dd class="mt-1 font-bold">
+            <span class="inline-block rounded-full px-2.5 py-0.5 text-xs {% if target_user.subscription.has_active_paid_subscription %}bg-emerald-50 text-emerald-700{% else %}bg-sand-100 text-navy-700/50{% endif %}">
+              {% if target_user.subscription.has_active_paid_subscription %}Ναι (Paid Active){% else %}Όχι{% endif %}
+            </span>
+          </dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Effective Radar Limit</dt>
+          <dd class="mt-1 text-xl font-extrabold text-navy-950">{{ radar_limit }} Ραντάρ</dd>
+        </div>
+      </dl>
+
+      <!-- Complimentary Access Box -->
+      <div class="mt-4 rounded-2xl bg-purple-50 p-4 border border-purple-200">
+        <h4 class="text-xs font-bold uppercase tracking-wider text-purple-900">Complimentary Admin Access</h4>
+        <p class="mt-1 text-xs text-purple-700">
+          {% if target_user.subscription.has_valid_complimentary_access %}
+          <strong>Ενεργή Δωρεάν Πρόσβαση {{ target_user.subscription.complimentary_tier|upper }}</strong>
+          {% if target_user.subscription.complimentary_until %}(Έως {{ target_user.subscription.complimentary_until|date:"d/m/Y" }}){% else %}(Μόνιμη){% endif %}
+          {% else %}
+          Δεν έχει δοθεί δωρεάν πρόσβαση.
+          {% endif %}
+        </p>
+
+        <!-- Grant / Revoke Form -->
+        <form action="{% url 'superadmin:user_complimentary' target_user.id %}" method="post" class="mt-3 flex flex-wrap gap-2 items-center">
+          {% csrf_token %}
+          {% if target_user.subscription.has_valid_complimentary_access %}
+          <input type="hidden" name="action" value="revoke">
+          <button class="rounded-xl bg-purple-700 px-4 py-2 text-xs font-bold text-white hover:bg-purple-800 transition">Αφαίρεση Δωρεάν Πρόσβασης</button>
+          {% else %}
+          <input type="hidden" name="action" value="grant">
+          <select name="tier" class="rounded-xl border border-purple-200 px-3 py-1.5 text-xs font-bold text-purple-950 focus:outline-none">
+            <option value="pro">Pro (5 Radars)</option>
+            <option value="business">Business (25 Radars)</option>
+          </select>
+          <input type="date" name="until" placeholder="Λήξη (προαιρετικά)" class="rounded-xl border border-purple-200 px-3 py-1.5 text-xs text-purple-950 focus:outline-none">
+          <button class="rounded-xl bg-purple-700 px-4 py-2 text-xs font-bold text-white hover:bg-purple-800 transition">Παραχώρηση Access</button>
+          {% endif %}
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Radars & Recent Leads Grid -->
+  <div class="grid gap-6 lg:grid-cols-2">
+    <!-- User Radars Card -->
+    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft space-y-4">
+      <div class="flex items-center justify-between border-b border-navy-900/5 pb-3">
+        <h3 class="font-extrabold text-navy-950">Ραντάρ Χρήστη ({{ radars.count }})</h3>
+        <span class="text-xs text-navy-700/50">Όριο πλάνου: {{ radar_limit }}</span>
+      </div>
+
+      <div class="space-y-3">
+        {% for r in radars %}
+        <div class="flex items-center justify-between rounded-xl bg-sand-50 p-4 text-sm">
+          <div>
+            <span class="font-bold text-navy-950 block">{{ r.name }}</span>
+            <span class="text-xs text-navy-700/50">Matches: {{ r.match_count }} · {{ r.get_frequency_display }}</span>
+          </div>
+          <a href="{% url 'superadmin:radar_detail' r.id %}" class="text-xs font-bold text-blue-600 hover:underline">Προβολή →</a>
+        </div>
+        {% empty %}
+        <p class="text-xs text-navy-700/50 py-4 text-center">Δεν υπάρχουν Ραντάρ.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- User Recent Leads Card -->
+    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft space-y-4">
+      <div class="flex items-center justify-between border-b border-navy-900/5 pb-3">
+        <h3 class="font-extrabold text-navy-950">Πρόσφατα Leads</h3>
+        <span class="text-xs text-navy-700/50">Σύνολο: {{ recent_leads.count }}</span>
+      </div>
+
+      <div class="space-y-3">
+        {% for l in recent_leads %}
+        <div class="flex items-center justify-between rounded-xl bg-sand-50 p-3 text-sm">
+          <div>
+            <span class="font-bold text-navy-950 block">{{ l.company.name }}</span>
+            <span class="text-xs text-navy-700/50">Status: {{ l.get_status_display }} · {{ l.created_at|date:"d/m/Y" }}</span>
+          </div>
+          <a href="{% url 'superadmin:lead_detail' l.id %}" class="text-xs font-bold text-blue-600 hover:underline">Λεπτομέρειες →</a>
+        </div>
+        {% empty %}
+        <p class="text-xs text-navy-700/50 py-4 text-center">Δεν υπάρχουν leads.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

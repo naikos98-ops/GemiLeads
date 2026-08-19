@@ -1,0 +1,201 @@
+{% extends 'superadmin/base.html' %}
+
+{% block title %}Executive Overview · Superadmin Control Center{% endblock %}
+{% block page_title %}Executive Overview{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <!-- SaaS Revenue & User High-Level Indicators -->
+  <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+    <!-- Calculated MRR Card -->
+    <div class="rounded-[1.8rem] bg-navy-950 p-6 text-white shadow-soft">
+      <div class="flex items-center justify-between text-white/50 text-xs font-bold uppercase tracking-widest">
+        <span>Subscription MRR</span>
+        <span class="rounded-full bg-blue-500/20 px-2 py-0.5 text-blue-300">Live Calculated</span>
+      </div>
+      <div class="mt-4 flex items-baseline gap-2">
+        <span class="text-4xl font-extrabold">€{{ metrics.mrr }}</span>
+        <span class="text-xs text-white/50">/μήνα</span>
+      </div>
+      <p class="mt-2 text-xs text-white/50 font-medium">ARR: €{{ metrics.arr }} · {{ metrics.active_paid_users }} ενεργές συνδρομές</p>
+    </div>
+
+    <!-- Active Paid Users -->
+    <div class="rounded-[1.8rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+      <div class="flex items-center justify-between text-navy-700/50 text-xs font-bold uppercase tracking-widest">
+        <span>Active Paid Users</span>
+        <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 font-bold">Pro / Business</span>
+      </div>
+      <div class="mt-4 flex items-baseline gap-2">
+        <span class="text-4xl font-extrabold text-navy-950">{{ metrics.active_paid_users }}</span>
+        <span class="text-xs text-navy-700/50">/ {{ metrics.total_users }} σύνολο</span>
+      </div>
+      <p class="mt-2 text-xs text-navy-700/50">Pro: {{ metrics.active_pro_count }} · Business: {{ metrics.active_business_count }}</p>
+    </div>
+
+    <!-- Generated Leads Today -->
+    <div class="rounded-[1.8rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+      <div class="flex items-center justify-between text-navy-700/50 text-xs font-bold uppercase tracking-widest">
+        <span>Leads Σήμερα</span>
+        <span class="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 font-bold">7d: {{ metrics.leads_7d }}</span>
+      </div>
+      <div class="mt-4 flex items-baseline gap-2">
+        <span class="text-4xl font-extrabold text-navy-950">{{ metrics.leads_today }}</span>
+        <span class="text-xs text-navy-700/50">νέα leads</span>
+      </div>
+      <p class="mt-2 text-xs text-navy-700/50">Matches σήμερα: {{ metrics.matches_today }} · Σύνολο: {{ metrics.total_leads }}</p>
+    </div>
+
+    <!-- GEMI Import Status -->
+    <div class="rounded-[1.8rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+      <div class="flex items-center justify-between text-navy-700/50 text-xs font-bold uppercase tracking-widest">
+        <span>GEMI Imports</span>
+        <span class="rounded-full bg-purple-50 px-2 py-0.5 text-purple-700 font-bold">7d: {{ metrics.companies_7d }}</span>
+      </div>
+      <div class="mt-4 flex items-baseline gap-2">
+        <span class="text-4xl font-extrabold text-navy-950">{{ metrics.companies_today }}</span>
+        <span class="text-xs text-navy-700/50">εταιρείες σήμερα</span>
+      </div>
+      <p class="mt-2 text-xs text-navy-700/50">Τελ. εγγραφή: {{ metrics.latest_registration_date|date:"d/m/Y"|default:"—" }}</p>
+    </div>
+  </div>
+
+  <!-- Secondary Metrics Bar -->
+  <div class="grid gap-5 sm:grid-cols-3 lg:grid-cols-6">
+    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
+      <span class="block text-xs text-navy-700/50 font-bold uppercase">Νέοι Users 30d</span>
+      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.new_30d }}</span>
+    </div>
+    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
+      <span class="block text-xs text-navy-700/50 font-bold uppercase">Verified Users</span>
+      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.verified_users }}</span>
+    </div>
+    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
+      <span class="block text-xs text-navy-700/50 font-bold uppercase">Complimentary</span>
+      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.complimentary_count }}</span>
+    </div>
+    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
+      <span class="block text-xs text-navy-700/50 font-bold uppercase">Active Radars</span>
+      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.eligible_radars_count }} <span class="text-xs font-normal text-navy-700/40">/ {{ metrics.total_radars }}</span></span>
+    </div>
+    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
+      <span class="block text-xs text-navy-700/50 font-bold uppercase">Digests Σήμερα</span>
+      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.sent_today }}</span>
+    </div>
+    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
+      <span class="block text-xs text-navy-700/50 font-bold uppercase">Κατάλογος ΚΑΔ</span>
+      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.total_kads }}</span>
+    </div>
+  </div>
+
+  <!-- SVG Metric Visualizations (User Growth & Leads 30 Days) -->
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="font-extrabold text-navy-950">User Growth & Leads</h3>
+          <p class="text-xs text-navy-700/50">Τελευταίες 30 ημέρες (Ημερήσιοι αριθμοί)</p>
+        </div>
+        <span class="text-xs font-bold text-blue-600">Live Trend</span>
+      </div>
+
+      <div class="h-44 w-full flex items-end justify-between gap-1 pt-6 pb-2 px-2 border-b border-navy-900/10">
+        {% for day in chart_data %}
+        <div class="flex flex-1 flex-col items-center gap-1 group relative">
+          <div class="w-full flex items-end justify-center gap-0.5 h-32">
+            <div class="w-1.5 rounded-t bg-blue-500 transition-all" style="height: {% if day.users %}{{ day.users|add:day.users|add:5 }}px{% else %}2px{% endif %};"></div>
+            <div class="w-1.5 rounded-t bg-emerald-500 transition-all" style="height: {% if day.leads %}{{ day.leads|add:day.leads|add:5 }}px{% else %}2px{% endif %};"></div>
+          </div>
+          <!-- Tooltip -->
+          <div class="absolute bottom-full mb-2 hidden group-hover:block z-20 rounded-lg bg-navy-950 px-3 py-1.5 text-[11px] text-white whitespace-nowrap shadow-xl">
+            <strong>{{ day.date }}</strong>: {{ day.users }} users, {{ day.leads }} leads, {{ day.companies }} GEMI
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="mt-4 flex items-center justify-center gap-6 text-xs font-bold">
+        <span class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-blue-500"></span> Νέοι Users</span>
+        <span class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-emerald-500"></span> Generated Leads</span>
+      </div>
+    </div>
+
+    <!-- Recent Audit Logs -->
+    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="font-extrabold text-navy-950">Τελευταίες Admin Ενέργειες</h3>
+          <p class="text-xs text-navy-700/50">Audit log activity</p>
+        </div>
+        <a href="{% url 'superadmin:audit_list' %}" class="text-xs font-bold text-blue-600 hover:underline">Όλο το log →</a>
+      </div>
+
+      <div class="space-y-3">
+        {% for audit in recent_audits %}
+        <div class="flex items-center justify-between rounded-xl bg-sand-50 p-3 text-xs">
+          <div>
+            <span class="font-bold text-navy-950">{{ audit.action }}</span>
+            <span class="text-navy-700/60 font-medium"> → {{ audit.target_repr }}</span>
+          </div>
+          <span class="text-navy-700/40 font-mono">{{ audit.timestamp|date:"d/m H:i" }}</span>
+        </div>
+        {% empty %}
+        <p class="text-xs text-navy-700/50 text-center py-6">Δεν υπάρχουν πρόσφατες admin ενέργειες.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Users Table -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h3 class="font-extrabold text-navy-950">Πρόσφατες Εγγραφές Χρηστών</h3>
+        <p class="text-xs text-navy-700/50">Τελευταίοι 5 εγγεγραμμένοι χρήστες</p>
+      </div>
+      <a href="{% url 'superadmin:user_list' %}" class="rounded-full bg-navy-950 px-4 py-2 text-xs font-bold text-white transition hover:bg-navy-800">Προβολή όλων των Χρηστών →</a>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+          <tr>
+            <th class="p-3">User</th>
+            <th class="p-3">Date Joined</th>
+            <th class="p-3">State</th>
+            <th class="p-3">Subscription</th>
+            <th class="p-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-navy-900/5">
+          {% for u in recent_users %}
+          <tr class="hover:bg-sand-50/50 transition">
+            <td class="p-3">
+              <span class="block font-bold text-navy-950">{{ u.email }}</span>
+              <span class="text-xs text-navy-700/50">{{ u.first_name }} {{ u.last_name }}</span>
+            </td>
+            <td class="p-3 text-xs text-navy-700/70">{{ u.date_joined|date:"d/m/Y H:i" }}</td>
+            <td class="p-3">
+              <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-bold {% if u.is_active %}bg-emerald-50 text-emerald-700{% else %}bg-amber-50 text-amber-700{% endif %}">
+                {% if u.is_active %}Active{% else %}Unverified/Inactive{% endif %}
+              </span>
+            </td>
+            <td class="p-3">
+              {% if u.subscription.has_active_paid_subscription %}
+              <span class="inline-block rounded-full bg-signal/10 px-2.5 py-0.5 text-xs font-bold text-signal">PAID {{ u.subscription.tier|upper }}</span>
+              {% elif u.subscription.has_valid_complimentary_access %}
+              <span class="inline-block rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-bold text-purple-700">COMPLIMENTARY {{ u.subscription.complimentary_tier|upper }}</span>
+              {% else %}
+              <span class="inline-block rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-bold text-navy-700/50">UNPAID (0 Radars)</span>
+              {% endif %}
+            </td>
+            <td class="p-3 text-right">
+              <a href="{% url 'superadmin:user_detail' u.id %}" class="rounded-lg bg-navy-950 px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-800 transition">Διαχείριση</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

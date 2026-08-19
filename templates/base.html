@@ -22,10 +22,28 @@
   {% block head %}{% endblock %}
 </head>
 <body class="noise min-h-screen bg-sand-50 font-sans text-navy-950 antialiased selection:bg-signal selection:text-white">
+  {% if request.session.impersonator_id %}
+  <div class="bg-amber-500 text-navy-950 px-4 py-2.5 text-center text-sm font-bold flex items-center justify-center gap-4 z-[100] relative shadow-md">
+    <span>SUPERADMIN IMPERSONATION — Προβολή ως <strong>{{ user.email }}</strong></span>
+    <form action="{% url 'superadmin:impersonate_stop' %}" method="post" class="inline">
+      {% csrf_token %}
+      <button class="rounded-full bg-navy-950 px-4 py-1 text-xs text-white hover:bg-navy-800 transition font-bold">Έξοδος Impersonation</button>
+    </form>
+  </div>
+  {% endif %}
   <nav class="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-navy-950/90 text-white glass">
     <div class="mx-auto flex h-18 max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
-      <a href="{% url 'home' %}" class="group flex items-center">
-        <img src="{% static 'images/logo.png' %}" alt="Gemi Leads Logo" class="h-10 w-auto object-contain transition duration-300 group-hover:scale-105">
+      <a href="{% url 'home' %}" class="group flex items-center gap-3">
+        <div class="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-navy-900 p-2 shadow-glow transition duration-300 group-hover:scale-105">
+          <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" class="opacity-30" />
+            <circle cx="12" cy="12" r="5" class="opacity-60" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+            <path d="M12 3a9 9 0 0 1 9 9" class="text-blue-400 stroke-blue-400" />
+          </svg>
+          <span class="absolute -right-0.5 -top-0.5 h-2 w-2 animate-ping rounded-full bg-blue-400"></span>
+        </div>
+        <span class="text-xl font-extrabold tracking-tight text-white">Gemi <span class="text-blue-400">Leads</span></span>
       </a>
       <div class="hidden items-center gap-7 text-sm font-medium md:flex">
         {% if user.is_authenticated %}
@@ -35,21 +53,25 @@
           <a href="{% url 'settings' %}" class="text-white/70 transition hover:text-white">Ρυθμίσεις</a>
           <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="rounded-full border border-white/15 px-5 py-2 transition hover:bg-white/10">Έξοδος</button></form>
         {% else %}
+          <a href="#how-it-works" class="text-white/70 transition hover:text-white">Πώς λειτουργεί</a>
           <a href="#features" class="text-white/70 transition hover:text-white">Δυνατότητες</a>
           <a href="{% url 'login' %}" class="text-white/70 transition hover:text-white">Σύνδεση</a>
-          <a href="{% url 'signup' %}" class="rounded-full bg-sand-100 px-5 py-2 font-semibold text-navy-950 transition hover:-translate-y-0.5 hover:bg-white">Δωρεάν έναρξη</a>
+          <a href="{% url 'signup' %}" class="rounded-full bg-sand-100 px-5 py-2 font-bold text-navy-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-white">Ξεκίνα τώρα</a>
         {% endif %}
       </div>
       <button id="menuButton" class="rounded-xl border border-white/15 p-2 md:hidden" aria-label="Μενού"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
     <div id="mobileMenu" class="hidden border-t border-white/10 px-5 py-4 md:hidden">
-      <div class="flex flex-col gap-4 text-sm">{% if user.is_authenticated %}<a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'lead_list' %}">Leads</a><a href="{% url 'radar_list' %}">Radars</a><a href="{% url 'settings' %}">Ρυθμίσεις</a>{% else %}<a href="{% url 'login' %}">Σύνδεση</a><a href="{% url 'signup' %}">Δωρεάν έναρξη</a>{% endif %}</div>
+      <div class="flex flex-col gap-4 text-sm">{% if user.is_authenticated %}<a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'lead_list' %}">Leads</a><a href="{% url 'radar_list' %}">Radars</a><a href="{% url 'settings' %}">Ρυθμίσεις</a>{% else %}<a href="#how-it-works">Πώς λειτουργεί</a><a href="#features">Δυνατότητες</a><a href="{% url 'login' %}">Σύνδεση</a><a href="{% url 'signup' %}" class="font-bold text-blue-400">Ξεκίνα τώρα →</a>{% endif %}</div>
     </div>
   </nav>
   {% if messages %}<div class="fixed right-5 top-24 z-50 space-y-2">{% for message in messages %}<div data-toast class="rounded-2xl bg-navy-900 px-5 py-4 text-sm text-white shadow-soft">{{ message }}</div>{% endfor %}</div>{% endif %}
   <main class="pt-[72px]">{% block content %}{% endblock %}</main>
   <footer class="border-t border-navy-900/10 bg-sand-100 px-5 py-10">
-    <div class="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-sm text-navy-900/60 sm:flex-row"><p>© 2026 Gemi Leads · Δεδομένα από το επίσημο Open Data API ΓΕΜΗ.</p><p>Καθαρά δεδομένα. Καθημερινά.</p></div>
+    <div class="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-sm text-navy-900/60 sm:flex-row">
+      <p>© 2026 Gemi Leads · Δεδομένα από το επίσημο Open Data API ΓΕΜΗ.</p>
+      <p class="text-xs text-navy-700/50">Το Gemi Leads είναι ανεξάρτητη υπηρεσία και δεν αποτελεί υπηρεσία του ΓΕΜΗ.</p>
+    </div>
   </footer>
   <script src="{% static 'js/app.js' %}"></script>
   {% block scripts %}{% endblock %}

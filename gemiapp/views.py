@@ -174,6 +174,7 @@ def dashboard(request):
     date_from = parse_date(request.GET.get("date_from", "").strip())
     date_to = parse_date(request.GET.get("date_to", "").strip())
     user_leads = UserCompanyLead.objects.filter(user=request.user)
+    has_paid = hasattr(request.user, "subscription") and request.user.subscription.has_entitlement
     context = {
         "companies": companies,
         "result_count": companies.count(),
@@ -192,8 +193,9 @@ def dashboard(request):
         "interested_lead_count": user_leads.filter(status="interested").count(),
         "active_radar_count": CustomerRadar.objects.filter(
             user=request.user, is_active=True, deleted_at__isnull=True
-        ).count(),
+        ).count() if has_paid else 0,
         "recent_leads": user_leads.select_related("company").prefetch_related("radar_matches__radar")[:6],
+        "has_active_paid_subscription": has_paid,
     }
     return render(request, "dashboard.html", context)
 
@@ -218,10 +220,17 @@ def radar_list(request):
     )
     limit = get_user_radar_limit(request.user)
     count = radars.count()
-    return render(request, "radars/list.html", {"radars": radars, "radar_limit": limit, "radar_count": count})
+    has_paid = hasattr(request.user, "subscription") and request.user.subscription.has_entitlement
+    return render(request, "radars/list.html", {
+        "radars": radars,
+        "radar_limit": limit,
+        "radar_count": count,
+        "has_active_paid_subscription": has_paid,
+    })
 
 
 def _save_radar(request, radar=None):
+    limit = get_user_radar_limit(request.user)
     form = CustomerRadarForm(request.POST or None, instance=radar, user=request.user)
     selected_codes = (
         _requested_kad_codes(request, "activity_codes")
@@ -230,16 +239,17 @@ def _save_radar(request, radar=None):
     )
     selected_kads = _catalog_entries(selected_codes)
     if request.method == "POST":
-        if _too_many_requested_kads(request):
+        if limit == 0:
+            form.add_error(None, "Απαιτείται ενεργή συνδρομή (Pro ή Business) για τη δημιουργία ή επεξεργασία Ραντάρ.")
+        elif _too_many_requested_kads(request):
             form.add_error(None, f"Μπορείς να επιλέξεις έως {MAX_SELECTED_KADS} ΚΑΔ.")
             
-        if not radar:
+        if not radar and limit > 0:
             current_count = CustomerRadar.objects.filter(user=request.user, deleted_at__isnull=True).count()
-            limit = get_user_radar_limit(request.user)
             if current_count >= limit:
                 form.add_error(None, f"Έχεις φτάσει το όριο των {limit} Ραντάρ του πλάνου σου. Διέγραψε κάποιο για να προσθέσεις νέο.")
 
-        if form.is_valid():
+        if form.is_valid() and limit > 0:
             saved_radar = form.save(commit=False)
             saved_radar.user = request.user
             if not saved_radar.pk:
@@ -252,6 +262,7 @@ def _save_radar(request, radar=None):
         "form": form,
         "radar": radar,
         "selected_kads": selected_kads,
+        "radar_limit": limit,
     })
 
 
@@ -403,6 +414,9 @@ def lead_notes(request, pk):
 @login_required
 def radar_export_csv(request, pk):
     radar = get_object_or_404(CustomerRadar, pk=pk, user=request.user, deleted_at__isnull=True)
+    if get_user_radar_limit(request.user) == 0:
+        messages.error(request, "Απαιτείται ενεργή συνδρομή για την εξαγωγή CSV.")
+        return redirect("pricing")
     matches = radar.matches.select_related("company", "lead")
     selected_status = request.GET.get("status", "").strip()
     if selected_status in LEAD_STATUSES:
@@ -441,9 +455,17 @@ def radar_export_csv(request, pk):
 @require_POST
 def radar_toggle(request, pk):
     radar = get_object_or_404(CustomerRadar, pk=pk, user=request.user, deleted_at__isnull=True)
-    radar.is_active = not radar.is_active
-    if radar.is_active:
+    limit = get_user_radar_limit(request.user)
+    if limit == 0:
+        messages.error(request, "Απαιτείται ενεργή συνδρομή για την ενεργοποίηση Ραντάρ.")
+        return redirect("pricing")
+    if not radar.is_active:
+        active_count = CustomerRadar.objects.filter(user=request.user, is_active=True, deleted_at__isnull=True).exclude(pk=pk).count()
+        if active_count >= limit:
+            messages.error(request, f"Έχεις φτάσει το όριο των {limit} ενεργών Ραντάρ του πλάνου σου.")
+            return redirect("radar_list")
         radar.monitor_from = timezone.now()
+    radar.is_active = not radar.is_active
     radar.save(update_fields=["is_active", "monitor_from", "updated_at"])
     messages.success(request, "Το Radar ενεργοποιήθηκε." if radar.is_active else "Το Radar τέθηκε σε παύση.")
     return redirect("radar_list")
@@ -463,6 +485,8 @@ def radar_delete(request, pk):
 @login_required
 @require_POST
 def radar_preview(request):
+    if get_user_radar_limit(request.user) == 0:
+        return JsonResponse({"ok": False, "error": "Απαιτείται ενεργή συνδρομή για την προεπισκόπηση Ραντάρ."}, status=403)
     radar = None
     if request.POST.get("radar_id"):
         radar = get_object_or_404(
@@ -506,6 +530,9 @@ def kad_search(request):
 
 @login_required
 def export_csv(request):
+    if get_user_radar_limit(request.user) == 0:
+        messages.error(request, "Απαιτείται ενεργή συνδρομή για την εξαγωγή CSV.")
+        return redirect("pricing")
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = 'attachment; filename="gemi-leads-export.csv"'
     response.write("\ufeff")

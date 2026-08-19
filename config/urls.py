@@ -6,6 +6,7 @@ from gemiapp.views import RateLimitedLoginView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("superadmin/", include("gemiapp.superadmin.urls")),
     path("login/", RateLimitedLoginView.as_view(template_name="registration/login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("password_reset/", auth_views.PasswordResetView.as_view(html_email_template_name="registration/password_reset_email.html"), name="password_reset"),

@@ -7,20 +7,27 @@
     <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
       <div>
         <h3 class="text-lg font-bold text-navy-950">
-          {% if user.subscription.tier == "pro" %}Pro Πλάνο
-          {% elif user.subscription.tier == "business" %}Business Πλάνο
-          {% else %}Free Πλάνο{% endif %}
+          {% if user.subscription.has_active_paid_subscription %}
+            {% if user.subscription.tier == "pro" %}Pro Πλάνο
+            {% elif user.subscription.tier == "business" %}Business Πλάνο
+            {% endif %}
+          {% else %}
+            Χωρίς Ενεργή Συνδρομή
+          {% endif %}
         </h3>
         <p class="text-sm text-navy-700/60 mt-1">
-          {% if user.subscription.tier == "pro" %}Έχεις όριο έως 5 Ραντάρ Πελατών.
-          {% elif user.subscription.tier == "business" %}Έχεις όριο έως 25 Ραντάρ Πελατών.
-          {% else %}Έχεις όριο 1 Ραντάρ Πελατών. Αναβάθμισε για περισσότερα.
+          {% if user.subscription.has_active_paid_subscription %}
+            {% if user.subscription.tier == "pro" %}Έχεις όριο έως 5 Ραντάρ Πελατών.
+            {% elif user.subscription.tier == "business" %}Έχεις όριο έως 25 Ραντάρ Πελατών.
+            {% endif %}
+          {% else %}
+            Έχεις όριο 0 Ραντάρ Πελατών. Επίλεξε συνδρομητικό πλάνο για να ενεργοποιήσεις την εφαρμογή.
           {% endif %}
         </p>
       </div>
       <div>
-        {% if user.subscription.tier == "free" or not user.subscription.tier %}
-          <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">Αναβάθμιση</a>
+        {% if not user.subscription.has_active_paid_subscription %}
+          <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">Επιλογή Πλάνου</a>
         {% else %}
           <form action="{% url 'customer_portal' %}" method="post" class="inline">
             {% csrf_token %}

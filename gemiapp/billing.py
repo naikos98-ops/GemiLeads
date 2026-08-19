@@ -122,39 +122,40 @@ def stripe_webhook(request):
 
         if user_id:
             sub, _ = UserSubscription.objects.get_or_create(user_id=user_id)
-            sub.stripe_customer_id = stripe_customer_id
-            sub.stripe_subscription_id = stripe_subscription_id
-            # Get the subscription details from Stripe to determine the tier
-            try:
-                stripe_sub = stripe.Subscription.retrieve(stripe_subscription_id)
-                price_id = stripe_sub["items"]["data"][0]["price"]["id"]
-                if price_id == settings.STRIPE_PRICE_BUSINESS:
-                    sub.tier = "business"
-                elif price_id == settings.STRIPE_PRICE_PRO:
-                    sub.tier = "pro"
-                sub.save()
-            except Exception as e:
-                logger.error(f"Error retrieving subscription: {str(e)}")
+            if stripe_customer_id:
+                sub.stripe_customer_id = stripe_customer_id
+            if stripe_subscription_id:
+                sub.stripe_subscription_id = stripe_subscription_id
+                try:
+                    stripe_sub = stripe.Subscription.retrieve(stripe_subscription_id)
+                    sub.status = stripe_sub.get("status", "inactive")
+                    items = stripe_sub.get("items", {}).get("data", [])
+                    if items:
+                        price_id = items[0]["price"]["id"]
+                        if price_id == settings.STRIPE_PRICE_BUSINESS:
+                            sub.tier = "business"
+                        elif price_id == settings.STRIPE_PRICE_PRO:
+                            sub.tier = "pro"
+                except Exception as e:
+                    logger.error(f"Error retrieving subscription {stripe_subscription_id}: {str(e)}")
+                    sub.status = "inactive"
+            sub.save()
 
     elif event["type"] in ["customer.subscription.updated", "customer.subscription.deleted"]:
         subscription = event["data"]["object"]
         stripe_subscription_id = subscription.get("id")
-        stripe_customer_id = subscription.get("customer")
         status = subscription.get("status")
 
         try:
             sub = UserSubscription.objects.get(stripe_subscription_id=stripe_subscription_id)
-            if status in ["canceled", "unpaid", "past_due"]:
-                sub.tier = "free"
-                sub.stripe_subscription_id = ""
-            else:
-                price_id = subscription["items"]["data"][0]["price"]["id"]
+            sub.status = status or ("canceled" if event["type"] == "customer.subscription.deleted" else "inactive")
+            items = subscription.get("items", {}).get("data", [])
+            if items:
+                price_id = items[0]["price"]["id"]
                 if price_id == settings.STRIPE_PRICE_BUSINESS:
                     sub.tier = "business"
                 elif price_id == settings.STRIPE_PRICE_PRO:
                     sub.tier = "pro"
-                else:
-                    sub.tier = "free"
             sub.save()
         except UserSubscription.DoesNotExist:
             logger.error(f"Subscription {stripe_subscription_id} not found in DB")

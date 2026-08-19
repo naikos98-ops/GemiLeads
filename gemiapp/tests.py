@@ -31,7 +31,12 @@ SAMPLE = {
 
 class AppTests(TestCase):
     def setUp(self):
+        from .models import UserSubscription
         self.user = User.objects.create_user("member@example.com", "member@example.com", "StrongPass123")
+        sub, _ = UserSubscription.objects.get_or_create(user=self.user)
+        sub.tier = "pro"
+        sub.status = "active"
+        sub.save()
         DigestPreference.objects.create(user=self.user)
         self.kad = ActivityCode.objects.create(
             code="62.01.00.00", normalized_code="62010000", description="ΔΡΑΣΤΗΡΙΟΤΗΤΕΣ ΠΡΟΓΡΑΜΜΑΤΙΣΜΟΥ",
@@ -68,12 +73,12 @@ class AppTests(TestCase):
         radar1 = CustomerRadar.objects.create(user=self.user, name="Radar 1", prefectures=["ΑΤΤΙΚΗΣ"], frequency="daily", monitor_from=timezone.make_aware(datetime(2026, 8, 1, 0, 0)))
         radar2 = CustomerRadar.objects.create(user=self.user, name="Radar 2", legal_types=["Ιδιωτική Κεφαλαιουχική Εταιρεία"], frequency="daily", monitor_from=timezone.make_aware(datetime(2026, 8, 1, 0, 0)))
         import_for_date(date(2026, 8, 1))
-        
+
         self.assertEqual(send_digests(date(2026, 8, 1), frequency="daily"), (1, 0))
         self.assertEqual(send_digests(date(2026, 8, 1), frequency="daily"), (0, 1))
         self.assertEqual(len(mail.outbox), 1)
         self.assertTrue(mail.outbox[0].subject.startswith("Gemi Leads ·"))
-        
+
         body = mail.outbox[0].body
         self.assertIn("Radar 1", body)
         self.assertIn("Radar 2", body)
@@ -399,24 +404,186 @@ class AppTests(TestCase):
 
     def test_user_subscription_limits(self):
         self.client.login(username="member@example.com", password="StrongPass123")
-        
+
+        # Reset subscription to unpaid for this test
+        self.user.subscription.status = "inactive"
+        self.user.subscription.tier = "free"
+        self.user.subscription.save()
+
         # Delete the default radar created in setUp
         CustomerRadar.objects.filter(user=self.user).delete()
-        
-        # Test Free limit (1)
-        response = self.client.post(reverse("radar_create"), {"name": "First Radar", "is_active": True, "frequency": "daily"})
-        self.assertEqual(response.status_code, 302)
-        
-        response2 = self.client.post(reverse("radar_create"), {"name": "Second Radar", "is_active": True, "frequency": "daily"})
-        self.assertEqual(response2.status_code, 200)
-        self.assertContains(response2, "Έχεις φτάσει το όριο των 1 Ραντάρ")
 
-        # Upgrade to Pro
+        # Test Unpaid user limit (0) - creation blocked
+        response = self.client.post(reverse("radar_create"), {"name": "First Radar", "is_active": True, "frequency": "daily"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Απαιτείται ενεργή συνδρομή")
+
+        # Upgrade to Pro active
         from .models import UserSubscription
-        sub = UserSubscription.objects.create(user=self.user, tier="pro")
-        
-        response3 = self.client.post(reverse("radar_create"), {"name": "Second Radar", "is_active": True, "frequency": "daily"})
+        sub, _ = UserSubscription.objects.get_or_create(user=self.user)
+        sub.tier = "pro"
+        sub.status = "active"
+        sub.save()
+
+        response3 = self.client.post(reverse("radar_create"), {"name": "First Radar", "is_active": True, "frequency": "daily"})
         self.assertEqual(response3.status_code, 302)
+
+
+class PaidOnlyModelTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="paidtest@example.com", password="password123", first_name="PaidUser")
+        DigestPreference.objects.create(user=self.user)
+
+    def test_one_user_subscription_per_user(self):
+        from .models import UserSubscription
+        # Verify signal created exactly 1 subscription
+        self.assertEqual(UserSubscription.objects.filter(user=self.user).count(), 1)
+        # Attempting to create duplicate subscription raises IntegrityError
+        with self.assertRaises(Exception):
+            UserSubscription.objects.create(user=self.user, tier="pro")
+
+    def test_unpaid_user_entitlement_and_radar_limit(self):
+        from .models import get_user_radar_limit
+        sub = self.user.subscription
+        self.assertFalse(sub.has_active_paid_subscription)
+        self.assertEqual(sub.radar_limit, 0)
+        self.assertEqual(get_user_radar_limit(self.user), 0)
+
+    def test_pro_active_entitlement(self):
+        from .models import get_user_radar_limit
+        sub = self.user.subscription
+        sub.tier = "pro"
+        sub.status = "active"
+        sub.save()
+        self.assertTrue(sub.has_active_paid_subscription)
+        self.assertEqual(sub.radar_limit, 5)
+        self.assertEqual(get_user_radar_limit(self.user), 5)
+
+    def test_business_active_entitlement(self):
+        from .models import get_user_radar_limit
+        sub = self.user.subscription
+        sub.tier = "business"
+        sub.status = "active"
+        sub.save()
+        self.assertTrue(sub.has_active_paid_subscription)
+        self.assertEqual(sub.radar_limit, 25)
+        self.assertEqual(get_user_radar_limit(self.user), 25)
+
+    def test_all_subscription_status_entitlements(self):
+        sub = self.user.subscription
+
+        # Valid active paid tiers
+        sub.tier = "pro"
+        sub.status = "active"
+        sub.save()
+        self.assertTrue(sub.has_active_paid_subscription)
+        self.assertEqual(sub.radar_limit, 5)
+
+        sub.tier = "business"
+        sub.status = "active"
+        sub.save()
+        self.assertTrue(sub.has_active_paid_subscription)
+        self.assertEqual(sub.radar_limit, 25)
+
+        # Free tier even if status is active must return False
+        sub.tier = "free"
+        sub.status = "active"
+        sub.save()
+        self.assertFalse(sub.has_active_paid_subscription)
+        self.assertEqual(sub.radar_limit, 0)
+
+        # Non-active statuses for Pro tier must return False
+        sub.tier = "pro"
+        invalid_statuses = [
+            "incomplete",
+            "incomplete_expired",
+            "past_due",
+            "unpaid",
+            "canceled",
+            "inactive",
+            "paused",
+            "trialing",
+        ]
+        for st in invalid_statuses:
+            sub.status = st
+            sub.save()
+            self.assertFalse(sub.has_active_paid_subscription, f"Status {st} should not grant paid entitlement")
+            self.assertEqual(sub.radar_limit, 0)
+
+    def test_unpaid_user_cannot_create_or_toggle_radar(self):
+        self.client.login(username="paidtest@example.com", password="password123")
+        # Direct POST creation attempt
+        res_create = self.client.post(reverse("radar_create"), {"name": "Blocked Radar", "is_active": True, "frequency": "daily"})
+        self.assertEqual(res_create.status_code, 200)
+        self.assertContains(res_create, "Απαιτείται ενεργή συνδρομή")
+
+        # Create radar directly in DB for testing toggle
+        radar = CustomerRadar.objects.create(user=self.user, name="DB Radar", is_active=False)
+        res_toggle = self.client.post(reverse("radar_toggle", kwargs={"pk": radar.pk}))
+        self.assertEqual(res_toggle.status_code, 302)
+        self.assertRedirects(res_toggle, reverse("pricing"))
+        radar.refresh_from_db()
+        self.assertFalse(radar.is_active)
+
+    def test_pro_limit_enforcement(self):
+        sub = self.user.subscription
+        sub.tier = "pro"
+        sub.status = "active"
+        sub.save()
+        self.client.login(username="paidtest@example.com", password="password123")
+
+        for i in range(5):
+            res = self.client.post(reverse("radar_create"), {"name": f"Radar {i}", "is_active": True, "frequency": "daily"})
+            self.assertEqual(res.status_code, 302)
+
+        # 6th attempt should be blocked
+        res_6 = self.client.post(reverse("radar_create"), {"name": "Radar 6", "is_active": True, "frequency": "daily"})
+        self.assertEqual(res_6.status_code, 200)
+        self.assertContains(res_6, "Έχεις φτάσει το όριο των 5 Ραντάρ")
+
+    def test_matching_pipeline_skips_unpaid_radars(self):
+        from .services import match_imported_companies
+        from .models import Company, ImportRun, RadarMatch
+        from datetime import date
+        today = date.today()
+
+        # Create active radar for unpaid user
+        CustomerRadar.objects.create(user=self.user, name="Unpaid Radar", is_active=True, monitor_from=timezone.now() - timedelta(days=1))
+
+        company = Company.objects.create(gemi_number="999001", vat_number="9990001", name="MATCH ME LTD", incorporation_date=today)
+        import_run = ImportRun.objects.create(target_date=today, status="success")
+
+        summary = match_imported_companies(import_run)
+        self.assertEqual(summary.radars_checked, 0)
+        self.assertEqual(RadarMatch.objects.count(), 0)
+
+    def test_digest_pipeline_skips_unpaid_users(self):
+        from .services import send_digests
+        from datetime import date
+        today = date.today()
+        sent, skipped = send_digests(today, "daily")
+        self.assertEqual(sent, 0)
+        self.assertGreaterEqual(skipped, 1)
+
+    def test_historical_data_preserved_on_cancellation(self):
+        from .models import Company, UserCompanyLead
+        from datetime import date
+        company = Company.objects.create(gemi_number="888001", vat_number="8880001", name="PRESERVED LTD", incorporation_date=date.today())
+        lead = UserCompanyLead.objects.create(user=self.user, company=company, notes="Important Note", is_favorite=True)
+        radar = CustomerRadar.objects.create(user=self.user, name="Historical Radar", is_active=True)
+
+        # User subscription cancelled
+        sub = self.user.subscription
+        sub.status = "canceled"
+        sub.save()
+
+        # Verify historical objects exist untouched
+        self.assertEqual(UserCompanyLead.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(CustomerRadar.objects.filter(user=self.user).count(), 1)
+        lead.refresh_from_db()
+        self.assertEqual(lead.notes, "Important Note")
+        self.assertTrue(lead.is_favorite)
+
 
 class AuthFlowTests(TestCase):
     def setUp(self):
@@ -434,7 +601,7 @@ class AuthFlowTests(TestCase):
         })
         self.assertEqual(response.status_code, 200) # Form render verify_pending
         self.assertContains(response, "Ελέγξτε το email σας")
-        
+
         new_user = User.objects.get(username="newuser@example.com")
         self.assertFalse(new_user.is_active)
         self.assertEqual(len(mail.outbox), 1)
@@ -444,16 +611,16 @@ class AuthFlowTests(TestCase):
         from django.contrib.auth.tokens import default_token_generator
         from django.utils.http import urlsafe_base64_encode
         from django.utils.encoding import force_bytes
-        
+
         self.user.is_active = False
         self.user.save()
-        
+
         uid = urlsafe_base64_encode(force_bytes(self.user.pk))
         token = default_token_generator.make_token(self.user)
-        
+
         response = self.client.get(reverse("verify_email", kwargs={"uidb64": uid, "token": token}))
         self.assertEqual(response.status_code, 302)
-        
+
         self.user.refresh_from_db()
         self.assertTrue(self.user.is_active)
 
@@ -461,10 +628,172 @@ class AuthFlowTests(TestCase):
         from django.core.signing import TimestampSigner
         signer = TimestampSigner()
         token = signer.sign(self.user.id)
-        
+
         response = self.client.get(reverse("unsubscribe", kwargs={"token": token}))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Απεγγραφή επιτυχής")
-        
+
         self.user.digest_preference.refresh_from_db()
         self.assertEqual(self.user.digest_preference.frequency, "off")
+
+
+class SuperadminTests(TestCase):
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(username="admin@gemileads.gr", email="admin@gemileads.gr", password="SuperPassword123")
+        self.normal_user = User.objects.create_user(username="normal@example.com", email="normal@example.com", password="NormalPassword123")
+        self.staff_user = User.objects.create_user(username="staff@example.com", email="staff@example.com", password="StaffPassword123", is_staff=True, is_superuser=False)
+        DigestPreference.objects.create(user=self.superuser)
+        DigestPreference.objects.create(user=self.normal_user)
+        DigestPreference.objects.create(user=self.staff_user)
+
+    def test_superadmin_access_control(self):
+        # 1. Anonymous user redirected to login
+        res_anon = self.client.get(reverse("superadmin:overview"))
+        self.assertEqual(res_anon.status_code, 302)
+        self.assertIn(reverse("login"), res_anon.url)
+
+        # 2. Normal user gets 403 Permission Denied
+        self.client.login(username="normal@example.com", password="NormalPassword123")
+        res_normal = self.client.get(reverse("superadmin:overview"))
+        self.assertEqual(res_normal.status_code, 403)
+
+        # 3. Staff user without superuser gets 403 Permission Denied
+        self.client.login(username="staff@example.com", password="StaffPassword123")
+        res_staff = self.client.get(reverse("superadmin:overview"))
+        self.assertEqual(res_staff.status_code, 403)
+
+        # 4. Superuser gets 200 OK
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        res_admin = self.client.get(reverse("superadmin:overview"))
+        self.assertEqual(res_admin.status_code, 200)
+        self.assertContains(res_admin, "Executive Overview")
+
+    def test_superadmin_post_action_security(self):
+        # Normal user trying to post to administrative action receives 403
+        self.client.login(username="normal@example.com", password="NormalPassword123")
+        res = self.client.post(reverse("superadmin:user_toggle_active", kwargs={"user_id": self.normal_user.id}), {"active": "0"})
+        self.assertEqual(res.status_code, 403)
+
+    def test_user_list_search_and_pagination(self):
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        res = self.client.get(reverse("superadmin:user_list") + "?q=normal@example.com")
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "normal@example.com")
+
+    def test_user_deactivate_and_reactivate(self):
+        from .models import AdminAuditLog
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        # Deactivate normal user
+        res_deact = self.client.post(reverse("superadmin:user_toggle_active", kwargs={"user_id": self.normal_user.id}), {"active": "0"})
+        self.assertEqual(res_deact.status_code, 302)
+        self.normal_user.refresh_from_db()
+        self.assertFalse(self.normal_user.is_active)
+        self.assertTrue(AdminAuditLog.objects.filter(action="deactivate_user", target_id=str(self.normal_user.id)).exists())
+
+        # Reactivate normal user
+        res_react = self.client.post(reverse("superadmin:user_toggle_active", kwargs={"user_id": self.normal_user.id}), {"active": "1"})
+        self.assertEqual(res_react.status_code, 302)
+        self.normal_user.refresh_from_db()
+        self.assertTrue(self.normal_user.is_active)
+
+    def test_complimentary_access_grant_and_expiry(self):
+        from .models import AdminAuditLog
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+
+        # Grant complimentary Pro access
+        res_grant = self.client.post(reverse("superadmin:user_complimentary", kwargs={"user_id": self.normal_user.id}), {
+            "action": "grant",
+            "tier": "pro",
+        })
+        self.assertEqual(res_grant.status_code, 302)
+        sub = self.normal_user.subscription
+        sub.refresh_from_db()
+        self.assertEqual(sub.complimentary_tier, "pro")
+        self.assertTrue(sub.has_valid_complimentary_access)
+        self.assertTrue(sub.has_entitlement)
+        self.assertEqual(sub.radar_limit, 5)
+        # Verify Stripe status untouched
+        self.assertEqual(sub.status, "inactive")
+        self.assertTrue(AdminAuditLog.objects.filter(action="grant_complimentary_access").exists())
+
+        # Expired complimentary access
+        sub.complimentary_until = timezone.now() - timedelta(days=1)
+        sub.save()
+        self.assertFalse(sub.has_valid_complimentary_access)
+        self.assertFalse(sub.has_entitlement)
+        self.assertEqual(sub.radar_limit, 0)
+
+        # Revoke complimentary access
+        res_revoke = self.client.post(reverse("superadmin:user_complimentary", kwargs={"user_id": self.normal_user.id}), {
+            "action": "revoke",
+        })
+        self.assertEqual(res_revoke.status_code, 302)
+        sub.refresh_from_db()
+        self.assertEqual(sub.complimentary_tier, "none")
+
+    def test_global_radar_list_and_eligibility(self):
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        radar = CustomerRadar.objects.create(user=self.normal_user, name="Superadmin Test Radar", is_active=True)
+
+        res = self.client.get(reverse("superadmin:radar_list"))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "Superadmin Test Radar")
+
+        res_detail = self.client.get(reverse("superadmin:radar_detail", kwargs={"radar_id": radar.id}))
+        self.assertEqual(res_detail.status_code, 200)
+        self.assertContains(res_detail, "DISABLED")
+
+    def test_manual_pipeline_run_security_and_idempotency(self):
+        # 1. Non-superuser blocked
+        self.client.login(username="normal@example.com", password="NormalPassword123")
+        res_blocked = self.client.post(reverse("superadmin:pipeline_run_now"), {"target_date": "2026-08-01"})
+        self.assertEqual(res_blocked.status_code, 403)
+
+        # 2. Superuser run pipeline with mock fetch
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        with patch("gemiapp.services.fetch_companies", return_value=[{
+            "arGemi": 777000111, "afm": "777000111", "coNameEl": "SUPER PIPELINE LTD",
+            "coTitlesEl": ["SUPER PIPELINE"], "incorporationDate": "2026-08-01",
+            "legalType": {"descr": "Ιδιωτική Κεφαλαιουχική Εταιρεία"},
+            "status": {"descr": "Ενεργή", "isActive": True}, "city": "ΑΘΗΝΑ",
+            "prefecture": {"descr": "ΑΤΤΙΚΗΣ"}, "activities": [],
+        }]):
+            res_run = self.client.post(reverse("superadmin:pipeline_run_now"), {"target_date": "2026-08-01"})
+            self.assertEqual(res_run.status_code, 302)
+            self.assertEqual(Company.objects.filter(gemi_number="777000111").count(), 1)
+
+            # Second manual run for same date must not create duplicate company (Idempotency)
+            self.client.post(reverse("superadmin:pipeline_run_now"), {"target_date": "2026-08-01"})
+            self.assertEqual(Company.objects.filter(gemi_number="777000111").count(), 1)
+
+    def test_user_impersonation(self):
+        from .models import AdminAuditLog
+        # 1. Superadmin starts impersonation
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        res_start = self.client.post(reverse("superadmin:impersonate_start", kwargs={"user_id": self.normal_user.id}))
+        self.assertEqual(res_start.status_code, 302)
+        self.assertRedirects(res_start, reverse("dashboard"))
+
+        # Verify active user is now normal_user and session has impersonator_id
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.normal_user.id)
+        self.assertEqual(self.client.session["impersonator_id"], self.superuser.id)
+        self.assertTrue(AdminAuditLog.objects.filter(action="impersonate_start").exists())
+
+        # Verify impersonation banner rendered on dashboard
+        res_dash = self.client.get(reverse("dashboard"))
+        self.assertEqual(res_dash.status_code, 200)
+        self.assertContains(res_dash, "SUPERADMIN IMPERSONATION")
+
+        # 2. Exit impersonation
+        res_stop = self.client.post(reverse("superadmin:impersonate_stop"))
+        self.assertEqual(res_stop.status_code, 302)
+        self.assertRedirects(res_stop, reverse("superadmin:overview"))
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.superuser.id)
+        self.assertNotIn("impersonator_id", self.client.session)
+
+    def test_system_health_page(self):
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        res = self.client.get(reverse("superadmin:health_overview"))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "System Health & Operational Status")
+        self.assertContains(res, "Database (SQLite/PostgreSQL)")

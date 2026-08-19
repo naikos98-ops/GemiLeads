@@ -1,0 +1,118 @@
+{% extends 'superadmin/base.html' %}
+
+{% block title %}Radar: {{ radar.name }} · Superadmin Control Center{% endblock %}
+{% block page_title %}Radar Details: {{ radar.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <div class="flex items-center justify-between">
+    <a href="{% url 'superadmin:radar_list' %}" class="text-xs font-bold text-navy-700/60 hover:text-navy-950">← Πίσω στη λίστα Ραντάρ</a>
+    <a href="{% url 'superadmin:user_detail' radar.user.id %}" class="rounded-full bg-navy-950 px-4 py-2 text-xs font-bold text-white hover:bg-navy-800 transition">Owner User Profile →</a>
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    <!-- Radar Criteria Card -->
+    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft space-y-4">
+      <div class="border-b border-navy-900/5 pb-3">
+        <h3 class="font-extrabold text-navy-950 text-lg">Κριτήρια Ραντάρ</h3>
+        <p class="text-xs text-navy-700/50">Ορισμός & φίλτρα παρακολούθησης</p>
+      </div>
+
+      <dl class="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Όνομα Ραντάρ</dt>
+          <dd class="mt-1 font-bold text-navy-950">{{ radar.name }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Συχνότητα Digest</dt>
+          <dd class="mt-1 font-bold text-navy-950">{{ radar.get_frequency_display }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Ημερομηνία Έναρξης</dt>
+          <dd class="mt-1 font-medium text-navy-900">{{ radar.monitor_from|date:"d/m/Y H:i" }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Επιλεγμένοι ΚΑΔ</dt>
+          <dd class="mt-1 font-medium text-navy-900">{% if radar.activity_codes.all %}{{ radar.activity_codes.all|length }} ΚΑΔ{% else %}Όλοι οι ΚΑΔ{% endif %}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Περιοχές</dt>
+          <dd class="mt-1 font-medium text-navy-900">{{ radar.prefectures|join:', '|default:'Όλες' }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Νομικές Μορφές</dt>
+          <dd class="mt-1 font-medium text-navy-900">{{ radar.legal_types|join:', '|default:'Όλες' }}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <!-- Effective Matching Status Card -->
+    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft space-y-4">
+      <div class="border-b border-navy-900/5 pb-3">
+        <h3 class="font-extrabold text-navy-950 text-lg">Effective Matching Status</h3>
+        <p class="text-xs text-navy-700/50">Αιτιολογία συμμετοχής στο pipeline</p>
+      </div>
+
+      <div class="rounded-2xl bg-sand-50 p-5 space-y-3">
+        <div class="flex justify-between items-center text-sm">
+          <span class="font-bold text-navy-950">Radar is_active Config:</span>
+          <span class="font-bold {% if radar.is_active %}text-emerald-600{% else %}text-amber-600{% endif %}">{% if radar.is_active %}YES (True){% else %}NO (Paused){% endif %}</span>
+        </div>
+        <div class="flex justify-between items-center text-sm">
+          <span class="font-bold text-navy-950">Owner Subscription Entitlement:</span>
+          <span class="font-bold {% if owner_entitlement %}text-emerald-600{% else %}text-red-600{% endif %}">{% if owner_entitlement %}YES (Active Paid/Complimentary){% else %}NO (Unpaid / 0 Limit){% endif %}</span>
+        </div>
+        <hr class="border-navy-900/10">
+        <div class="flex justify-between items-center text-base font-extrabold">
+          <span>Effective Status:</span>
+          {% if radar.is_active and owner_entitlement %}
+          <span class="text-emerald-600">ENABLED (Participates in Matching)</span>
+          {% else %}
+          <span class="text-red-600">DISABLED (No Matches Generated)</span>
+          {% endif %}
+        </div>
+        <p class="text-xs text-navy-700/50 mt-2">
+          {% if not radar.is_active %}
+          * Το Ραντάρ έχει τεθεί σε παύση από τον χρήστη.
+          {% elif not owner_entitlement %}
+          * Ο ιδιοκτήτης δεν διαθέτει ενεργή συνδρομή ή δωρεάν πρόσβαση.
+          {% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Matches Table -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft space-y-4">
+    <h3 class="font-extrabold text-navy-950 text-lg">Πρόσφατα Matches ({{ matches.count }})</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+          <tr>
+            <th class="p-3">Matched Date</th>
+            <th class="p-3">Company Name</th>
+            <th class="p-3">GEMI / AFM</th>
+            <th class="p-3">Matched KADs</th>
+            <th class="p-3">Lead Status</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-navy-900/5">
+          {% for m in matches %}
+          <tr class="hover:bg-sand-50/50 transition">
+            <td class="p-3 text-xs font-bold text-navy-950">{{ m.matched_on }}</td>
+            <td class="p-3 font-bold text-navy-950">{{ m.company.name }}</td>
+            <td class="p-3 text-xs font-mono text-navy-700/70">{{ m.company.gemi_number }} / {{ m.company.vat_number }}</td>
+            <td class="p-3 text-xs text-navy-700/80">{{ m.matched_activity_codes|join:', ' }}</td>
+            <td class="p-3">
+              <span class="inline-block rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-bold text-navy-700/80">{{ m.lead.get_status_display }}</span>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5" class="p-8 text-center text-navy-700/50">Δεν υπάρχουν καταγεγραμμένα matches.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

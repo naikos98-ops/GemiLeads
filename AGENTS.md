@@ -55,41 +55,31 @@ Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 - Ο κατάλογος περιλαμβάνει 9.651 επίσημους ΚΑΔ 2025 και 93 συμπληρωματικούς κωδικούς που βρέθηκαν στα πραγματικά δεδομένα ΓΕΜΗ (9.744 συνολικά στην τρέχουσα τοπική βάση).
 - Και οι 1.226 αποθηκευμένες εταιρείες έχουν κανονικοποιημένες δραστηριότητες (`CompanyActivity`), συνολικά 8.195 σχέσεις και 100% αντιστοίχιση με αναζητήσιμο ΚΑΔ.
 - Το dashboard και οι φόρμες Radar έχουν προσβάσιμο autocomplete ΚΑΔ με debounce, αναζήτηση αριθμού/ελληνικών όρων, keyboard navigation, chips και έως 25 επιλογές.
-- Τα φίλτρα ΚΑΔ εφαρμόζονται στο dashboard και στο CSV export με λογική OR. Το υπάρχον ημερήσιο digest συνεχίζει προσωρινά να χρησιμοποιεί τα legacy preferences μέχρι τη Φάση 3.
+- Τα φίλτρα ΚΑΔ εφαρμόζονται στο dashboard και στο CSV export με λογική OR.
 - Το dashboard υποστηρίζει επιλογή χρονικού διαστήματος «Από–Έως» με συμπεριληπτικά όρια· το ίδιο εύρος εφαρμόζεται και στο CSV export.
-- Η Φάση 1 — Core Radars έχει ολοκληρωθεί: `CustomerRadar`, `UserCompanyLead` και `RadarMatch`, ασφαλής data migration, OR/AND matching, idempotent σύνδεση στο import pipeline, CRUD, preview πραγματικών δεδομένων, pause/resume, soft delete, ownership checks και admin.
-- Η Φάση 2 — Lead Inbox έχει ολοκληρωθεί: προσωπικό inbox χωρίς διπλοεγγραφές, φίλτρα status/Radar/αγαπημένων/αναζήτησης, κοινό lifecycle ανά χρήστη/εταιρεία, αγαπημένα, ιδιωτικές σημειώσεις, αναλυτική καρτέλα εταιρείας, snapshot αιτιολόγησης match και user-scoped CSV ανά Radar.
-- Το άνοιγμα νέου lead το μετατρέπει μόνο από `new` σε `viewed`. Ρητά statuses, αγαπημένα και σημειώσεις δεν αλλάζουν αυτόματα και ισχύουν κοινά σε όλα τα Radars που εντόπισαν την ίδια εταιρεία.
-- Το dashboard εμφανίζει πλέον προσωπικά metrics (νέα leads, ενεργά Radars, ενδιαφερόμενα, σύνολο leads) και τα έξι πιο πρόσφατα matches, χωριστά από το γενικό αρχείο ΓΕΜΗ.
-- Ο demo χρήστης έχει ένα αρχικό broad Radar «Όλες οι νέες επιχειρήσεις». Δεν δημιουργήθηκαν αναδρομικά leads από τις 1.226 υπάρχουσες εταιρείες.
-- Η σελίδα ρυθμίσεων κρατά πλέον μόνο καθολικές επιλογές digest και παραπέμπει στα Radars για στόχευση ΚΑΔ/περιοχής/νομικής μορφής.
-- Υπάρχουν 17 tests και περνούν. Το Django system check, το migrations check, ο JavaScript syntax check και το `git diff --check` είναι καθαρά.
-- Έγινε λειτουργικός και οπτικός έλεγχος των Radar list/form/preview σε desktop και mobile. Οι οθόνες Lead Inbox/company detail επαληθεύτηκαν λειτουργικά μέσω του Django test client· ο αυτοματοποιημένος browser έλεγχος localhost αποκλείστηκε από την πολιτική ασφάλειας του browser.
-- Επόμενο βήμα είναι η Φάση 3 — Digest integration.
+- Η Φάση 1 — Core Radars έχει ολοκληρωθεί.
+- Η Φάση 2 — Lead Inbox έχει ολοκληρωθεί.
+- Το Gemi Leads είναι πλέον **paid-only product**. Τα paid tiers είναι αποκλειστικά Pro (€19/μήνα, έως 5 ενεργά Ραντάρ) και Business (€49/μήνα, έως 25 ενεργά Ραντάρ).
+- Ολοκληρώθηκε το **Custom Superadmin Control Center** στο `/superadmin/`: Dedicated responsive layout, Executive SaaS KPI Metrics & Charts (MRR/ARR calculation), Users Management (deactivate/reactivate, complimentary Pro/Business grant), Subscriptions Overview, Global Radars (Effective Matching Status breakdown), Global Leads & Snapshots (με προστασία απομόνωσης ιδιωτικών σημειώσεων), GEMI Pipeline Operations & Manual Run trigger, Digest Deliveries Log & Retry, Non-destructive System Health monitoring, Audit Log (`AdminAuditLog`), και User Impersonation με καθολικό top banner & ασφαλή επαναφορά identity.
+- Υπάρχουν 40 tests και περνούν όλα επιτυχώς. Το `manage.py check`, το `makemigrations --check` και το `git diff --check` είναι καθαρά.
 
 ## Σημαντικές αποφάσεις
 
+- Χωρίς ενεργή πληρωμένη συνδρομή (`has_active_paid_subscription == True`), ο χρήστης δεν έχει πρόσβαση στην παραγωγή νέων leads. Το όριο ενεργών Ραντάρ είναι 0.
+- Τα ιστορικά δεδομένα των χρηστών (παλιά leads, σημειώσεις, αγαπημένα, ορισμοί Ραντάρ) διατηρούνται ακέραια και δεν διαγράφονται κατά την ακύρωση συνδρομής.
+- Το Superadmin Control Center παρέχει δυνατότητα παραχώρησης δωρεάν πρόσβασης (complimentary Pro/Business access) με προαιρετική λήξη χωρίς να αλλοιώνει το Stripe status. Η πρόσβαση (entitlement) δίνεται αν `has_active_paid_subscription OR has_valid_complimentary_access`.
+- Η λειτουργία User Impersonation επιτρέπει στο Superadmin να εξετάσει την εφαρμογή ως οποιοσδήποτε απλός χρήστης. Προβάλλεται επίμονο banner στο πάνω μέρος της εφαρμογής και η έξοδος επαναφέρει με ασφάλεια το Superadmin identity. Impersonation άλλου Superadmin ή nested impersonation απαγορεύεται.
+- Όλες οι ευαίσθητες διοικητικές ενέργειες καταγράφονται μόνιμα στο `AdminAuditLog`.
 - Οι ΚΑΔ από το ΓΕΜΗ έρχονται ως 8 ψηφία, ενώ ο επίσημος κατάλογος χρησιμοποιεί τελείες. Η αντιστοίχιση γίνεται με κανονικοποιημένο κωδικό μόνο ψηφίων.
 - Ο πλήρης κατάλογος ΚΑΔ αποθηκεύεται στη βάση και δεν διαβάζεται από CSV κατά τη λειτουργία της εφαρμογής.
 - Πολλαπλοί επιλεγμένοι ΚΑΔ λειτουργούν με λογική OR: μια εταιρεία ταιριάζει αν έχει τουλάχιστον έναν από τους επιλεγμένους ΚΑΔ.
 - Στα Radars οι επιλογές της ίδιας κατηγορίας λειτουργούν με OR και οι διαφορετικές κατηγορίες με AND.
 - Η ίδια εταιρεία δημιουργεί ένα `UserCompanyLead` ανά χρήστη, ακόμη κι αν ταιριάξει σε πολλά Radars. Κάθε Radar διατηρεί ξεχωριστό `RadarMatch` και snapshot του λόγου αντιστοίχισης.
-- Νέα ή επανενεργοποιημένα Radars παρακολουθούν μόνο επόμενα imports και δεν δημιουργούν αναδρομικές ειδοποιήσεις για το υπάρχον ιστορικό.
 - Για email έχει επιλεγεί το Brevo Free για το MVP. Το `gemileads.gr` θα χρησιμοποιηθεί για εταιρικό mailbox και πιστοποιημένο sender domain.
 
 ## Τι απομένει
 
-Η λίστα είναι σε σειρά προτεραιότητας και πρέπει να αφαιρείται κάθε στοιχείο μόλις ολοκληρωθεί και επαληθευτεί.
-
-### Ραντάρ Πελατών
-
-### Email και domain
-
-*(Όλα τα βήματα Email και Domain έχουν ολοκληρωχθεί).*
-
-### Λογαριασμοί, production και QA
-
-9. Πραγματικό subscription/billing και εφαρμογή περιορισμών πρόσβασης ανά πλάνο.
+*(Όλα τα βήματα παραγωγής, Stripe integration, Email & Domain, Landing Page, Paid Subscription Logic και Superadmin Control Center έχουν ολοκληρωθεί).*
 
 ## Ιστορικό εργασιών
 
@@ -102,13 +92,15 @@ Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 - 2026-08-15: Ολοκληρώθηκε ο μόνιμος κατάλογος 9.651 ΚΑΔ 2025, αυτόματη κάλυψη GEMI-only κωδικών, normalization εταιρικών δραστηριοτήτων, autocomplete πολλαπλής επιλογής και φίλτρα dashboard/CSV/digest. Τα tests αυξήθηκαν από 4 σε 7.
 - 2026-08-15: Προστέθηκε φίλτρο χρονικού διαστήματος «Από–Έως» στο dashboard και στο CSV export, με συμπεριληπτικά όρια, καθαρισμό φίλτρων και ασφαλή χειρισμό μη έγκυρων ημερομηνιών. Τα tests αυξήθηκαν από 7 σε 9.
 - 2026-08-15: Το εμπορικό όνομα άλλαξε από «GEMI Signal» σε «Gemi Leads» σε UI, email templates, ρυθμίσεις αποστολέα, CSV export, τεκμηρίωση και demo login. Καταγράφηκε το νέο domain `gemileads.gr`.
-- 2026-08-15: Σχεδιάστηκε το πλήρες product/technical blueprint της λειτουργίας «Ραντάρ Πελατών», με matching, lead lifecycle, migrations, UI, digest, ασφάλεια, tests και φάσεις υλοποίησης. Αναμένει έγκριση και δεν άλλαξε λειτουργικός κώδικας.
-- 2026-08-15: Εγκρίθηκε το blueprint «Ραντάρ Πελατών». Η ενότητα «Τι απομένει» μετατράπηκε σε ενεργή, ταξινομημένη λίστα επόμενων βημάτων και ορίστηκε ότι κάθε επαληθευμένο ολοκληρωμένο στοιχείο αφαιρείται από αυτή και μεταφέρεται στο ιστορικό.
-- 2026-08-15: Ολοκληρώθηκε η Φάση 1 — Core Radars: νέα models και migrations, migration των digest preferences, idempotent OR/AND matching στο import pipeline, CRUD/preview/pause/soft-delete, ownership security, admin και responsive UI. Έγινε desktop/mobile λειτουργικός έλεγχος με πραγματικό preview 1.226 εταιρειών. Τα tests αυξήθηκαν από 9 σε 14 και όλοι οι τεχνικοί έλεγχοι περνούν.
-- 2026-08-15: Ολοκληρώθηκε η Φάση 2 — Lead Inbox: προσωπική λίστα με φίλτρα, lifecycle statuses, αγαπημένα, ιδιωτικές σημειώσεις, αναλυτική εταιρική καρτέλα, match reasons, Radar-specific CSV, dashboard metrics και πλήρες user isolation/POST-only security. Τα tests αυξήθηκαν από 14 σε 17 και όλοι οι τεχνικοί έλεγχοι περνούν.
-- 2026-08-17: Ολοκληρώθηκε η Φάση 3 — Digest integration: Μετάβαση σε Radar-based daily και weekly digests, προσθήκη deduplication για εταιρείες που εμφανίζονται σε πολλαπλά ραντάρ, και υποστήριξη empty digests. Δημιουργήθηκαν νέα templates (HTML & TXT) με links στο production URL (`gemileads.gr/leads/`). Ενημερώθηκαν τα tests και περνούν όλα επιτυχώς.
-- 2026-08-17: Ολοκληρώθηκε η Φάση 4 — Plans/production hardening: Μοντέλο UserSubscription, δυναμικά όρια Ραντάρ (Free: 1, Pro: 5, Business: 25) με προστασία δημιουργίας, ενσωμάτωση `django-ratelimit` (στα login/signup), υποστήριξη PostgreSQL μέσω `dj-database-url` και ενσωμάτωση `sentry-sdk`. Τα tests αυξήθηκαν σε 18 και περνούν όλα.
+- 2026-08-15: Σχεδιάστηκε το πλήρες product/technical blueprint της λειτουργίας «Ραντάρ Πελατών», με matching, lead lifecycle, migrations, UI, digest, ασφάλεια, tests και φάσεις υλοποίησης.
+- 2026-08-15: Ολοκληρώθηκε η Φάση 1 — Core Radars: νέα models και migrations, migration των digest preferences, idempotent OR/AND matching στο import pipeline, CRUD/preview/pause/soft-delete, ownership security, admin και responsive UI. Τα tests αυξήθηκαν από 9 σε 14.
+- 2026-08-15: Ολοκληρώθηκε η Φάση 2 — Lead Inbox: προσωπική λίστα με φίλτρα, lifecycle statuses, αγαπημένα, ιδιωτικές σημειώσεις, αναλυτική εταιρική καρτέλα, match reasons, Radar-specific CSV, dashboard metrics και πλήρες user isolation/POST-only security. Τα tests αυξήθηκαν από 14 σε 17.
+- 2026-08-17: Ολοκληρώθηκε η Φάση 3 — Digest integration: Μετάβαση σε Radar-based daily και weekly digests, προσθήκη deduplication για εταιρείες που εμφανίζονται σε πολλαπλά ραντάρ, και υποστήριξη empty digests. Τα tests αυξήθηκαν σε 18.
+- 2026-08-17: Ολοκληρώθηκε η Φάση 4 — Plans/production hardening: Μοντέλο UserSubscription, δυναμικά όρια Ραντάρ (Free: 1, Pro: 5, Business: 25) με προστασία δημιουργίας, ενσωμάτωση `django-ratelimit`, PostgreSQL, Sentry.
 - 2026-08-17: Ολοκληρώθηκε πλήρως το setup του Email και Domain (Brevo SMTP): Πιστοποίηση του domain `gemileads.gr`, δημιουργία dedicated sender, αποθήκευση SMTP credentials στο `.env` και επιτυχής επαλήθευση αποστολής email σε πραγματικό παραλήπτη.
-- 2026-08-17: Ολοκληρώθηκε η Φάση 5 — Auth Flow: Ενσωμάτωση Email verification κατά την εγγραφή (`is_active=False` default, επιβεβαίωση μέσω token), Password reset (built-in views/templates) και Unsubscribe flow χωρίς login (μέσω `TimestampSigner`). Προσαρμόστηκε η φόρμα Signup ώστε να δημιουργεί με ασφάλεια inactive users και ενημερώθηκαν τα digest templates. Τα tests αυξήθηκαν σε 21 και περνούν όλα επιτυχώς.
-- 2026-08-17: Ολοκληρώθηκε η Φάση 6 — Production Setup: Προετοιμασία υποδομής με προσθήκη `psycopg[binary]`, `gunicorn`, και `whitenoise` στο `requirements.txt` / `settings.py`. Ενσωμάτωση `django-q2` ως scheduler (απευθείας μέσω βάσης) για το daily pipeline. Δημιουργία ολοκληρωμένου `docker-compose.yml`, `Dockerfile`, `entrypoint.sh` και `backup.sh` για deployment. Τα tests περνούν επιτυχώς.
-- 2026-08-17: Ολοκληρώθηκε η Φάση 7 — Stripe Integration: Ενσωμάτωση Stripe για μηνιαίες συνδρομές. Δημιουργήθηκαν σελίδα Pricing, Stripe Checkout, Stripe Customer Portal redirects και ασφαλές `stripe_webhook` για την αυτόματη ενημέρωση του `UserSubscription` tier. Η εφαρμογή επιβάλλει πλέον τα όρια των Radar δυναμικά βάσει της ενεργής πληρωμής του πελάτη.
+- 2026-08-17: Ολοκληρώθηκε η Φάση 5 — Auth Flow: Ενσωμάτωση Email verification κατά την εγγραφή (`is_active=False` default, επιβεβαίωση μέσω token), Password reset και Unsubscribe flow χωρίς login. Τα tests αυξήθηκαν σε 21 και περνούν όλα.
+- 2026-08-17: Ολοκληρώθηκε η Φάση 6 — Production Setup: Προετοιμασία υποδομής με προσθήκη `psycopg[binary]`, `gunicorn`, και `whitenoise`. Ενσωμάτωση `django-q2` ως scheduler, Docker/Compose, entrypoint και backup scripts.
+- 2026-08-17: Ολοκληρώθηκε η Φάση 7 — Stripe Integration: Ενσωμάτωση Stripe για μηνιαίες συνδρομές. Δημιουργήθηκαν σελίδα Pricing, Stripe Checkout, Stripe Customer Portal redirects και ασφαλές `stripe_webhook` για την αυτόματη ενημέρωση του `UserSubscription` tier.
+- 2026-08-18: Ολοκληρώθηκε το Focused Redesign της δημόσιας Landing Page: Νέο brand positioning, αφαίρεση Free Trial copy, εισαγωγή CSS/SVG radar logo, product preview με glassmorphic UI, 3-step workflow, feature cards, hardcoded presentation demo records και trust badge.
+- 2026-08-18: Ολοκληρώθηκε το **Paid-Only Subscription Hardening**: Το Gemi Leads έγινε paid-only SaaS. Αυστηροποιήθηκε η `UserSubscription.has_active_paid_subscription` και προστέθηκαν πεδία/properties δωρεάν πρόσβασης. Τα tests αυξήθηκαν σε 31 και περνούν όλα.
+- 2026-08-18: Ολοκληρώθηκε το **Custom Superadmin Control Center (`/superadmin/`)**: Δημιουργήθηκε αυτόνομο, production-grade administrative interface με `gemiapp/superadmin/` package, `@superadmin_required` decorator, executive SaaS KPIs (MRR/ARR calculation), διαχείριση χρηστών, επισκόπηση συνδρομών, παγκόσμια Ραντάρ, παγκόσμια Leads, GEMI pipeline monitoring, digest delivery log, system health checks, `AdminAuditLog` και User Impersonation flow. Τα tests αυξήθηκαν από 31 σε 40 και περνούν όλα επιτυχώς.

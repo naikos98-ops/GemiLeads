@@ -1,0 +1,111 @@
+{% extends 'superadmin/base.html' %}
+
+{% block title %}Users Management · Superadmin Control Center{% endblock %}
+{% block page_title %}Users Management{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Search & Filters Bar -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <form method="get" class="grid gap-4 md:grid-cols-4">
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Search User</label>
+        <input type="text" name="q" value="{{ search }}" placeholder="Email, name..." class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Paid Status</label>
+        <select name="paid" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+          <option value="">Όλοι</option>
+          <option value="paid" {% if paid_filter == 'paid' %}selected{% endif %}>Paid Subscribers</option>
+          <option value="unpaid" {% if paid_filter == 'unpaid' %}selected{% endif %}>Unpaid Users</option>
+          <option value="complimentary" {% if paid_filter == 'complimentary' %}selected{% endif %}>Complimentary Access</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Effective Tier</label>
+        <select name="tier" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+          <option value="">Όλα τα Tiers</option>
+          <option value="pro" {% if tier_filter == 'pro' %}selected{% endif %}>Pro</option>
+          <option value="business" {% if tier_filter == 'business' %}selected{% endif %}>Business</option>
+          <option value="free" {% if tier_filter == 'free' %}selected{% endif %}>Free/Unpaid</option>
+        </select>
+      </div>
+
+      <div class="flex items-end gap-2">
+        <button class="flex-1 rounded-xl bg-navy-950 px-4 py-2.5 font-bold text-white text-sm hover:bg-navy-800 transition">Φιλτράρισμα</button>
+        <a href="{% url 'superadmin:user_list' %}" class="rounded-xl border border-navy-900/10 px-4 py-2.5 font-bold text-sm hover:bg-sand-100 transition">Καθαρισμός</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- Users Table -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+          <tr>
+            <th class="p-3">User</th>
+            <th class="p-3">Date Joined</th>
+            <th class="p-3">Last Login</th>
+            <th class="p-3">State</th>
+            <th class="p-3">Subscription Status</th>
+            <th class="p-3 text-center">Radars</th>
+            <th class="p-3 text-center">Leads</th>
+            <th class="p-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-navy-900/5">
+          {% for u in page_obj %}
+          <tr class="hover:bg-sand-50/50 transition">
+            <td class="p-3">
+              <span class="block font-bold text-navy-950">{{ u.email }}</span>
+              <span class="text-xs text-navy-700/50">{{ u.first_name }} {{ u.last_name }}</span>
+            </td>
+            <td class="p-3 text-xs text-navy-700/70">{{ u.date_joined|date:"d/m/Y" }}</td>
+            <td class="p-3 text-xs text-navy-700/70">{{ u.last_login|date:"d/m/Y H:i"|default:"—" }}</td>
+            <td class="p-3">
+              <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-bold {% if u.is_active %}bg-emerald-50 text-emerald-700{% else %}bg-amber-50 text-amber-700{% endif %}">
+                {% if u.is_active %}Active{% else %}Deactivated{% endif %}
+              </span>
+            </td>
+            <td class="p-3">
+              {% if u.subscription.has_active_paid_subscription %}
+              <span class="inline-block rounded-full bg-signal/10 px-2.5 py-0.5 text-xs font-bold text-signal">PAID {{ u.subscription.tier|upper }}</span>
+              {% elif u.subscription.has_valid_complimentary_access %}
+              <span class="inline-block rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-bold text-purple-700">COMPLIMENTARY {{ u.subscription.complimentary_tier|upper }}</span>
+              {% else %}
+              <span class="inline-block rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-bold text-navy-700/50">UNPAID (0 Radars)</span>
+              {% endif %}
+            </td>
+            <td class="p-3 text-center font-bold">{{ u.radar_count }}</td>
+            <td class="p-3 text-center font-bold">{{ u.lead_count }}</td>
+            <td class="p-3 text-right">
+              <a href="{% url 'superadmin:user_detail' u.id %}" class="rounded-lg bg-navy-950 px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-800 transition">Προβολή →</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="p-8 text-center text-navy-700/50">Δεν βρέθηκαν χρήστες.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="mt-6 flex items-center justify-between border-t border-navy-900/5 pt-4 text-xs font-bold text-navy-700/60">
+      <span>Σελίδα {{ page_obj.number }} από {{ page_obj.paginator.num_pages }}</span>
+      <div class="flex gap-2">
+        {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&paid={{ paid_filter }}&tier={{ tier_filter }}&active={{ active_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
+        {% endif %}
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&paid={{ paid_filter }}&tier={{ tier_filter }}&active={{ active_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

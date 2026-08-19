@@ -1,0 +1,125 @@
+{% extends 'superadmin/base.html' %}
+
+{% block title %}Lead Detail: {{ lead.company.name }} · Superadmin Control Center{% endblock %}
+{% block page_title %}Lead Detail: {{ lead.company.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <div class="flex items-center justify-between">
+    <a href="{% url 'superadmin:lead_list' %}" class="text-xs font-bold text-navy-700/60 hover:text-navy-950">← Πίσω στη λίστα Leads</a>
+    <a href="{% url 'superadmin:user_detail' lead.user.id %}" class="rounded-full bg-navy-950 px-4 py-2 text-xs font-bold text-white hover:bg-navy-800 transition">Owner User Profile →</a>
+  </div>
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    <!-- Company Official Data Card -->
+    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft space-y-4">
+      <div class="border-b border-navy-900/5 pb-3">
+        <h3 class="font-extrabold text-navy-950 text-lg">Επίσημα Στοιχεία Εταιρείας</h3>
+        <p class="text-xs text-navy-700/50">Read-Only source-derived registry record</p>
+      </div>
+
+      <dl class="grid grid-cols-2 gap-4 text-sm">
+        <div class="col-span-2">
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Επωνυμία</dt>
+          <dd class="mt-1 font-bold text-navy-950 text-base">{{ lead.company.name }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Αριθμός ΓΕΜΗ</dt>
+          <dd class="mt-1 font-mono font-bold text-navy-950">{{ lead.company.gemi_number }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">ΑΦΜ</dt>
+          <dd class="mt-1 font-mono font-bold text-navy-950">{{ lead.company.vat_number|default:"—" }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Νομική Μορφή</dt>
+          <dd class="mt-1 font-medium text-navy-900">{{ lead.company.legal_type }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Ημερομηνία Σύστασης</dt>
+          <dd class="mt-1 font-medium text-navy-900">{{ lead.company.incorporation_date|date:"d/m/Y" }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Περιφέρεια / Πόλη</dt>
+          <dd class="mt-1 font-medium text-navy-900">{{ lead.company.prefecture }} / {{ lead.company.city }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs text-navy-700/50 font-bold uppercase">Email / Website</dt>
+          <dd class="mt-1 font-medium text-navy-900">{{ lead.company.email|default:"—" }} / {{ lead.company.website|default:"—" }}</dd>
+        </div>
+      </dl>
+    </div>
+
+    <!-- Lead State & Private Notes Card -->
+    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft space-y-6">
+      <div>
+        <div class="border-b border-navy-900/5 pb-3">
+          <h3 class="font-extrabold text-navy-950 text-lg">Lead State & Ownership</h3>
+          <p class="text-xs text-navy-700/50">User-scoped lifecycle tracking</p>
+        </div>
+
+        <dl class="grid grid-cols-2 gap-4 text-sm mt-4">
+          <div>
+            <dt class="text-xs text-navy-700/50 font-bold uppercase">Owner User</dt>
+            <dd class="mt-1 font-bold text-navy-950">{{ lead.user.email }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-navy-700/50 font-bold uppercase">Lifecycle Status</dt>
+            <dd class="mt-1">
+              <span class="inline-block rounded-full bg-sand-100 px-3 py-1 text-xs font-bold text-navy-950">{{ lead.get_status_display }}</span>
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs text-navy-700/50 font-bold uppercase">Favorite</dt>
+            <dd class="mt-1 font-bold">{% if lead.is_favorite %}<span class="text-amber-500">★ Αγαπημένο</span>{% else %}Όχι{% endif %}</dd>
+          </div>
+          <div>
+            <dt class="text-xs text-navy-700/50 font-bold uppercase">Ημερομηνία Δημιουργίας</dt>
+            <dd class="mt-1 font-medium text-navy-900">{{ lead.created_at|date:"d/m/Y H:i" }}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <!-- Private User Notes Section (Explicit Privacy Indication) -->
+      <div class="rounded-2xl bg-amber-50/60 p-5 border border-amber-200">
+        <div class="flex items-center gap-2 text-amber-900 text-xs font-bold uppercase tracking-wider mb-2">
+          <svg class="h-4 w-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+          Private User Notes (Confidential)
+        </div>
+        <p class="text-xs text-navy-700/60 font-medium">
+          {% if lead.notes %}{{ lead.notes }}{% else %}<i>Δεν υπάρχουν σημειώσεις από τον χρήστη.</i>{% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Match Reason Snapshots Table -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft space-y-4">
+    <h3 class="font-extrabold text-navy-950 text-lg">Matching Radars & Snapshots ({{ matches.count }})</h3>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+          <tr>
+            <th class="p-3">Radar Name</th>
+            <th class="p-3">Matched Date</th>
+            <th class="p-3">Matched Activity Codes</th>
+            <th class="p-3">Import Run</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-navy-900/5">
+          {% for m in matches %}
+          <tr class="hover:bg-sand-50/50 transition">
+            <td class="p-3 font-bold text-navy-950">{{ m.radar.name }}</td>
+            <td class="p-3 text-xs font-bold text-navy-950">{{ m.matched_on }}</td>
+            <td class="p-3 text-xs text-navy-700/80">{{ m.matched_activity_codes|join:', ' }}</td>
+            <td class="p-3 text-xs font-mono text-navy-700/70">Import #{{ m.import_run.id }} ({{ m.import_run.status }})</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="4" class="p-8 text-center text-navy-700/50">Δεν υπάρχουν match snapshots.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

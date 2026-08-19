@@ -208,12 +208,16 @@ def match_imported_companies(import_run: ImportRun) -> MatchSummary:
     companies = list(
         Company.objects.filter(incorporation_date=import_run.target_date).prefetch_related("activity_records")
     )
-    radars = list(
+    all_radars = list(
         CustomerRadar.objects.filter(is_active=True, deleted_at__isnull=True)
         .exclude(frequency="off")
-        .select_related("user")
+        .select_related("user", "user__subscription")
         .prefetch_related("activity_codes")
     )
+    radars = [
+        radar for radar in all_radars
+        if hasattr(radar.user, "subscription") and radar.user.subscription.has_entitlement
+    ]
     new_leads = new_matches = duplicate_matches = 0
 
     for radar in radars:
@@ -279,11 +283,19 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
     else:
         start_date = end_date = target_date
 
-    preferences = DigestPreference.objects.select_related("user").exclude(frequency="off").filter(user__is_active=True)
+    preferences = DigestPreference.objects.select_related("user", "user__subscription").exclude(frequency="off").filter(user__is_active=True)
     for preference in preferences:
         user = preference.user
         existing = DigestDelivery.objects.filter(user=user, digest_date=target_date, frequency=frequency).first()
         if not user.email or (existing and existing.status in {"sent", "skipped"}):
+            skipped += 1
+            continue
+
+        if not (hasattr(user, "subscription") and user.subscription.has_entitlement):
+            DigestDelivery.objects.update_or_create(
+                user=user, digest_date=target_date, frequency=frequency,
+                defaults={"status": "skipped", "company_count": 0, "error_message": "No active subscription entitlement"}
+            )
             skipped += 1
             continue
 
