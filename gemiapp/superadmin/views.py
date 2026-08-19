@@ -263,7 +263,7 @@ def lead_detail(request, lead_id):
 
 @superadmin_required
 def pipeline_overview(request):
-    runs = ImportRun.objects.order_by("-created_at")[:30]
+    runs = ImportRun.objects.order_by("-started_at")[:30]
     latest_run = runs[0] if runs else None
 
     return render(request, "superadmin/pipeline/overview.html", {
