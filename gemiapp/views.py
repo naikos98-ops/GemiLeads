@@ -144,7 +144,8 @@ def unsubscribe(request, token):
 
 
 def _filtered_companies(request):
-    qs = Company.objects.all()
+    today = timezone.localdate()
+    qs = Company.objects.filter(incorporation_date__lte=today)
     query = request.GET.get("q", "").strip()
     prefecture = request.GET.get("prefecture", "").strip()
     legal_type = request.GET.get("legal_type", "").strip()
@@ -160,7 +161,7 @@ def _filtered_companies(request):
     if date_from:
         qs = qs.filter(incorporation_date__gte=date_from)
     if date_to:
-        qs = qs.filter(incorporation_date__lte=date_to)
+        qs = qs.filter(incorporation_date__lte=min(date_to, today))
     if activity_codes:
         qs = qs.filter(activity_records__code__in=activity_codes).distinct()
     return qs
@@ -186,12 +187,12 @@ def dashboard(request):
     from django.core.cache import cache
     prefectures = cache.get_or_set(
         "dashboard_prefectures",
-        lambda: list(Company.objects.exclude(prefecture="").values_list("prefecture", flat=True).distinct().order_by("prefecture")),
+        lambda: list(Company.objects.filter(incorporation_date__lte=today).exclude(prefecture="").values_list("prefecture", flat=True).distinct().order_by("prefecture")),
         3600,
     )
     legal_types = cache.get_or_set(
         "dashboard_legal_types",
-        lambda: list(Company.objects.exclude(legal_type="").values_list("legal_type", flat=True).distinct().order_by("legal_type")),
+        lambda: list(Company.objects.filter(incorporation_date__lte=today).exclude(legal_type="").values_list("legal_type", flat=True).distinct().order_by("legal_type")),
         3600,
     )
 
@@ -207,13 +208,13 @@ def dashboard(request):
         "has_next_page": page_obj.has_next(),
         "result_count": paginator.count,
         "today_count": Company.objects.filter(incorporation_date=today).count(),
-        "week_count": Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).count(),
+        "week_count": Company.objects.filter(incorporation_date__gte=today - timedelta(days=6), incorporation_date__lte=today).count(),
         "prefectures": prefectures,
         "legal_types": legal_types,
         "preference": preference,
         "latest_run": ImportRun.objects.first(),
         "latest_delivery": DigestDelivery.objects.filter(user=request.user).first(),
-        "chart_data": list(Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).values("incorporation_date").annotate(total=Count("id")).order_by("incorporation_date")),
+        "chart_data": list(Company.objects.filter(incorporation_date__gte=today - timedelta(days=6), incorporation_date__lte=today).values("incorporation_date").annotate(total=Count("id")).order_by("incorporation_date")),
         "selected_kads": _catalog_entries(selected_codes),
         "date_range_error": bool(date_from and date_to and date_from > date_to),
         "lead_count": user_leads.count(),

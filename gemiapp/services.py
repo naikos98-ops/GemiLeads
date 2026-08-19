@@ -104,12 +104,22 @@ def company_defaults(item: dict[str, Any]) -> dict[str, Any]:
         activities.append({"code": activity.get("id", ""), "description": activity.get("descr", ""), "type": entry.get("type", "")})
     street = " ".join(filter(None, [str(item.get("street") or "").strip(), str(item.get("streetNumber") or "").strip()]))
     status = item.get("status") or {}
+
+    raw_date_str = str(item.get("incorporationDate") or "")[:10]
+    today = date.today()
+    try:
+        inc_date = date.fromisoformat(raw_date_str)
+        if inc_date > today or inc_date.year < 1900:
+            inc_date = today
+    except (ValueError, TypeError):
+        inc_date = today
+
     return {
         "vat_number": str(item.get("afm") or ""), "name": str(item.get("coNameEl") or "Χωρίς επωνυμία"),
         "trade_names": " | ".join(str(x) for x in item.get("coTitlesEl") or []),
         "legal_type": _description(item.get("legalType")), "status": _description(status),
         "is_active": bool(status.get("isActive", item.get("isActive", True))),
-        "incorporation_date": date.fromisoformat(str(item.get("incorporationDate"))[:10]),
+        "incorporation_date": inc_date,
         "gemi_office": _description(item.get("gemiOffice")), "prefecture": _description(item.get("prefecture")),
         "municipality": _description(item.get("municipality")), "city": str(item.get("city") or ""),
         "address": street, "postal_code": str(item.get("zipCode") or ""), "email": str(item.get("email") or ""),
