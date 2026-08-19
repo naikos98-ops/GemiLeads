@@ -49,7 +49,7 @@ def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
         f"{settings.GEMI_API_BASE}{path}?{query}",
         headers={"api_key": settings.GEMI_API_KEY, "Accept": "application/json", "User-Agent": "Gemi-Leads/1.0"},
     )
-    for attempt in range(4):
+    for attempt in range(5):
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 return json.loads(response.read().decode("utf-8"))
@@ -57,8 +57,8 @@ def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
             detail = exc.read().decode("utf-8", "replace")
             if exc.code == 401:
                 raise RuntimeError("Το GEMI_API_KEY δεν είναι έγκυρο.") from exc
-            if exc.code in {429, 500, 502, 503, 504} and attempt < 3:
-                time.sleep(2 ** attempt)
+            if exc.code in {429, 500, 502, 503, 504} and attempt < 4:
+                time.sleep(3 ** attempt)
                 continue
             raise RuntimeError(f"GEMI API HTTP {exc.code}: {detail[:300]}") from exc
     raise RuntimeError("Το GEMI API δεν απάντησε.")
@@ -467,6 +467,7 @@ def send_user_yesterday_digest(user) -> int:
     return total_count
 
 
+
 def import_companies_since_date(start_date: date = date(2026, 1, 1)) -> tuple[int, int]:
     """
     Imports all companies from GEMI API starting from start_date up to today.
@@ -479,36 +480,43 @@ def import_companies_since_date(start_date: date = date(2026, 1, 1)) -> tuple[in
     for active in (True, False):
         offset = 0
         while True:
-            payload = _get("/companies", {
-                "isActive": str(active).lower(),
-                "resultsSortBy": "-incorporationDate",
-                "resultsOffset": offset,
-                "resultsSize": PAGE_SIZE,
-            })
+            try:
+                payload = _get("/companies", {
+                    "isActive": str(active).lower(),
+                    "resultsSortBy": "-incorporationDate",
+                    "resultsOffset": offset,
+                    "resultsSize": PAGE_SIZE,
+                })
+            except Exception as exc:
+                logger.warning("Error fetching GEMI page at offset %d: %s. Sleeping before retry...", offset, exc)
+                time.sleep(5)
+                continue
+
             results = payload.get("searchResults") or []
             if not results:
                 break
 
             stop_pagination = False
-            for item in results:
-                item_date_str = str(item.get("incorporationDate") or "")[:10]
-                if item_date_str and item_date_str < start_iso:
-                    stop_pagination = True
-                    break
+            with transaction.atomic():
+                for item in results:
+                    item_date_str = str(item.get("incorporationDate") or "")[:10]
+                    if item_date_str and item_date_str < start_iso:
+                        stop_pagination = True
+                        break
 
-                defaults = company_defaults(item)
-                activities = defaults.pop("activities")
-                gemi_number = str(item.get("arGemi"))
-                company, created = Company.objects.update_or_create(
-                    gemi_number=gemi_number,
-                    defaults=defaults,
-                )
-                sync_company_activities(company, activities)
+                    defaults = company_defaults(item)
+                    activities = defaults.pop("activities")
+                    gemi_number = str(item.get("arGemi"))
+                    company, created = Company.objects.update_or_create(
+                        gemi_number=gemi_number,
+                        defaults=defaults,
+                    )
+                    sync_company_activities(company, activities)
 
-                if created:
-                    created_count += 1
-                else:
-                    updated_count += 1
+                    if created:
+                        created_count += 1
+                    else:
+                        updated_count += 1
 
             if stop_pagination:
                 break
@@ -517,6 +525,8 @@ def import_companies_since_date(start_date: date = date(2026, 1, 1)) -> tuple[in
             total = int((payload.get("searchMetadata") or {}).get("totalCount") or 0)
             if len(results) < PAGE_SIZE or (total and offset >= total):
                 break
+
+            time.sleep(0.5)
 
     run_radar_matching(date.today())
     return created_count, updated_count

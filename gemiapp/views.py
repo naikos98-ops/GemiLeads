@@ -183,6 +183,18 @@ def dashboard(request):
             "total_count": paginator.count,
         })
 
+    from django.core.cache import cache
+    prefectures = cache.get_or_set(
+        "dashboard_prefectures",
+        lambda: list(Company.objects.exclude(prefecture="").values_list("prefecture", flat=True).distinct().order_by("prefecture")),
+        3600,
+    )
+    legal_types = cache.get_or_set(
+        "dashboard_legal_types",
+        lambda: list(Company.objects.exclude(legal_type="").values_list("legal_type", flat=True).distinct().order_by("legal_type")),
+        3600,
+    )
+
     preference, _ = DigestPreference.objects.get_or_create(user=request.user)
     selected_codes = _requested_kad_codes(request)
     date_from = parse_date(request.GET.get("date_from", "").strip())
@@ -196,8 +208,8 @@ def dashboard(request):
         "result_count": paginator.count,
         "today_count": Company.objects.filter(incorporation_date=today).count(),
         "week_count": Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).count(),
-        "prefectures": Company.objects.exclude(prefecture="").values_list("prefecture", flat=True).distinct().order_by("prefecture"),
-        "legal_types": Company.objects.exclude(legal_type="").values_list("legal_type", flat=True).distinct().order_by("legal_type"),
+        "prefectures": prefectures,
+        "legal_types": legal_types,
         "preference": preference,
         "latest_run": ImportRun.objects.first(),
         "latest_delivery": DigestDelivery.objects.filter(user=request.user).first(),
