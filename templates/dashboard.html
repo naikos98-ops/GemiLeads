@@ -178,33 +178,54 @@
 
     if (!scrollContainer || !tbody) return;
 
-    scrollContainer.addEventListener('scroll', function() {
+    function loadNextBatch() {
       if (!nextPage || isLoading) return;
+      isLoading = true;
+      if (loadingRow) loadingRow.classList.remove('hidden');
+
+      const params = new URLSearchParams(window.location.search);
+      params.set('page', nextPage);
+
+      fetch(`${window.location.pathname}?${params.toString()}`, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.html) {
+          tbody.insertAdjacentHTML('beforeend', data.html);
+        }
+        nextPage = data.has_next ? data.next_page : null;
+      })
+      .catch(err => console.error("Error loading next batch:", err))
+      .finally(() => {
+        isLoading = false;
+        if (loadingRow) loadingRow.classList.add('hidden');
+      });
+    }
+
+    scrollContainer.addEventListener('scroll', function() {
       const scrollBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
-      if (scrollBottom < 200) {
-        isLoading = true;
-        if (loadingRow) loadingRow.classList.remove('hidden');
-
-        const params = new URLSearchParams(window.location.search);
-        params.set('page', nextPage);
-
-        fetch(`${window.location.pathname}?${params.toString()}`, {
-          headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-        .then(response => response.json())
-        .then(data => {
-          if (data.html) {
-            tbody.insertAdjacentHTML('beforeend', data.html);
-          }
-          nextPage = data.has_next ? data.next_page : null;
-        })
-        .catch(err => console.error("Error loading next batch:", err))
-        .finally(() => {
-          isLoading = false;
-          if (loadingRow) loadingRow.classList.add('hidden');
-        });
+      if (scrollBottom < 300) {
+        loadNextBatch();
       }
     });
+
+    window.addEventListener('scroll', function() {
+      if (!loadingRow) return;
+      const rect = loadingRow.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 400) {
+        loadNextBatch();
+      }
+    });
+
+    if ('IntersectionObserver' in window && loadingRow) {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          loadNextBatch();
+        }
+      }, { rootMargin: '300px' });
+      observer.observe(loadingRow);
+    }
   })();
 </script>
 {% endblock %}

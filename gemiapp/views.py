@@ -174,7 +174,7 @@ def dashboard(request):
     page_num = request.GET.get("page", 1)
     page_obj = paginator.get_page(page_num)
 
-    if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.GET.get("format") == "json":
+    if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.GET.get("format") == "json" or (request.GET.get("page") and str(request.GET.get("page")).isdigit() and int(request.GET.get("page")) > 1):
         html = render_to_string("includes/dashboard_rows.html", {"companies": page_obj, "request": request, "is_ajax": True})
         return JsonResponse({
             "html": html,
@@ -383,6 +383,7 @@ def company_detail(request, gemi_number):
     if lead.status == "new":
         lead.status = "viewed"
         lead.save(update_fields=["status", "updated_at"])
+
     return render(request, "companies/detail.html", {
         "lead": lead,
         "company": lead.company,

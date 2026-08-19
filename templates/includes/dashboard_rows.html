@@ -1,7 +1,7 @@
 {% for company in companies %}
 <tr class="group transition hover:bg-sand-50">
   <td class="px-6 py-5">
-    <p class="max-w-sm font-bold">{{ company.name }}</p>
+    <a href="{% url 'company_detail' company.gemi_number %}" class="max-w-sm font-bold text-navy-950 hover:text-blue-600 hover:underline block">{{ company.name }}</a>
     <p class="mt-1 text-xs text-navy-700/45">ΓΕΜΗ {{ company.gemi_number }}{% if company.vat_number %} · ΑΦΜ {{ company.vat_number }}{% endif %}</p>
   </td>
   <td class="px-5 py-5 text-sm font-medium">{{ company.incorporation_date|date:'d/m/Y' }}</td>
