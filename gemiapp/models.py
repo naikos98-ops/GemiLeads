@@ -191,9 +191,9 @@ class RadarMatch(models.Model):
 
 class DigestDelivery(models.Model):
     STATUSES = [("sent", "Εστάλη"), ("skipped", "Παραλείφθηκε"), ("failed", "Απέτυχε")]
-    FREQUENCIES = [("daily", "Καθημερινά"), ("weekly", "Εβδομαδιαία")]
+    FREQUENCIES = [("daily", "Καθημερινά"), ("weekly", "Εβδομαδιαία"), ("intraday", "3-ωρο / Real-Time"), ("manual_yesterday", "Χειροκίνητο (Χθες)")]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="digest_deliveries")
-    frequency = models.CharField(max_length=10, choices=FREQUENCIES, default="daily")
+    frequency = models.CharField(max_length=30, choices=FREQUENCIES, default="daily")
     digest_date = models.DateField(db_index=True)
     company_count = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=10, choices=STATUSES)
