@@ -208,7 +208,8 @@ class DigestDelivery(models.Model):
 RADAR_LIMITS = {
     "free": 0,
     "pro": 5,
-    "business": 25,
+    "business": 10,
+    "enterprise": 15,
 }
 
 
@@ -220,12 +221,13 @@ def get_user_radar_limit(user):
 
 
 class UserSubscription(models.Model):
-    TIERS = [("free", "Free (Legacy)"), ("pro", "Pro"), ("business", "Business")]
+    TIERS = [("free", "Free (Legacy)"), ("pro", "Pro"), ("business", "Business"), ("enterprise", "Enterprise / Real-Time"), ("custom", "Custom / Enterprise")]
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="subscription")
     tier = models.CharField(max_length=20, choices=TIERS, default="free")
     status = models.CharField(max_length=30, default="inactive")
-    complimentary_tier = models.CharField(max_length=20, choices=[("none", "None"), ("pro", "Pro"), ("business", "Business")], default="none")
+    complimentary_tier = models.CharField(max_length=20, choices=[("none", "None"), ("pro", "Pro"), ("business", "Business"), ("enterprise", "Enterprise / Real-Time"), ("custom", "Custom / Enterprise")], default="none")
     complimentary_until = models.DateTimeField(null=True, blank=True)
+    custom_radar_limit = models.IntegerField(null=True, blank=True, help_text="Custom radar limit set by Superadmin")
     stripe_customer_id = models.CharField(max_length=100, blank=True)
     stripe_subscription_id = models.CharField(max_length=100, blank=True)
     active_until = models.DateTimeField(null=True, blank=True)
@@ -239,11 +241,11 @@ class UserSubscription(models.Model):
 
     @property
     def has_active_paid_subscription(self):
-        return self.tier in ("pro", "business") and self.status in self.ALLOWED_PAID_STATUSES
+        return self.tier in ("pro", "business", "enterprise", "custom") and self.status in self.ALLOWED_PAID_STATUSES
 
     @property
     def has_valid_complimentary_access(self):
-        if self.complimentary_tier not in ("pro", "business"):
+        if self.complimentary_tier not in ("pro", "business", "enterprise", "custom"):
             return False
         if self.complimentary_until and self.complimentary_until < timezone.now():
             return False
@@ -263,11 +265,15 @@ class UserSubscription(models.Model):
 
     @property
     def radar_limit(self):
+        if self.custom_radar_limit is not None and self.custom_radar_limit > 0:
+            return self.custom_radar_limit
         eff = self.effective_tier
         if eff == "pro":
             return 5
         if eff == "business":
-            return 25
+            return 10
+        if eff in ("enterprise", "custom"):
+            return 15
         return 0
 
     def __str__(self):

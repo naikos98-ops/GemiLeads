@@ -9,6 +9,7 @@ urlpatterns = [
     path("users/<int:user_id>/", views.user_detail, name="user_detail"),
     path("users/<int:user_id>/active/", views.user_toggle_active, name="user_toggle_active"),
     path("users/<int:user_id>/complimentary/", views.user_complimentary, name="user_complimentary"),
+    path("users/<int:user_id>/send-yesterday-digest/", views.user_send_yesterday_digest, name="user_send_yesterday_digest"),
     path("subscriptions/", views.subscription_list, name="subscription_list"),
     path("radars/", views.radar_list, name="radar_list"),
     path("radars/<int:radar_id>/", views.radar_detail, name="radar_detail"),

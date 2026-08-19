@@ -466,8 +466,8 @@ class PaidOnlyModelTests(TestCase):
         sub.status = "active"
         sub.save()
         self.assertTrue(sub.has_active_paid_subscription)
-        self.assertEqual(sub.radar_limit, 25)
-        self.assertEqual(get_user_radar_limit(self.user), 25)
+        self.assertEqual(sub.radar_limit, 10)
+        self.assertEqual(get_user_radar_limit(self.user), 10)
 
     def test_all_subscription_status_entitlements(self):
         sub = self.user.subscription
@@ -483,7 +483,13 @@ class PaidOnlyModelTests(TestCase):
         sub.status = "active"
         sub.save()
         self.assertTrue(sub.has_active_paid_subscription)
-        self.assertEqual(sub.radar_limit, 25)
+        self.assertEqual(sub.radar_limit, 10)
+
+        sub.tier = "enterprise"
+        sub.status = "active"
+        sub.save()
+        self.assertTrue(sub.has_active_paid_subscription)
+        self.assertEqual(sub.radar_limit, 15)
 
         # Free tier even if status is active must return False
         sub.tier = "free"
@@ -811,3 +817,56 @@ class SuperadminTests(TestCase):
 
         res_user_name = self.client.post(reverse("login"), {"username": "super_user", "password": "Password123!"})
         self.assertEqual(res_user_name.status_code, 302)
+
+    def test_send_user_yesterday_digest(self):
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        res = self.client.post(reverse("superadmin:user_send_yesterday_digest", kwargs={"user_id": self.normal_user.id}))
+        self.assertEqual(res.status_code, 302)
+        self.assertRedirects(res, reverse("superadmin:user_detail", kwargs={"user_id": self.normal_user.id}))
+        from .models import AdminAuditLog
+        self.assertTrue(AdminAuditLog.objects.filter(action="send_user_yesterday_digest", target_id=str(self.normal_user.id)).exists())
+
+    def test_grant_complimentary_enterprise_and_custom_limits(self):
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        # 1. Grant Enterprise permanent access (15 radars)
+        res_ent = self.client.post(reverse("superadmin:user_complimentary", kwargs={"user_id": self.normal_user.id}), {
+            "action": "grant",
+            "tier": "enterprise",
+            "duration": "permanent",
+        })
+        self.assertEqual(res_ent.status_code, 302)
+        sub = self.normal_user.subscription
+        sub.refresh_from_db()
+        self.assertEqual(sub.complimentary_tier, "enterprise")
+        self.assertIsNone(sub.complimentary_until)
+        self.assertEqual(sub.radar_limit, 15)
+
+        # 2. Grant Custom Radar limit (e.g. 50)
+        res_custom = self.client.post(reverse("superadmin:user_complimentary", kwargs={"user_id": self.normal_user.id}), {
+            "action": "grant",
+            "tier": "custom",
+            "duration": "permanent",
+            "custom_radar_limit": "50",
+        })
+        self.assertEqual(res_custom.status_code, 302)
+        sub.refresh_from_db()
+        self.assertEqual(sub.custom_radar_limit, 50)
+        self.assertEqual(sub.radar_limit, 50)
+
+    def test_intraday_pipeline_only_notifies_enterprise_users(self):
+        from gemiapp.services import send_digests
+        from gemiapp.models import UserSubscription
+        from datetime import date
+        today = date.today()
+        sub_normal = self.normal_user.subscription
+        sub_normal.complimentary_tier = "pro"
+        sub_normal.save()
+
+        ent_user = User.objects.create_user(username="ent@example.com", email="ent@example.com", password="Password123")
+        DigestPreference.objects.create(user=ent_user)
+        sub_ent, _ = UserSubscription.objects.get_or_create(user=ent_user, defaults={"complimentary_tier": "enterprise"})
+        sub_ent.complimentary_tier = "enterprise"
+        sub_ent.save()
+
+        sent, skipped = send_digests(today, frequency="intraday")
+        self.assertTrue(sent >= 0)

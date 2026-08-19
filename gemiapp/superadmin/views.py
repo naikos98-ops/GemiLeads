@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.models import User
@@ -133,9 +133,19 @@ def user_complimentary(request, user_id):
 
     if action == "grant":
         tier = request.POST.get("tier", "pro")
+        duration = request.POST.get("duration", "permanent")
         until_str = request.POST.get("until", "").strip()
         until_dt = None
-        if until_str:
+
+        if duration == "1m":
+            until_dt = timezone.now() + timedelta(days=30)
+        elif duration == "3m":
+            until_dt = timezone.now() + timedelta(days=90)
+        elif duration == "6m":
+            until_dt = timezone.now() + timedelta(days=180)
+        elif duration == "1y":
+            until_dt = timezone.now() + timedelta(days=365)
+        elif duration == "custom" and until_str:
             try:
                 until_dt = timezone.make_aware(datetime.strptime(until_str, "%Y-%m-%d"))
             except ValueError:
@@ -143,11 +153,41 @@ def user_complimentary(request, user_id):
                 return redirect("superadmin:user_detail", user_id=target_user.id)
 
         grant_complimentary_access(request.user, target_user, tier, until_dt)
-        messages.success(request, f"Δόθηκε δωρεάν πρόσβαση {tier.upper()} στον χρήστη {target_user.email}.")
+
+        custom_limit_str = request.POST.get("custom_radar_limit", "").strip()
+        if custom_limit_str.isdigit() and int(custom_limit_str) > 0:
+            sub = target_user.subscription
+            sub.custom_radar_limit = int(custom_limit_str)
+            sub.save(update_fields=["custom_radar_limit"])
+
+        until_desc = "για πάντα (Μόνιμη)" if not until_dt else f"έως {until_dt:%d/%m/%Y}"
+        messages.success(request, f"Δόθηκε πρόσβαση {tier.upper()} ({until_desc}) στον χρήστη {target_user.email}.")
 
     elif action == "revoke":
         revoke_complimentary_access(request.user, target_user)
         messages.success(request, f"Αφαιρέθηκε η δωρεάν πρόσβαση από τον χρήστη {target_user.email}.")
+
+    return redirect("superadmin:user_detail", user_id=target_user.id)
+
+
+@superadmin_required
+@require_POST
+def user_send_yesterday_digest(request, user_id):
+    target_user = get_object_or_404(User, pk=user_id)
+    try:
+        from gemiapp.services import send_user_yesterday_digest
+        count = send_user_yesterday_digest(target_user)
+        log_admin_action(
+            admin_user=request.user,
+            action="send_user_yesterday_digest",
+            target_type="User",
+            target_id=target_user.id,
+            target_repr=target_user.email,
+            metadata={"company_count": count},
+        )
+        messages.success(request, f"Απεστάλησαν επιτυχώς {count} χθεσινές εγγραφές στο email {target_user.email}.")
+    except Exception as exc:
+        messages.error(request, f"Σφάλμα κατά την αποστολή email: {exc}")
 
     return redirect("superadmin:user_detail", user_id=target_user.id)
 

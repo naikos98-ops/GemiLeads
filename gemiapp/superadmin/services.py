@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 PLAN_PRICES = {
     "pro": 19,
     "business": 49,
+    "enterprise": 99,
 }
 
 
@@ -62,6 +63,7 @@ def get_saas_overview_metrics():
     subs = UserSubscription.objects.select_related("user").all()
     active_pro_count = 0
     active_business_count = 0
+    active_enterprise_count = 0
     canceled_count = 0
     past_due_count = 0
     unpaid_count = 0
@@ -76,6 +78,8 @@ def get_saas_overview_metrics():
                 active_pro_count += 1
             elif sub.tier == "business":
                 active_business_count += 1
+            elif sub.tier == "enterprise":
+                active_enterprise_count += 1
         else:
             if sub.status == "canceled":
                 canceled_count += 1
@@ -86,11 +90,11 @@ def get_saas_overview_metrics():
             else:
                 inactive_count += 1
 
-    active_paid_users = active_pro_count + active_business_count
+    active_paid_users = active_pro_count + active_business_count + active_enterprise_count
     unpaid_users = total_users - active_paid_users
 
     # Calculated Subscription MRR & ARR
-    mrr = (active_pro_count * PLAN_PRICES["pro"]) + (active_business_count * PLAN_PRICES["business"])
+    mrr = (active_pro_count * PLAN_PRICES["pro"]) + (active_business_count * PLAN_PRICES["business"]) + (active_enterprise_count * PLAN_PRICES["enterprise"])
     arr = mrr * 12
 
     # Subscriptions started & canceled this month

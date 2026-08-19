@@ -22,6 +22,18 @@
       <a href="{% url 'radar_create' %}" class="rounded-full bg-navy-950 px-6 py-3.5 text-center font-bold text-white transition hover:-translate-y-1">+ Νέο Radar</a>
       {% endif %}
     </div>
+    {% if user.subscription.effective_tier != "enterprise" and user.subscription.effective_tier != "custom" %}
+    <div class="mt-6 flex flex-col justify-between gap-4 rounded-3xl border border-blue-500/20 bg-blue-600/5 p-6 sm:flex-row sm:items-center" data-reveal>
+      <div class="flex items-center gap-4">
+        <div class="grid h-12 w-12 flex-shrink-0 place-items-center rounded-2xl bg-blue-600 text-white font-extrabold text-xl shadow-glow">⚡</div>
+        <div>
+          <h4 class="font-extrabold text-navy-950 text-base">Χρειάζεσαι περισσότερα Ραντάρ & Real-Time Alerts;</h4>
+          <p class="mt-0.5 text-xs text-navy-700/60">Αναβάθμισε στο <strong>Enterprise Real-Time πλάνο (€99/mo)</strong> για 15 Ενεργά Ραντάρ & αυτόματη ενημέρωση ανά 3 ώρες.</p>
+        </div>
+      </div>
+      <a href="{% url 'pricing' %}" class="rounded-full bg-blue-600 px-6 py-3 text-xs font-bold text-white shadow-glow transition hover:bg-blue-700 whitespace-nowrap">Αναβάθμιση Πλάνου →</a>
+    </div>
+    {% endif %}
     <div class="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
       {% for radar in radars %}
       <article class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft" data-reveal>

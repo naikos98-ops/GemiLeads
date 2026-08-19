@@ -105,9 +105,7 @@ Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 - 2026-08-18: Ολοκληρώθηκε το **Paid-Only Subscription Hardening**: Το Gemi Leads έγινε paid-only SaaS. Αυστηροποιήθηκε η `UserSubscription.has_active_paid_subscription` και προστέθηκαν πεδία/properties δωρεάν πρόσβασης. Τα tests αυξήθηκαν σε 31 και περνούν όλα.
 - 2026-08-18: Ολοκληρώθηκε το **Custom Superadmin Control Center (`/superadmin/`)**: Δημιουργήθηκε αυτόνομο, production-grade administrative interface με `gemiapp/superadmin/` package, `@superadmin_required` decorator, executive SaaS KPIs (MRR/ARR calculation), διαχείριση χρηστών, επισκόπηση συνδρομών, παγκόσμια Ραντάρ, παγκόσμια Leads, GEMI pipeline monitoring, digest delivery log, system health checks, `AdminAuditLog` και User Impersonation flow. Τα tests αυξήθηκαν από 31 σε 40 και περνούν όλα επιτυχώς.
 - 2026-08-19: Κλειδώθηκαν οι ακριβείς εκδόσεις των εξαρτήσεων στο `requirements.txt` (συμπεριλαμβανομένου `stripe==15.5.0`, `psycopg[binary]==3.3.4`, `gunicorn==26.0.0`, `whitenoise==6.12.0`, `django-q2==1.11.0`, `honcho==2.0.0`) επιλύοντας το σφάλμα `Exited with status 127` (missing start command binary) κατά το deployment στο Render.
-- 2026-08-19: Συνδέθηκε το `post_migrate` signal στο `gemiapp/apps.py` για την αυτόματη και εγγυημένη εγγραφή του ημερήσιου `django-q2` scheduler (`run_daily_pipeline_task`) στη βάση δεδομένων μετά από κάθε `migrate` στο Render.
-
-
-
+- 2026-08-19: Ολοκληρώθηκαν 3 νέες λειτουργίες: α) Κουμπί «Αποστολή Χθεσινών Εγγραφών» στην καρτέλα κάθε χρήστη στο Superadmin (`/superadmin/users/<id>/`), β) Ευέλικτη παραχώρηση δωρεάν πρόσβασης (Μόνιμη «Για πάντα» ή 1m, 3m, 6m, 1y & προσαρμοσμένη ημερομηνία) με υποστήριξη custom ορίου Ραντάρ, γ) Νέο Top Tier Enterprise/Real-Time (€99/μήνα, 15 Ενεργά Ραντάρ) & Custom Package card στην τιμολόγηση και 3-ωρο GEMI API pipeline (08:00 - 00:00) με ειδοποιήσεις email ΑΠΟΚΛΕΙΣΤΙΚΑ στους Top Tier συνδρομητές. Δημιουργήθηκαν τα migrations `0011` & `0012`, ενημερώθηκαν τα `pricing.html`, `apps.py`, `tasks.py`, `services.py` και αυξήθηκαν τα tests σε 44 (όλα περνούν επιτυχώς).
+- 2026-08-19: Προστέθηκε προστασία προβολής Email εταιρειών (ορατό αποκλειστικά σε χρήστες με ενεργή συνδρομή/entitlement στο `templates/companies/detail.html`) και προστέθηκε Upgrade CTA banner στα Ραντάρ για όλα τα πλάνα εκτός από τα `enterprise` & `custom` tiers.
 
 
