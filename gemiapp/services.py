@@ -312,21 +312,37 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
         ).select_related("company", "radar")
 
         companies_dict = {}
+        radar_company_ids = set()
         for match in matches:
             cid = match.company.id
+            radar_company_ids.add(cid)
             if cid not in companies_dict:
                 companies_dict[cid] = {"company": match.company, "radars": []}
             if match.radar.name not in companies_dict[cid]["radars"]:
                 companies_dict[cid]["radars"].append(match.radar.name)
 
         company_data = list(companies_dict.values())
-        if not company_data:
+        company_data.sort(key=lambda x: (-x["company"].incorporation_date.toordinal() if x["company"].incorporation_date else 0, x["company"].name))
+
+        # Fetch general companies (all incorporated on target date or unsent today's companies for intraday)
+        general_companies = []
+        if frequency == "intraday":
+            today = timezone.localdate()
+            last_id = getattr(user.subscription, "last_sent_company_id", 0) if hasattr(user, "subscription") else 0
+            gen_qs = Company.objects.filter(incorporation_date=today, id__gt=last_id).exclude(id__in=radar_company_ids).order_by("id")
+            general_companies = list(gen_qs)
+        else:
+            gen_qs = Company.objects.filter(incorporation_date=target_date).exclude(id__in=radar_company_ids).order_by("-id")
+            general_companies = list(gen_qs[:100])
+
+        if not company_data and not general_companies:
             has_radars = CustomerRadar.objects.filter(user=user, is_active=True, frequency=frequency, deleted_at__isnull=True).exists()
             if not (preference.include_empty_digest and has_radars):
                 DigestDelivery.objects.update_or_create(user=user, digest_date=target_date, frequency=frequency, defaults={"status": "skipped", "company_count": 0, "error_message": ""})
                 skipped += 1
                 continue
 
+        total_companies_count = len(company_data) + len(general_companies)
         try:
             from django.core.signing import TimestampSigner
             from django.urls import reverse
@@ -334,17 +350,26 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
             token = signer.sign(user.id)
             unsubscribe_url = f"{settings.BASE_URL}{reverse('unsubscribe', kwargs={'token': token})}"
             
-            context = {"user": user, "company_data": company_data, "digest_date": target_date, "start_date": start_date, "end_date": end_date, "frequency": frequency, "unsubscribe_url": unsubscribe_url}
+            context = {
+                "user": user,
+                "company_data": company_data,
+                "general_companies": general_companies,
+                "digest_date": target_date,
+                "start_date": start_date,
+                "end_date": end_date,
+                "frequency": frequency,
+                "unsubscribe_url": unsubscribe_url,
+            }
             if frequency == "weekly":
-                subject = f"Gemi Leads · {len(company_data)} νέες επιχειρήσεις · {start_date:%d/%m/%Y} - {end_date:%d/%m/%Y}"
+                subject = f"Gemi Leads · {total_companies_count} νέες επιχειρήσεις · {start_date:%d/%m/%Y} - {end_date:%d/%m/%Y}"
                 txt_tmpl = "emails/weekly_digest.txt"
                 html_tmpl = "emails/weekly_digest.html"
             elif frequency == "intraday":
-                subject = f"Gemi Leads Real-Time Alert · {len(company_data)} νέες επιχειρήσεις"
+                subject = f"Gemi Leads Real-Time Alert · {total_companies_count} νέες επιχειρήσεις"
                 txt_tmpl = "emails/daily_digest.txt"
                 html_tmpl = "emails/daily_digest.html"
             else:
-                subject = f"Gemi Leads · {len(company_data)} νέες επιχειρήσεις · {target_date:%d/%m/%Y}"
+                subject = f"Gemi Leads · {total_companies_count} νέες επιχειρήσεις · {target_date:%d/%m/%Y}"
                 txt_tmpl = "emails/daily_digest.txt"
                 html_tmpl = "emails/daily_digest.html"
 
@@ -352,16 +377,24 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
             body_html = render_to_string(html_tmpl, context)
             send_mail(subject, body_text, settings.DEFAULT_FROM_EMAIL, [user.email], html_message=body_html)
 
+            if frequency == "intraday" and hasattr(user, "subscription"):
+                all_sent_ids = [c.id for c in general_companies] + list(radar_company_ids)
+                if all_sent_ids:
+                    max_sent_id = max(all_sent_ids)
+                    if max_sent_id > user.subscription.last_sent_company_id:
+                        user.subscription.last_sent_company_id = max_sent_id
+                        user.subscription.save(update_fields=["last_sent_company_id"])
+
             DigestDelivery.objects.update_or_create(
                 user=user, digest_date=target_date, frequency=frequency,
-                defaults={"status": "sent", "company_count": len(company_data), "error_message": ""}
+                defaults={"status": "sent", "company_count": total_companies_count, "error_message": ""}
             )
             sent += 1
         except Exception as exc:
             logger.exception("Failed sending digest to %s", user.email)
             DigestDelivery.objects.update_or_create(
                 user=user, digest_date=target_date, frequency=frequency,
-                defaults={"status": "failed", "company_count": len(company_data), "error_message": str(exc)}
+                defaults={"status": "failed", "company_count": total_companies_count, "error_message": str(exc)}
             )
             skipped += 1
     return sent, skipped
@@ -388,30 +421,36 @@ def send_user_yesterday_digest(user) -> int:
     ).select_related("company", "radar")
 
     companies_dict = {}
+    radar_company_ids = set()
     for match in matches:
         cid = match.company.id
+        radar_company_ids.add(cid)
         if cid not in companies_dict:
             companies_dict[cid] = {"company": match.company, "radars": []}
         if match.radar.name not in companies_dict[cid]["radars"]:
             companies_dict[cid]["radars"].append(match.radar.name)
 
     company_data = list(companies_dict.values())
-    company_data.sort(key=lambda x: (-x["company"].incorporation_date.toordinal(), x["company"].name))
+    company_data.sort(key=lambda x: (-x["company"].incorporation_date.toordinal() if x["company"].incorporation_date else 0, x["company"].name))
+
+    general_companies = list(Company.objects.filter(incorporation_date=yesterday).exclude(id__in=radar_company_ids).order_by("-id")[:100])
 
     signer = TimestampSigner()
     token = signer.sign(user.id)
     unsubscribe_url = f"{settings.BASE_URL}{reverse('unsubscribe', kwargs={'token': token})}"
 
+    total_count = len(company_data) + len(general_companies)
     context = {
         "user": user,
         "company_data": company_data,
+        "general_companies": general_companies,
         "digest_date": yesterday,
         "start_date": yesterday,
         "end_date": yesterday,
         "frequency": "daily",
         "unsubscribe_url": unsubscribe_url,
     }
-    subject = f"Gemi Leads · Χθεσινές Εγγραφές ({yesterday:%d/%m/%Y}) · {len(company_data)} επιχειρήσεις"
+    subject = f"Gemi Leads · Χθεσινές Εγγραφές ({yesterday:%d/%m/%Y}) · {total_count} επιχειρήσεις"
     body_text = render_to_string("emails/daily_digest.txt", context)
     body_html = render_to_string("emails/daily_digest.html", context)
 
@@ -422,7 +461,7 @@ def send_user_yesterday_digest(user) -> int:
         digest_date=yesterday,
         frequency="manual_yesterday",
         status="sent",
-        company_count=len(company_data),
+        company_count=total_count,
         error_message="",
     )
-    return len(company_data)
+    return total_count

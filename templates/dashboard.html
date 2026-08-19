@@ -152,29 +152,12 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-navy-900/5">
-            {% for company in companies %}
-            <tr class="group transition hover:bg-sand-50">
-              <td class="px-6 py-5">
-                <p class="max-w-sm font-bold">{{ company.name }}</p>
-                <p class="mt-1 text-xs text-navy-700/45">ΓΕΜΗ {{ company.gemi_number }}{% if company.vat_number %} · ΑΦΜ {{ company.vat_number }}{% endif %}</p>
-              </td>
-              <td class="px-5 py-5 text-sm font-medium">{{ company.incorporation_date|date:'d/m/Y' }}</td>
-              <td class="px-5 py-5 text-sm text-navy-700/60">{{ company.legal_type|default:'—' }}</td>
-              <td class="px-5 py-5 text-sm text-navy-700/60">{{ company.city|default:company.prefecture|default:'—' }}</td>
-              <td class="px-5 py-5">
-                <span class="rounded-full px-3 py-1 text-xs font-bold {% if company.is_active %}bg-emerald-50 text-emerald-700{% else %}bg-red-50 text-red-700{% endif %}">{{ company.status|default:'Ενεργή' }}</span>
-              </td>
-              <td class="px-5 py-5">
-                <a href="{{ company.source_url }}" target="_blank" rel="noopener" class="grid h-9 w-9 place-items-center rounded-full border border-navy-900/10 transition group-hover:bg-navy-950 group-hover:text-white">↗</a>
-              </td>
-            </tr>
-            {% empty %}
-            <tr>
-              <td colspan="6" class="px-6 py-16 text-center text-navy-700/45">Δεν βρέθηκαν επιχειρήσεις με αυτά τα φίλτρα.</td>
-            </tr>
-            {% endfor %}
+            {% include 'includes/dashboard_rows.html' %}
           </tbody>
         </table>
+        <div id="loading-row" class="hidden p-4 text-center text-xs font-bold text-blue-600">
+          ⚡ Φόρτωση επόμενων 20 εγγραφών...
+        </div>
       </div>
     </div>
 
@@ -183,5 +166,45 @@
 {% endblock %}
 
 {% block scripts %}
-<script>window.renderSignalChart?.()</script>
+<script>
+  window.renderSignalChart?.();
+
+  (function() {
+    const scrollContainer = document.querySelector('[data-company-scroll]');
+    const tbody = scrollContainer?.querySelector('tbody');
+    const loadingRow = document.getElementById('loading-row');
+    let nextPage = {% if has_next_page %}2{% else %}null{% endif %};
+    let isLoading = false;
+
+    if (!scrollContainer || !tbody) return;
+
+    scrollContainer.addEventListener('scroll', function() {
+      if (!nextPage || isLoading) return;
+      const scrollBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+      if (scrollBottom < 200) {
+        isLoading = true;
+        if (loadingRow) loadingRow.classList.remove('hidden');
+
+        const params = new URLSearchParams(window.location.search);
+        params.set('page', nextPage);
+
+        fetch(`${window.location.pathname}?${params.toString()}`, {
+          headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.html) {
+            tbody.insertAdjacentHTML('beforeend', data.html);
+          }
+          nextPage = data.has_next ? data.next_page : null;
+        })
+        .catch(err => console.error("Error loading next batch:", err))
+        .finally(() => {
+          isLoading = false;
+          if (loadingRow) loadingRow.classList.add('hidden');
+        });
+      }
+    });
+  })();
+</script>
 {% endblock %}

@@ -228,6 +228,7 @@ class UserSubscription(models.Model):
     complimentary_tier = models.CharField(max_length=20, choices=[("none", "None"), ("pro", "Pro"), ("business", "Business"), ("enterprise", "Enterprise / Real-Time"), ("custom", "Custom / Enterprise")], default="none")
     complimentary_until = models.DateTimeField(null=True, blank=True)
     custom_radar_limit = models.IntegerField(null=True, blank=True, help_text="Custom radar limit set by Superadmin")
+    last_sent_company_id = models.IntegerField(default=0, help_text="ID of last sent intraday GEMI company")
     stripe_customer_id = models.CharField(max_length=100, blank=True)
     stripe_subscription_id = models.CharField(max_length=100, blank=True)
     active_until = models.DateTimeField(null=True, blank=True)

@@ -13,6 +13,7 @@ from django.contrib.auth.views import LoginView
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
+from django.core.paginator import Paginator
 from django.core.signing import TimestampSigner, BadSignature
 from django.conf import settings
 from django.template.loader import render_to_string
@@ -169,6 +170,19 @@ def _filtered_companies(request):
 def dashboard(request):
     today = timezone.localdate()
     companies = _filtered_companies(request)
+    paginator = Paginator(companies, 20)
+    page_num = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_num)
+
+    if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.GET.get("format") == "json":
+        html = render_to_string("includes/dashboard_rows.html", {"companies": page_obj, "request": request, "is_ajax": True})
+        return JsonResponse({
+            "html": html,
+            "has_next": page_obj.has_next(),
+            "next_page": page_obj.next_page_number() if page_obj.has_next() else None,
+            "total_count": paginator.count,
+        })
+
     preference, _ = DigestPreference.objects.get_or_create(user=request.user)
     selected_codes = _requested_kad_codes(request)
     date_from = parse_date(request.GET.get("date_from", "").strip())
@@ -176,8 +190,10 @@ def dashboard(request):
     user_leads = UserCompanyLead.objects.filter(user=request.user)
     has_paid = hasattr(request.user, "subscription") and request.user.subscription.has_entitlement
     context = {
-        "companies": companies,
-        "result_count": companies.count(),
+        "companies": page_obj,
+        "page_obj": page_obj,
+        "has_next_page": page_obj.has_next(),
+        "result_count": paginator.count,
         "today_count": Company.objects.filter(incorporation_date=today).count(),
         "week_count": Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).count(),
         "prefectures": Company.objects.exclude(prefecture="").values_list("prefecture", flat=True).distinct().order_by("prefecture"),
