@@ -299,27 +299,37 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
     preferences = DigestPreference.objects.select_related("user", "user__subscription").exclude(frequency="off").filter(user__is_active=True)
     for preference in preferences:
         user = preference.user
-        existing = DigestDelivery.objects.filter(user=user, digest_date=target_date, frequency=frequency).first()
-        if not user.email or (existing and existing.status in {"sent", "skipped"}):
-            skipped += 1
-            continue
 
-        if not (hasattr(user, "subscription") and user.subscription.has_entitlement):
-            DigestDelivery.objects.update_or_create(
-                user=user, digest_date=target_date, frequency=frequency,
-                defaults={"status": "skipped", "company_count": 0, "error_message": "No active subscription entitlement"}
-            )
-            skipped += 1
-            continue
+        # Intraday alerts are exclusive to Top Tier subscribers (Enterprise / Custom)
+        if frequency == "intraday":
+            if not (hasattr(user, "subscription") and user.subscription.has_entitlement and user.subscription.effective_tier in ("enterprise", "custom")):
+                skipped += 1
+                continue
+        else:
+            existing = DigestDelivery.objects.filter(user=user, digest_date=target_date, frequency=frequency).first()
+            if not user.email or (existing and existing.status in {"sent", "skipped"}):
+                skipped += 1
+                continue
 
-        matches = RadarMatch.objects.filter(
-            radar__user=user,
-            radar__frequency=frequency,
-            radar__is_active=True,
-            radar__deleted_at__isnull=True,
-            matched_on__gte=start_date,
-            matched_on__lte=end_date
-        ).select_related("company", "radar")
+            if not (hasattr(user, "subscription") and user.subscription.has_entitlement):
+                DigestDelivery.objects.update_or_create(
+                    user=user, digest_date=target_date, frequency=frequency,
+                    defaults={"status": "skipped", "company_count": 0, "error_message": "No active subscription entitlement"}
+                )
+                skipped += 1
+                continue
+
+        radar_filter = {
+            "radar__user": user,
+            "radar__is_active": True,
+            "radar__deleted_at__isnull": True,
+            "matched_on__gte": start_date,
+            "matched_on__lte": end_date,
+        }
+        if frequency != "intraday":
+            radar_filter["radar__frequency"] = frequency
+
+        matches = RadarMatch.objects.filter(**radar_filter).select_related("company", "radar")
 
         companies_dict = {}
         radar_company_ids = set()
@@ -346,6 +356,9 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
             general_companies = list(gen_qs[:100])
 
         if not company_data and not general_companies:
+            if frequency == "intraday":
+                skipped += 1
+                continue
             has_radars = CustomerRadar.objects.filter(user=user, is_active=True, frequency=frequency, deleted_at__isnull=True).exists()
             if not (preference.include_empty_digest and has_radars):
                 DigestDelivery.objects.update_or_create(user=user, digest_date=target_date, frequency=frequency, defaults={"status": "skipped", "company_count": 0, "error_message": ""})
@@ -391,20 +404,20 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
                 all_sent_ids = [c.id for c in general_companies] + list(radar_company_ids)
                 if all_sent_ids:
                     max_sent_id = max(all_sent_ids)
-                    if max_sent_id > user.subscription.last_sent_company_id:
+                    if max_sent_id > (user.subscription.last_sent_company_id or 0):
                         user.subscription.last_sent_company_id = max_sent_id
                         user.subscription.save(update_fields=["last_sent_company_id"])
 
-            DigestDelivery.objects.update_or_create(
+            DigestDelivery.objects.create(
                 user=user, digest_date=target_date, frequency=frequency,
-                defaults={"status": "sent", "company_count": total_companies_count, "error_message": ""}
+                status="sent", company_count=total_companies_count, error_message=""
             )
             sent += 1
         except Exception as exc:
             logger.exception("Failed sending digest to %s", user.email)
-            DigestDelivery.objects.update_or_create(
+            DigestDelivery.objects.create(
                 user=user, digest_date=target_date, frequency=frequency,
-                defaults={"status": "failed", "company_count": total_companies_count, "error_message": str(exc)}
+                status="failed", company_count=total_companies_count, error_message=str(exc)
             )
             skipped += 1
     return sent, skipped
