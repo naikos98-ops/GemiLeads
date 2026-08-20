@@ -1,42 +1,76 @@
-{% extends 'base.html' %}{% block title %}Ρυθμίσεις · Gemi Leads{% endblock %}{% block content %}
-<section class="min-h-[80vh] px-5 py-16"><div class="mx-auto max-w-3xl">
-  <!-- Subscription Section -->
-  <div data-reveal class="mb-10">
-    <p class="text-sm font-bold uppercase tracking-[.2em] text-blue-600">ΛΟΓΑΡΙΑΣΜΟΣ</p>
-    <h1 class="mt-2 text-4xl font-extrabold">Το πλάνο σου.</h1>
-    <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
-      <div>
-        <h3 class="text-lg font-bold text-navy-950">
-          {% if user.subscription.has_active_paid_subscription %}
-            {% if user.subscription.tier == "pro" %}Pro Πλάνο
-            {% elif user.subscription.tier == "business" %}Business Πλάνο
+{% extends 'base.html' %}
+{% block title %}Ρυθμίσεις · Gemi Leads{% endblock %}
+{% block content %}
+<section class="min-h-[80vh] px-5 py-16">
+  <div class="mx-auto max-w-3xl">
+    <!-- Subscription Section -->
+    <div data-reveal class="mb-10">
+      <p class="text-sm font-bold uppercase tracking-[.2em] text-blue-600">ΛΟΓΑΡΙΑΣΜΟΣ</p>
+      <h1 class="mt-2 text-4xl font-extrabold">Το πλάνο σου.</h1>
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+        <div>
+          <h3 class="text-lg font-bold text-navy-950">
+            {% if user.subscription.has_valid_complimentary_access %}
+              🎁 Δωρεάν Πρόσβαση {{ user.subscription.get_complimentary_tier_display|default:user.subscription.complimentary_tier|upper }}
+            {% elif user.subscription.has_active_paid_subscription %}
+              {{ user.subscription.get_tier_display }} Πλάνο
+            {% else %}
+              Χωρίς Ενεργή Συνδρομή
             {% endif %}
-          {% else %}
-            Χωρίς Ενεργή Συνδρομή
-          {% endif %}
-        </h3>
-        <p class="text-sm text-navy-700/60 mt-1">
-          {% if user.subscription.has_active_paid_subscription %}
-            {% if user.subscription.tier == "pro" %}Έχεις όριο έως 5 Ραντάρ Πελατών.
-            {% elif user.subscription.tier == "business" %}Έχεις όριο έως 25 Ραντάρ Πελατών.
+          </h3>
+          <p class="text-sm text-navy-700/60 mt-1">
+            {% if user.subscription.has_valid_complimentary_access %}
+              Έχεις ενεργή δωρεάν πρόσβαση Admin με όριο έως <strong>{{ user.subscription.radar_limit }} Ραντάρ</strong> (Διάρκεια: <strong>{% if user.subscription.complimentary_until %}Έως {{ user.subscription.complimentary_until|date:"d/m/Y H:i" }}{% else %}Μόνιμη / Για πάντα{% endif %}</strong>).
+            {% elif user.subscription.has_active_paid_subscription %}
+              Έχεις ενεργή συνδρομή με όριο έως <strong>{{ user.subscription.radar_limit }} Ραντάρ Πελατών</strong>.
+            {% else %}
+              Έχεις όριο 0 Ραντάρ Πελατών. Επίλεξε συνδρομητικό πλάνο για να ενεργοποιήσεις την εφαρμογή.
             {% endif %}
+          </p>
+        </div>
+        <div class="flex-shrink-0">
+          {% if user.subscription.has_valid_complimentary_access %}
+            <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-purple-100 border border-purple-300 px-5 py-2.5 text-xs font-bold text-purple-900 transition hover:bg-purple-200">
+              ✨ Ενεργή Δωρεάν Πρόσβαση
+            </a>
+          {% elif user.subscription.has_active_paid_subscription %}
+            <form action="{% url 'customer_portal' %}" method="post" class="inline">
+              {% csrf_token %}
+              <button class="rounded-xl border border-navy-900/10 px-6 py-3 text-sm font-bold text-navy-950 transition hover:bg-sand-50">Διαχείριση Συνδρομής</button>
+            </form>
           {% else %}
-            Έχεις όριο 0 Ραντάρ Πελατών. Επίλεξε συνδρομητικό πλάνο για να ενεργοποιήσεις την εφαρμογή.
+            <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">Επιλογή Πλάνου</a>
           {% endif %}
-        </p>
-      </div>
-      <div>
-        {% if not user.subscription.has_active_paid_subscription %}
-          <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">Επιλογή Πλάνου</a>
-        {% else %}
-          <form action="{% url 'customer_portal' %}" method="post" class="inline">
-            {% csrf_token %}
-            <button class="rounded-xl border border-navy-900/10 px-6 py-3 text-sm font-bold text-navy-950 transition hover:bg-sand-50">Διαχείριση</button>
-          </form>
-        {% endif %}
+        </div>
       </div>
     </div>
-  </div>
 
-  <div data-reveal><p class="text-sm font-bold uppercase tracking-[.2em] text-blue-600">Προτιμήσεις</p><h1 class="mt-2 text-4xl font-extrabold">Το digest στα μέτρα σου.</h1><p class="mt-3 text-navy-700/55">Έλεγξε πότε λαμβάνεις ενημέρωση στο {{ user.email }}. Η στόχευση ΚΑΔ και περιοχών διαχειρίζεται πλέον από τα Radars.</p></div><div class="mt-8 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900" data-reveal><b>Ψάχνεις φίλτρα εταιρειών;</b> <a href="{% url 'radar_list' %}" class="font-bold underline">Άνοιξε τα Ραντάρ Πελατών</a> για να δημιουργήσεις μία ή περισσότερες στοχευμένες αναζητήσεις.</div><form method="post" class="mt-5 space-y-7 rounded-[2rem] border border-navy-900/10 bg-white p-8 shadow-soft" data-reveal>{% csrf_token %}<div><label class="mb-2 block text-sm font-bold">{{ form.frequency.label }}</label>{{ form.frequency }}</div><label class="flex cursor-pointer items-center justify-between gap-5 rounded-2xl bg-sand-50 p-5"><span><b class="block">{{ form.include_empty_digest.label }}</b><span class="text-sm text-navy-700/50">Μικρό μήνυμα επιβεβαίωσης όταν η ημέρα δεν έχει αποτελέσματα.</span></span>{{ form.include_empty_digest }}</label><button class="rounded-full bg-navy-950 px-7 py-3.5 font-bold text-white transition hover:-translate-y-1">Αποθήκευση αλλαγών</button></form></div></section>
+    <!-- Digest Preferences -->
+    <div data-reveal>
+      <p class="text-sm font-bold uppercase tracking-[.2em] text-blue-600">Προτιμήσεις</p>
+      <h1 class="mt-2 text-4xl font-extrabold">Το digest στα μέτρα σου.</h1>
+      <p class="mt-3 text-navy-700/55">Έλεγξε πότε λαμβάνεις ενημέρωση στο {{ user.email }}. Η στόχευση ΚΑΔ και περιοχών διαχειρίζεται πλέον από τα Radars.</p>
+    </div>
+
+    <div class="mt-8 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900" data-reveal>
+      <b>Ψάχνεις φίλτρα εταιρειών;</b> <a href="{% url 'radar_list' %}" class="font-bold underline">Άνοιξε τα Ραντάρ Πελατών</a> για να δημιουργήσεις μία ή περισσότερες στοχευμένες αναζητήσεις.
+    </div>
+
+    <form method="post" class="mt-5 space-y-7 rounded-[2rem] border border-navy-900/10 bg-white p-8 shadow-soft" data-reveal>
+      {% csrf_token %}
+      <div>
+        <label class="mb-2 block text-sm font-bold">{{ form.frequency.label }}</label>
+        {{ form.frequency }}
+      </div>
+      <label class="flex cursor-pointer items-center justify-between gap-5 rounded-2xl bg-sand-50 p-5">
+        <span>
+          <b class="block">{{ form.include_empty_digest.label }}</b>
+          <span class="text-sm text-navy-700/50">Μικρό μήνυμα επιβεβαίωσης όταν η ημέρα δεν έχει αποτελέσματα.</span>
+        </span>
+        {{ form.include_empty_digest }}
+      </label>
+      <button class="rounded-full bg-navy-950 px-7 py-3.5 font-bold text-white transition hover:-translate-y-1">Αποθήκευση αλλαγών</button>
+    </form>
+  </div>
+</section>
 {% endblock %}
