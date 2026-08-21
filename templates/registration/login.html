@@ -20,6 +20,7 @@
         <div class="mb-2 flex items-center justify-between">
           <label class="block text-sm font-bold">Κωδικός πρόσβασης</label>
           <a href="{% url 'password_reset' %}" class="text-xs font-bold text-blue-600 hover:underline">Ξέχασες τον κωδικό;</a>
+      <a href="{% url 'resend_verification' %}" class="block text-center text-xs font-bold text-navy-700/50 hover:text-blue-700 hover:underline">Δεν επιβεβαίωσες το email σου; Στείλε ξανά τον σύνδεσμο</a>
         </div>
         <div class="relative">
           <input id="login-password" name="password" type="password" required class="w-full rounded-2xl border border-navy-900/10 bg-sand-50 pl-4 pr-12 py-3 outline-none focus:border-blue-500">

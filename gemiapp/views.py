@@ -98,21 +98,50 @@ def signup(request):
     form = SignupForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         user = form.save()
-        
-        domain = request.get_host()
-        protocol = "https" if request.is_secure() else "http"
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        token = default_token_generator.make_token(user)
-        verify_url = f"{protocol}://{domain}{reverse('verify_email', kwargs={'uidb64': uid, 'token': token})}"
-        
-        subject = "Επιβεβαίωση email στο Gemi Leads"
-        message = render_to_string("emails/verification.txt", {"verify_url": verify_url, "user": user})
-        html_message = render_to_string("emails/verification.html", {"verify_url": verify_url, "user": user})
-        
-        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email], html_message=html_message)
-        
+        send_verification_email(request, user)
         return render(request, "registration/verify_pending.html", {"email": user.email})
     return render(request, "registration/signup.html", {"form": form})
+
+
+def send_verification_email(request, user):
+    """Build and send the account verification link for ``user``."""
+    domain = request.get_host()
+    protocol = "https" if request.is_secure() else "http"
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    verify_url = f"{protocol}://{domain}{reverse('verify_email', kwargs={'uidb64': uid, 'token': token})}"
+
+    context = {"verify_url": verify_url, "user": user}
+    send_mail(
+        "Επιβεβαίωση email στο Gemi Leads",
+        render_to_string("emails/verification.txt", context),
+        settings.DEFAULT_FROM_EMAIL,
+        [user.email],
+        html_message=render_to_string("emails/verification.html", context),
+    )
+
+
+@ratelimit(key="ip", rate="5/h", block=True)
+def resend_verification(request):
+    """Self-service escape hatch for an account stuck unverified.
+
+    Without this the user is in a dead end: signing up again is refused because the email exists,
+    Django's password reset silently ignores inactive users, and the login error says nothing about
+    verification. Always renders the same confirmation so the page cannot be used to discover which
+    email addresses have accounts.
+    """
+    if request.user.is_authenticated:
+        return redirect("dashboard")
+
+    if request.method == "POST":
+        email = (request.POST.get("email") or "").strip()
+        if email:
+            user = User.objects.filter(email__iexact=email, is_active=False).first()
+            if user is not None:
+                send_verification_email(request, user)
+        return render(request, "registration/verify_pending.html", {"email": email, "resent": True})
+
+    return render(request, "registration/resend_verification.html")
 
 def verify_email(request, uidb64, token):
     try:

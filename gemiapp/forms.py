@@ -25,7 +25,15 @@ class SignupForm(UserCreationForm):
 
     def clean_email(self):
         email = self.cleaned_data["email"].lower()
-        if User.objects.filter(email__iexact=email).exists():
+        existing = User.objects.filter(email__iexact=email).first()
+        if existing is not None:
+            if not existing.is_active:
+                # Otherwise this is a dead end: the account exists but was never verified, and
+                # password reset ignores inactive users.
+                raise forms.ValidationError(
+                    "Υπάρχει ήδη λογαριασμός με αυτό το email που δεν έχει επιβεβαιωθεί. "
+                    "Ζήτησε νέο σύνδεσμο επιβεβαίωσης από τη σελίδα «Επαναποστολή επιβεβαίωσης»."
+                )
             raise forms.ValidationError("Υπάρχει ήδη λογαριασμός με αυτό το email.")
         return email
 

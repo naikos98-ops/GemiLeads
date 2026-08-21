@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
 from django.contrib.auth.models import User
@@ -1698,3 +1699,137 @@ class ExportBoundsTests(TestCase):
         sub.save()
         response = self.client.get(reverse("export_csv"))
         self.assertRedirects(response, reverse("pricing"))
+
+
+@override_settings(RATELIMIT_ENABLE=False)
+class UnverifiedAccountRecoveryTests(TestCase):
+    """An account stuck unverified used to have no way back in.
+
+    Signing up again was refused because the email exists, Django's password reset silently ignores
+    inactive users, and the login error said nothing about verification.
+    """
+
+    def _signup(self, email="stuck@example.com"):
+        return self.client.post(reverse("signup"), {
+            "first_name": "Δοκιμή", "email": email,
+            "password1": "StrongPass123!", "password2": "StrongPass123!",
+        })
+
+    def _verify_link(self, message):
+        match = re.search(r"/verify/[^\s\"'<]+", message.body)
+        self.assertIsNotNone(match, "no verification link in the email")
+        return match.group(0)
+
+    def test_password_reset_still_ignores_inactive_accounts(self):
+        """Pins the Django behaviour that makes the resend flow necessary."""
+        self._signup()
+        mail.outbox.clear()
+        self.client.post(reverse("password_reset"), {"email": "stuck@example.com"})
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_resend_gives_a_working_verification_link(self):
+        self._signup()
+        user = User.objects.get(email="stuck@example.com")
+        self.assertFalse(user.is_active)
+
+        mail.outbox.clear()
+        response = self.client.post(reverse("resend_verification"), {"email": "stuck@example.com"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+
+        self.client.get(self._verify_link(mail.outbox[0]))
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+
+    def test_resend_does_not_reveal_whether_an_account_exists(self):
+        mail.outbox.clear()
+        unknown = self.client.post(reverse("resend_verification"), {"email": "nobody@example.com"})
+        self.assertEqual(unknown.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0)
+
+        self._signup()
+        mail.outbox.clear()
+        known = self.client.post(reverse("resend_verification"), {"email": "stuck@example.com"})
+
+        # Same status and same wording; only the echoed address differs.
+        self.assertEqual(known.status_code, unknown.status_code)
+        self.assertEqual(
+            known.content.decode().replace("stuck@example.com", "X"),
+            unknown.content.decode().replace("nobody@example.com", "X"),
+        )
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_resend_does_nothing_for_an_already_verified_account(self):
+        self._signup()
+        user = User.objects.get(email="stuck@example.com")
+        user.is_active = True
+        user.save()
+
+        mail.outbox.clear()
+        self.client.post(reverse("resend_verification"), {"email": "stuck@example.com"})
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_signup_error_points_an_unverified_user_at_the_resend_page(self):
+        self._signup()
+        response = self._signup()
+        errors = response.context["form"].errors.as_text()
+        self.assertIn("δεν έχει επιβεβαιωθεί", errors)
+
+    def test_signup_error_for_a_verified_account_stays_generic(self):
+        self._signup()
+        User.objects.filter(email="stuck@example.com").update(is_active=True)
+        response = self._signup()
+        errors = response.context["form"].errors.as_text()
+        self.assertIn("Υπάρχει ήδη λογαριασμός", errors)
+        self.assertNotIn("δεν έχει επιβεβαιωθεί", errors)
+
+    def test_login_page_offers_the_escape_hatch(self):
+        response = self.client.get(reverse("login"))
+        self.assertContains(response, reverse("resend_verification"))
+
+    def test_verification_link_is_single_use(self):
+        self._signup()
+        user = User.objects.get(email="stuck@example.com")
+        link = self._verify_link(mail.outbox[0])
+
+        self.assertEqual(self.client.get(link).status_code, 302)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+
+        # Logging in sets last_login, which is part of the token hash, so the link dies.
+        self.client.logout()
+        replay = self.client.get(link)
+        self.assertRedirects(replay, reverse("login"), fetch_redirect_response=False)
+
+    def test_resend_command_supports_targeting_and_dry_run(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        self._signup("a@example.com")
+        self._signup("b@example.com")
+        mail.outbox.clear()
+
+        out = StringIO()
+        call_command("resend_verification_emails", "--dry-run", stdout=out)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertIn("dry-run", out.getvalue())
+
+        call_command("resend_verification_emails", "--email", "a@example.com", stdout=StringIO())
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["a@example.com"])
+
+
+class ResendVerificationRateLimitTests(TestCase):
+    """The resend endpoint sends mail to an address the caller supplies, so it must stay limited."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
+    def test_repeated_requests_are_blocked(self):
+        url = reverse("resend_verification")
+        statuses = [
+            self.client.post(url, {"email": f"x{i}@example.com"}).status_code for i in range(7)
+        ]
+        self.assertIn(403, statuses, f"rate limit never triggered: {statuses}")

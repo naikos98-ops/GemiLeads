@@ -13,6 +13,7 @@
     <a href="{% url 'login' %}" class="mt-8 inline-block rounded-full bg-blue-600 px-8 py-3.5 font-bold text-white transition hover:bg-blue-700">
       Επιστροφή στη σύνδεση
     </a>
+    <p class="mt-6 text-xs text-navy-700/45">Δεν έλαβες το email; <a href="{% url 'resend_verification' %}" class="font-bold text-blue-700 hover:underline">Στείλε ξανά τον σύνδεσμο</a></p>
   </div>
 </section>
 {% endblock %}

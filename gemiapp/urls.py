@@ -23,6 +23,7 @@ urlpatterns = [
     path("api/kads/", views.kad_search, name="kad_search"),
     path("export/", views.export_csv, name="export_csv"),
     path("verify/<uidb64>/<token>/", views.verify_email, name="verify_email"),
+    path("resend-verification/", views.resend_verification, name="resend_verification"),
     path("unsubscribe/<token>/", views.unsubscribe, name="unsubscribe"),
     # Billing / Stripe
     path("pricing/", billing.pricing, name="pricing"),
