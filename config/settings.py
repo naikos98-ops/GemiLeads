@@ -133,8 +133,10 @@ Q_CLUSTER = {
     "name": "gemi_leads_cluster",
     "workers": 2,
     "recycle": 100,
-    "timeout": 300,
-    "retry": 360,
+    # retry must stay comfortably above timeout, otherwise a slow task is re-queued while it is
+    # still running and the queue grows without bound.
+    "timeout": 1800,
+    "retry": 2400,
     "compress": True,
     "save_limit": 50,
     "queue_limit": 50,

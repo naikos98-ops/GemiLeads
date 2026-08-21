@@ -1150,3 +1150,87 @@ class ScheduleRegistrationTests(TestCase):
         self.assertEqual(Schedule.objects.count(), 2)
         # An existing row keeps its next_run; only creation seeds it.
         self.assertEqual(stale.next_run, kept_next_run)
+
+
+class DuplicateScheduleRepairTests(TestCase):
+    """Reproduces the production state found on 2026-08-21.
+
+    Two rows existed for run_daily_pipeline_task with no name and schedule_type DAILY, and no
+    intraday row at all. update_or_create(func=...) raised MultipleObjectsReturned, which the
+    blanket except swallowed, so registration never completed: the daily pipeline ran twice
+    concurrently every night and the intraday schedule was never created.
+    """
+
+    def setUp(self):
+        from django_q.models import Schedule
+
+        Schedule.objects.all().delete()
+        for _ in range(2):
+            Schedule.objects.create(
+                func="gemiapp.tasks.run_daily_pipeline_task",
+                schedule_type=Schedule.DAILY,
+                repeats=-1,
+            )
+
+    def test_duplicates_are_removed_and_both_schedules_end_up_registered(self):
+        from django_q.models import Schedule
+        from gemiapp.apps import setup_daily_pipeline_schedule
+
+        setup_daily_pipeline_schedule(None)
+
+        self.assertEqual(
+            Schedule.objects.filter(func="gemiapp.tasks.run_daily_pipeline_task").count(), 1
+        )
+        intraday = Schedule.objects.get(func="gemiapp.tasks.run_intraday_pipeline_task")
+        self.assertEqual(intraday.cron, "0 8,11,14,17,20,23 * * *")
+
+        daily = Schedule.objects.get(func="gemiapp.tasks.run_daily_pipeline_task")
+        self.assertEqual(daily.schedule_type, Schedule.CRON)
+        self.assertEqual(daily.cron, "0 9 * * *")
+        self.assertEqual(daily.name, "Daily GEMI Import & Digest")
+
+    def test_repair_is_idempotent(self):
+        from django_q.models import Schedule
+        from gemiapp.apps import setup_daily_pipeline_schedule
+
+        setup_daily_pipeline_schedule(None)
+        setup_daily_pipeline_schedule(None)
+        self.assertEqual(Schedule.objects.count(), 2)
+
+
+class PipelineOverlapGuardTests(TestCase):
+    """A second pipeline for the same date must not start while the first is still running."""
+
+    def test_running_import_blocks_a_second_daily_pipeline(self):
+        from gemiapp.tasks import _pipeline_is_already_running, run_daily_pipeline_task
+
+        target = date.today() - timedelta(days=1)
+        ImportRun.objects.create(target_date=target, status="running")
+        self.assertTrue(_pipeline_is_already_running(target))
+
+        with patch("gemiapp.tasks.import_for_date") as imported:
+            run_daily_pipeline_task()
+        imported.assert_not_called()
+
+    def test_a_finished_run_does_not_block(self):
+        from gemiapp.tasks import _pipeline_is_already_running
+
+        target = date.today() - timedelta(days=1)
+        ImportRun.objects.create(target_date=target, status="success")
+        self.assertFalse(_pipeline_is_already_running(target))
+
+    def test_a_run_older_than_the_task_timeout_does_not_block_forever(self):
+        from django.conf import settings
+        from gemiapp.tasks import _pipeline_is_already_running
+
+        target = date.today() - timedelta(days=1)
+        run = ImportRun.objects.create(target_date=target, status="running")
+        stale = timezone.now() - timedelta(seconds=settings.Q_CLUSTER["timeout"] + 60)
+        ImportRun.objects.filter(pk=run.pk).update(started_at=stale)
+        self.assertFalse(_pipeline_is_already_running(target))
+
+    def test_retry_stays_above_timeout(self):
+        """Otherwise django-q re-presents a slow task while it is still running."""
+        from django.conf import settings
+
+        self.assertGreater(settings.Q_CLUSTER["retry"], settings.Q_CLUSTER["timeout"])

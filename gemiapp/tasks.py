@@ -4,9 +4,30 @@ from gemiapp.services import import_for_date, send_digests
 
 logger = logging.getLogger(__name__)
 
+
+def _pipeline_is_already_running(target_date):
+    """True when an unfinished ImportRun for the same date is still in flight.
+
+    Two concurrent pipelines contend for the same rows inside get_or_create and both stall, which
+    is how a duplicated schedule row made every nightly run hit the task timeout.
+    """
+    from django.conf import settings
+    from django.utils import timezone
+    from gemiapp.models import ImportRun
+
+    # A run older than the task timeout must have been killed, so it no longer blocks anything.
+    cutoff = timezone.now() - timedelta(seconds=settings.Q_CLUSTER.get("timeout", 1800))
+    return ImportRun.objects.filter(
+        target_date=target_date, status="running", started_at__gte=cutoff
+    ).exists()
+
+
 def run_daily_pipeline_task():
     try:
         target = date.today() - timedelta(days=1)
+        if _pipeline_is_already_running(target):
+            logger.warning("Skipping daily pipeline: a run for %s is still in progress", target)
+            return
         run = import_for_date(target)
         logger.info(f"Import: {run.created_count} νέες, {run.updated_count} ενημερωμένες")
         
@@ -34,6 +55,9 @@ def run_intraday_pipeline_task():
 
     try:
         today = date.today()
+        if _pipeline_is_already_running(today):
+            logger.warning("Skipping intraday pipeline: a run for %s is still in progress", today)
+            return
         run = import_for_date(today)
         logger.info(f"Intraday Import: {run.created_count} νέες, {run.updated_count} ενημερωμένες")
         sent, skipped = send_digests(today, frequency="intraday")

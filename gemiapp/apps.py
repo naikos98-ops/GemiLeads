@@ -28,24 +28,37 @@ def setup_daily_pipeline_schedule(sender, **kwargs):
     """
     Registers the daily & intraday GEMI pipeline tasks in the django-q Schedule table after
     migrations complete, and keeps an existing row in sync when the definition above changes.
+
+    Duplicate rows for the same func are removed first. A duplicate makes update_or_create raise
+    MultipleObjectsReturned, which previously aborted the whole registration: production ended up
+    running the daily pipeline twice concurrently while the intraday schedule was never created.
     """
     try:
         from django_q.models import Schedule
 
         for entry in SCHEDULES:
+            duplicates = list(
+                Schedule.objects.filter(func=entry["func"]).order_by("id").values_list("id", flat=True)
+            )
+            if len(duplicates) > 1:
+                Schedule.objects.filter(id__in=duplicates[1:]).delete()
+                logger.warning(
+                    "Removed %s duplicate schedule row(s) for %s", len(duplicates) - 1, entry["func"]
+                )
+
             defaults = {
                 "name": entry["name"],
                 "schedule_type": Schedule.CRON,
                 "cron": entry["cron"],
                 "repeats": -1,
             }
-            schedule = Schedule(schedule_type=Schedule.CRON, cron=entry["cron"])
+            unsaved = Schedule(schedule_type=Schedule.CRON, cron=entry["cron"])
             Schedule.objects.update_or_create(
                 func=entry["func"],
                 defaults=defaults,
                 # Only on creation: start at the next real cron slot rather than firing
                 # immediately, so a deploy never triggers an unexpected send.
-                create_defaults={**defaults, "next_run": schedule.calculate_next_run()},
+                create_defaults={**defaults, "next_run": unsaved.calculate_next_run()},
             )
     except Exception:
         logger.exception("Could not register the GEMI pipeline schedules")
