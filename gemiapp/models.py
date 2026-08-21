@@ -24,6 +24,7 @@ class Company(models.Model):
     gemi_number = models.CharField("Αριθμός ΓΕΜΗ", max_length=24, unique=True, db_index=True)
     vat_number = models.CharField("ΑΦΜ", max_length=12, blank=True, db_index=True)
     name = models.CharField("Επωνυμία", max_length=500, db_index=True)
+    search_name = models.CharField(max_length=500, blank=True, editable=False, db_index=True)
     trade_names = models.TextField("Διακριτικοί τίτλοι", blank=True)
     legal_type = models.CharField("Νομική μορφή", max_length=200, blank=True, db_index=True)
     status = models.CharField("Κατάσταση", max_length=120, blank=True)
@@ -45,6 +46,17 @@ class Company(models.Model):
     class Meta:
         ordering = ["-incorporation_date", "-gemi_number"]
         verbose_name_plural = "Επιχειρήσεις"
+
+    def save(self, *args, **kwargs):
+        from .kad import normalize_kad_search
+
+        search_name = normalize_kad_search(self.name)
+        if search_name != self.search_name:
+            self.search_name = search_name
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "search_name" not in update_fields:
+                kwargs["update_fields"] = list(update_fields) + ["search_name"]
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -205,12 +217,48 @@ class DigestDelivery(models.Model):
         ordering = ["-sent_at"]
 
 
+# Single source of truth for how many radars each tier may keep active.
+# Keep in sync with templates/pricing.html and README.md.
 RADAR_LIMITS = {
     "free": 0,
     "pro": 5,
     "business": 10,
     "enterprise": 15,
+    "custom": 15,
 }
+
+
+PAID_TIERS = ("pro", "business", "enterprise", "custom")
+
+
+def paid_subscription_q(prefix="subscription__"):
+    """Database equivalent of ``UserSubscription.has_active_paid_subscription``."""
+    return models.Q(**{f"{prefix}tier__in": PAID_TIERS, f"{prefix}status__in": UserSubscription.ALLOWED_PAID_STATUSES})
+
+
+def complimentary_q(prefix="subscription__", now=None):
+    """Database equivalent of ``UserSubscription.has_valid_complimentary_access``."""
+    now = now or timezone.now()
+    return models.Q(**{f"{prefix}complimentary_tier__in": PAID_TIERS}) & (
+        models.Q(**{f"{prefix}complimentary_until__isnull": True})
+        | models.Q(**{f"{prefix}complimentary_until__gte": now})
+    )
+
+
+def entitlement_q(prefix="subscription__", now=None):
+    """Database equivalent of ``UserSubscription.has_entitlement``."""
+    return paid_subscription_q(prefix) | complimentary_q(prefix, now)
+
+
+def effective_tier_q(tier, prefix="subscription__", now=None):
+    """Database equivalent of ``UserSubscription.effective_tier == tier``."""
+    paid = paid_subscription_q(prefix)
+    complimentary = complimentary_q(prefix, now)
+    if tier == "free":
+        return ~paid & ~complimentary
+    return (paid & models.Q(**{f"{prefix}tier": tier})) | (
+        ~paid & complimentary & models.Q(**{f"{prefix}complimentary_tier": tier})
+    )
 
 
 def get_user_radar_limit(user):
@@ -268,14 +316,7 @@ class UserSubscription(models.Model):
     def radar_limit(self):
         if self.custom_radar_limit is not None and self.custom_radar_limit > 0:
             return self.custom_radar_limit
-        eff = self.effective_tier
-        if eff == "pro":
-            return 5
-        if eff == "business":
-            return 10
-        if eff in ("enterprise", "custom"):
-            return 15
-        return 0
+        return RADAR_LIMITS.get(self.effective_tier, 0)
 
     def __str__(self):
         return f"{self.user.username} - {self.get_tier_display()} ({self.status})"

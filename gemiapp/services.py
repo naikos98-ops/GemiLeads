@@ -178,13 +178,9 @@ def filter_companies_for_radar(
     if activity_codes:
         queryset = queryset.filter(activity_records__code__in=activity_codes).distinct()
     if name_query:
-        normalized_query = normalize_kad_search(name_query)
-        matching_ids = [
-            company_id
-            for company_id, company_name in queryset.values_list("id", "name")
-            if normalized_query in normalize_kad_search(company_name)
-        ]
-        queryset = queryset.filter(pk__in=matching_ids)
+        # Matched against the denormalized, indexed accent-stripped name so the whole company
+        # table never has to be pulled into Python just to answer a radar preview.
+        queryset = queryset.filter(search_name__contains=normalize_kad_search(name_query))
     return queryset
 
 
@@ -213,28 +209,32 @@ def company_matches_radar(company: Company, radar: CustomerRadar) -> tuple[bool,
     return True, reason
 
 
-@transaction.atomic
-def match_imported_companies(import_run: ImportRun) -> MatchSummary:
-    if import_run.status != "success":
-        raise ValueError("Matching μπορεί να εκτελεστεί μόνο μετά από επιτυχημένο import.")
-
-    companies = list(
-        Company.objects.filter(incorporation_date=import_run.target_date).prefetch_related("activity_records")
-    )
-    all_radars = list(
+def eligible_radars():
+    """Active, non-muted radars whose owner currently has a paid or complimentary entitlement."""
+    radars = (
         CustomerRadar.objects.filter(is_active=True, deleted_at__isnull=True)
         .exclude(frequency="off")
         .select_related("user", "user__subscription")
         .prefetch_related("activity_codes")
     )
-    radars = [
-        radar for radar in all_radars
+    return [
+        radar for radar in radars
         if hasattr(radar.user, "subscription") and radar.user.subscription.has_entitlement
     ]
+
+
+def _match_date(target_date: date, radars, import_run: ImportRun | None) -> tuple[int, int, int, int]:
+    """Match every company incorporated on ``target_date`` against ``radars``.
+
+    Returns (companies_checked, new_leads, new_matches, duplicate_matches).
+    """
+    companies = list(
+        Company.objects.filter(incorporation_date=target_date).prefetch_related("activity_records")
+    )
     new_leads = new_matches = duplicate_matches = 0
 
     for radar in radars:
-        if import_run.target_date < timezone.localdate(radar.monitor_from):
+        if target_date < timezone.localdate(radar.monitor_from):
             continue
         for company in companies:
             matched, reason = company_matches_radar(company, radar)
@@ -248,7 +248,7 @@ def match_imported_companies(import_run: ImportRun) -> MatchSummary:
                 defaults={
                     "lead": lead,
                     "import_run": import_run,
-                    "matched_on": import_run.target_date,
+                    "matched_on": target_date,
                     "matched_activity_codes": reason["activity_codes"],
                     "match_reason": reason,
                 },
@@ -256,9 +256,52 @@ def match_imported_companies(import_run: ImportRun) -> MatchSummary:
             new_matches += int(match_created)
             duplicate_matches += int(not match_created)
 
+    return len(companies), new_leads, new_matches, duplicate_matches
+
+
+@transaction.atomic
+def match_imported_companies(import_run: ImportRun) -> MatchSummary:
+    if import_run.status != "success":
+        raise ValueError("Matching μπορεί να εκτελεστεί μόνο μετά από επιτυχημένο import.")
+
+    radars = eligible_radars()
+    companies_checked, new_leads, new_matches, duplicate_matches = _match_date(
+        import_run.target_date, radars, import_run
+    )
+
     return MatchSummary(
         radars_checked=len(radars),
-        companies_checked=len(companies),
+        companies_checked=companies_checked,
+        new_leads=new_leads,
+        new_matches=new_matches,
+        duplicate_matches=duplicate_matches,
+    )
+
+
+def match_companies_in_range(start_date: date, end_date: date) -> MatchSummary:
+    """Run radar matching for every incorporation date in ``[start_date, end_date]``.
+
+    Used after a bulk historical import. Each ``RadarMatch`` is stamped with the company's own
+    incorporation date, so a backfill never makes months of historical leads look like today's
+    matches (which would blast them into the next digest).
+    """
+    from datetime import timedelta
+
+    radars = eligible_radars()
+    companies_checked = new_leads = new_matches = duplicate_matches = 0
+
+    current = start_date
+    while current <= end_date:
+        checked, leads, matches, duplicates = _match_date(current, radars, None)
+        companies_checked += checked
+        new_leads += leads
+        new_matches += matches
+        duplicate_matches += duplicates
+        current += timedelta(days=1)
+
+    return MatchSummary(
+        radars_checked=len(radars),
+        companies_checked=companies_checked,
         new_leads=new_leads,
         new_matches=new_matches,
         duplicate_matches=duplicate_matches,
@@ -408,16 +451,16 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
                         user.subscription.last_sent_company_id = max_sent_id
                         user.subscription.save(update_fields=["last_sent_company_id"])
 
-            DigestDelivery.objects.create(
+            DigestDelivery.objects.update_or_create(
                 user=user, digest_date=target_date, frequency=frequency,
-                status="sent", company_count=total_companies_count, error_message=""
+                defaults={"status": "sent", "company_count": total_companies_count, "error_message": ""},
             )
             sent += 1
         except Exception as exc:
             logger.exception("Failed sending digest to %s", user.email)
-            DigestDelivery.objects.create(
+            DigestDelivery.objects.update_or_create(
                 user=user, digest_date=target_date, frequency=frequency,
-                status="failed", company_count=total_companies_count, error_message=str(exc)
+                defaults={"status": "failed", "company_count": total_companies_count, "error_message": str(exc)},
             )
             skipped += 1
     return sent, skipped
@@ -479,13 +522,11 @@ def send_user_yesterday_digest(user) -> int:
 
     send_mail(subject, body_text, settings.DEFAULT_FROM_EMAIL, [user.email], html_message=body_html)
 
-    DigestDelivery.objects.create(
+    DigestDelivery.objects.update_or_create(
         user=user,
         digest_date=yesterday,
         frequency="manual_yesterday",
-        status="sent",
-        company_count=total_count,
-        error_message="",
+        defaults={"status": "sent", "company_count": total_count, "error_message": ""},
     )
     return total_count
 
@@ -551,5 +592,5 @@ def import_companies_since_date(start_date: date = date(2026, 1, 1)) -> tuple[in
 
             time.sleep(0.5)
 
-    run_radar_matching(date.today())
+    match_companies_in_range(start_date, date.today())
     return created_count, updated_count

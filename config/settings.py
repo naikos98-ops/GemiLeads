@@ -22,6 +22,28 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if h.strip()]
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
 
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get(
+        "DJANGO_CSRF_TRUSTED_ORIGINS",
+        ",".join(f"https://{host}" for host in ALLOWED_HOSTS if host not in ("127.0.0.1", "localhost")),
+    ).split(",")
+    if origin.strip()
+]
+
+# Serving over HTTPS is assumed in production; everything here is a no-op while DEBUG is on.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "1") == "1"
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", 60 * 60 * 24 * 365))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SESSION_COOKIE_HTTPONLY = True
+    X_FRAME_OPTIONS = "DENY"
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -102,6 +124,7 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO")
 STRIPE_PRICE_BUSINESS = os.getenv("STRIPE_PRICE_BUSINESS")
+STRIPE_PRICE_ENTERPRISE = os.getenv("STRIPE_PRICE_ENTERPRISE")
 
 GEMI_API_KEY = os.environ.get("GEMI_API_KEY", "")
 GEMI_API_BASE = "https://opendata-api.businessportal.gr/api/opendata/v1"

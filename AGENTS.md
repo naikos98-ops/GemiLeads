@@ -59,9 +59,12 @@ Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 - Το dashboard υποστηρίζει επιλογή χρονικού διαστήματος «Από–Έως» με συμπεριληπτικά όρια· το ίδιο εύρος εφαρμόζεται και στο CSV export.
 - Η Φάση 1 — Core Radars έχει ολοκληρωθεί.
 - Η Φάση 2 — Lead Inbox έχει ολοκληρωθεί.
-- Το Gemi Leads είναι πλέον **paid-only product**. Τα paid tiers είναι αποκλειστικά Pro (€19/μήνα, έως 5 ενεργά Ραντάρ) και Business (€49/μήνα, έως 25 ενεργά Ραντάρ).
+- Το Gemi Leads είναι πλέον **paid-only product**. Paid tiers: Pro (€19/μήνα, 5 Ραντάρ), Business (€49/μήνα, 10 Ραντάρ), Enterprise/Real-Time (€99/μήνα, 15 Ραντάρ) και Custom (κατόπιν συμφωνίας, 15 Ραντάρ). Τα όρια ορίζονται **αποκλειστικά** στο `RADAR_LIMITS` (`gemiapp/models.py`) και μπορούν να παρακαμφθούν ανά λογαριασμό με `custom_radar_limit`.
 - Ολοκληρώθηκε το **Custom Superadmin Control Center** στο `/superadmin/`: Dedicated responsive layout, Executive SaaS KPI Metrics & Charts (MRR/ARR calculation), Users Management (deactivate/reactivate, complimentary Pro/Business grant), Subscriptions Overview, Global Radars (Effective Matching Status breakdown), Global Leads & Snapshots (με προστασία απομόνωσης ιδιωτικών σημειώσεων), GEMI Pipeline Operations & Manual Run trigger, Digest Deliveries Log & Retry, Non-destructive System Health monitoring, Audit Log (`AdminAuditLog`), και User Impersonation με καθολικό top banner & ασφαλή επαναφορά identity.
-- Υπάρχουν 40 tests και περνούν όλα επιτυχώς. Το `manage.py check`, το `makemigrations --check` και το `git diff --check` είναι καθαρά.
+- Υπάρχουν 55 tests και περνούν όλα επιτυχώς. Το `manage.py check`, το `manage.py check --deploy` (με `DJANGO_DEBUG=0`), το `makemigrations --check` και το `git diff --check` είναι καθαρά.
+- Το `Company.search_name` είναι denormalized, indexed πεδίο (accent-stripped, uppercase) που ενημερώνεται αυτόματα στο `save()`. Όλες οι αναζητήσεις επωνυμίας των Radars γίνονται πάνω σε αυτό, στη βάση.
+- Τα δικαιώματα συνδρομής εκφράζονται και ως database predicates (`paid_subscription_q`, `complimentary_q`, `entitlement_q`, `effective_tier_q` στο `gemiapp/models.py`), ώστε τα φίλτρα του Superadmin να μη φορτώνουν όλους τους χρήστες στη μνήμη. Υπάρχει test που επαληθεύει την ισοδυναμία τους με τα Python properties σε 375 συνδυασμούς.
+- Σε production (`DJANGO_DEBUG=0`) ενεργοποιούνται αυτόματα HTTPS redirect, HSTS, secure/HttpOnly cookies, `X_FRAME_OPTIONS=DENY` και `SECURE_PROXY_SSL_HEADER`. Τα `CSRF_TRUSTED_ORIGINS` παράγονται από το `DJANGO_ALLOWED_HOSTS`.
 
 ## Σημαντικές αποφάσεις
 
@@ -81,8 +84,13 @@ Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 
 *(Όλα τα βήματα παραγωγής, Stripe integration, Email & Domain, Landing Page, Paid Subscription Logic και Superadmin Control Center έχουν ολοκληρωθεί).*
 
+- Να οριστεί το `STRIPE_PRICE_ENTERPRISE` στο Render environment. Ο κώδικας το υποστηρίζει πλέον πλήρως, αλλά χωρίς αυτό το κουμπί «Επιλογή Enterprise» επιστρέφει τον χρήστη στο pricing. Το System Health το επισημαίνει ως Warning.
+- Να επιβεβαιωθεί ότι το `DEFAULT_FROM_EMAIL` στο Render δείχνει στο πιστοποιημένο `notifications@send.gemileads.gr`.
+- Ο φάκελος `node_modules/` υπάρχει ακόμη τοπικά αλλά δεν παρακολουθείται πλέον από το Git· μπορεί να διαγραφεί με ασφάλεια.
+
 ## Ιστορικό εργασιών
 
+- 2026-08-21: **Audit & fixes**. (α) Το `send_digests` έγραφε `DigestDelivery.objects.create()` πάνω σε unique constraint `(user, digest_date, frequency)`: από τη 2η intraday αποστολή κάθε ημέρας πετούσε `IntegrityError`, και το `except` έσκαγε με δεύτερο `IntegrityError` που τερμάτιζε όλο το intraday pipeline — έγινε `update_or_create` (και στο `send_user_yesterday_digest`). (β) Το `import_companies_since_date` τελείωνε καλώντας ανύπαρκτη `run_radar_matching()` (`NameError`)· το matching ξαναγράφτηκε σε `eligible_radars` / `_match_date` / `match_companies_in_range`, με τα ιστορικά `RadarMatch` να κρατούν την ημερομηνία σύστασης ώστε ένα backfill να μη γεμίζει το επόμενο digest. (γ) Το κουμπί «Επιλογή Enterprise» έστελνε `tier=enterprise` που δεν αναγνωριζόταν από το `create_checkout_session` — προστέθηκε `STRIPE_PRICE_ENTERPRISE` και αμφίδρομο mapping price↔tier. (δ) Τα `redirect(url, code=303)` ήταν στην πραγματικότητα 302 (το `redirect()` αγνοεί το `code`) — προστέθηκε `HttpResponseSeeOther`. (ε) Production hardening στο `settings.py` + `render.yaml` (`DJANGO_DEBUG=0`, Stripe/Sentry env vars, σωστό sender domain): το `check --deploy` είναι πλέον καθαρό. (στ) Νέο indexed `Company.search_name` — η αναζήτηση επωνυμίας στα Radars δεν φορτώνει πια όλες τις εταιρείες στην Python (migration `0015` με backfill 17.789 εγγραφών). (ζ) Τα φίλτρα/metrics του Superadmin έγιναν database queries αντί για Python λίστες. (η) Το `RADAR_LIMITS` έγινε single source of truth. (θ) Ξεκόλλησαν 703 αρχεία `node_modules/` από το Git. Τα tests αυξήθηκαν από 44 σε 55.
 - 2026-08-07: Clone, δημιουργία `.venv`, migrations, demo seed, tests και τοπικός server.
 - 2026-08-07: Προστέθηκε φόρτωση `.env` και πραγματικό GEMI API key.
 - 2026-08-07: Εισαγωγή πραγματικών δεδομένων 01/08–07/08 (1.183 εγγραφές εκείνη τη στιγμή) και αφαίρεση demo εταιρειών.

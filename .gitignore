@@ -35,3 +35,8 @@ Thumbs.db
 *.log
 *.tmp
 ~$*
+
+# Node (vestigial, unused by this Django project)
+node_modules/
+package.json
+package-lock.json

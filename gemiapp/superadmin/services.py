@@ -16,6 +16,9 @@ from ..models import (
     RadarMatch,
     UserCompanyLead,
     UserSubscription,
+    complimentary_q,
+    entitlement_q,
+    paid_subscription_q,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,6 +28,8 @@ PLAN_PRICES = {
     "pro": 19,
     "business": 49,
     "enterprise": 99,
+    # Custom deals are priced per contract, so they are counted but contribute 0 to automatic MRR.
+    "custom": 0,
 }
 
 
@@ -59,42 +64,32 @@ def get_saas_overview_metrics():
     verified_users = users_qs.filter(is_active=True).count()
     unverified_users = total_users - verified_users
 
-    # Subscription Metrics & MRR Calculation
-    subs = UserSubscription.objects.select_related("user").all()
-    active_pro_count = 0
-    active_business_count = 0
-    active_enterprise_count = 0
-    canceled_count = 0
-    past_due_count = 0
-    unpaid_count = 0
-    inactive_count = 0
-    complimentary_count = 0
+    # Subscription Metrics & MRR Calculation — aggregated in the database, not in Python.
+    subs = UserSubscription.objects.all()
+    paid = paid_subscription_q(prefix="")
+    unpaid_subs = subs.exclude(paid)
 
-    for sub in subs:
-        if sub.has_valid_complimentary_access:
-            complimentary_count += 1
-        if sub.has_active_paid_subscription:
-            if sub.tier == "pro":
-                active_pro_count += 1
-            elif sub.tier == "business":
-                active_business_count += 1
-            elif sub.tier == "enterprise":
-                active_enterprise_count += 1
-        else:
-            if sub.status == "canceled":
-                canceled_count += 1
-            elif sub.status == "past_due":
-                past_due_count += 1
-            elif sub.status == "unpaid":
-                unpaid_count += 1
-            else:
-                inactive_count += 1
+    active_pro_count = subs.filter(paid, tier="pro").count()
+    active_business_count = subs.filter(paid, tier="business").count()
+    active_enterprise_count = subs.filter(paid, tier="enterprise").count()
+    active_custom_count = subs.filter(paid, tier="custom").count()
+    complimentary_count = subs.filter(complimentary_q(prefix="")).count()
 
-    active_paid_users = active_pro_count + active_business_count + active_enterprise_count
+    canceled_count = unpaid_subs.filter(status="canceled").count()
+    past_due_count = unpaid_subs.filter(status="past_due").count()
+    unpaid_count = unpaid_subs.filter(status="unpaid").count()
+    inactive_count = unpaid_subs.exclude(status__in=("canceled", "past_due", "unpaid")).count()
+
+    active_paid_users = active_pro_count + active_business_count + active_enterprise_count + active_custom_count
     unpaid_users = total_users - active_paid_users
 
     # Calculated Subscription MRR & ARR
-    mrr = (active_pro_count * PLAN_PRICES["pro"]) + (active_business_count * PLAN_PRICES["business"]) + (active_enterprise_count * PLAN_PRICES["enterprise"])
+    mrr = (
+        active_pro_count * PLAN_PRICES["pro"]
+        + active_business_count * PLAN_PRICES["business"]
+        + active_enterprise_count * PLAN_PRICES["enterprise"]
+        + active_custom_count * PLAN_PRICES["custom"]
+    )
     arr = mrr * 12
 
     # Subscriptions started & canceled this month
@@ -106,10 +101,11 @@ def get_saas_overview_metrics():
     active_radars = CustomerRadar.objects.filter(is_active=True, deleted_at__isnull=True).count()
     
     # Active eligible radars (radars whose owner has active entitlement)
-    eligible_radars_count = sum(
-        1 for r in CustomerRadar.objects.filter(is_active=True, deleted_at__isnull=True).select_related("user__subscription")
-        if r.user.subscription.has_entitlement
-    )
+    eligible_radars_count = CustomerRadar.objects.filter(
+        entitlement_q(prefix="user__subscription__"),
+        is_active=True,
+        deleted_at__isnull=True,
+    ).count()
 
     total_leads = UserCompanyLead.objects.count()
     leads_today = UserCompanyLead.objects.filter(first_seen_at__date=today).count()
@@ -145,6 +141,8 @@ def get_saas_overview_metrics():
         "unpaid_users": unpaid_users,
         "active_pro_count": active_pro_count,
         "active_business_count": active_business_count,
+        "active_enterprise_count": active_enterprise_count,
+        "active_custom_count": active_custom_count,
         "canceled_count": canceled_count,
         "past_due_count": past_due_count,
         "unpaid_count": unpaid_count,
@@ -320,12 +318,16 @@ def get_system_health():
     stripe_key = getattr(settings, "STRIPE_SECRET_KEY", "")
     price_pro = getattr(settings, "STRIPE_PRICE_PRO", "")
     price_biz = getattr(settings, "STRIPE_PRICE_BUSINESS", "")
+    price_ent = getattr(settings, "STRIPE_PRICE_ENTERPRISE", "")
     webhook_sec = getattr(settings, "STRIPE_WEBHOOK_SECRET", "")
     if stripe_key and price_pro and price_biz:
         details = "Stripe API & Price IDs configured."
+        healthy = bool(webhook_sec) and bool(price_ent)
         if not webhook_sec:
             details += " (Webhook secret missing)"
-        checks["stripe"] = {"name": "Stripe Payments", "status": "Operational" if webhook_sec else "Warning", "details": details}
+        if not price_ent:
+            details += " (Enterprise price id missing — το Enterprise checkout δεν λειτουργεί)"
+        checks["stripe"] = {"name": "Stripe Payments", "status": "Operational" if healthy else "Warning", "details": details}
     else:
         checks["stripe"] = {"name": "Stripe Payments", "status": "Warning", "details": "Stripe keys or price IDs missing."}
 

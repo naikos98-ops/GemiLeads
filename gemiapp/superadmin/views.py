@@ -29,7 +29,11 @@ from ..models import (
     RadarMatch,
     UserCompanyLead,
     UserSubscription,
+    complimentary_q,
+    effective_tier_q,
+    entitlement_q,
     get_user_radar_limit,
+    paid_subscription_q,
 )
 from ..services import import_for_date, send_digests
 
@@ -52,9 +56,10 @@ def overview(request):
 
 @superadmin_required
 def user_list(request):
+    # distinct=True: two Counts over different multi-valued relations otherwise inflate each other.
     qs = User.objects.select_related("subscription").annotate(
-        radar_count=Count("customer_radars", filter=Q(customer_radars__deleted_at__isnull=True)),
-        lead_count=Count("company_leads"),
+        radar_count=Count("customer_radars", filter=Q(customer_radars__deleted_at__isnull=True), distinct=True),
+        lead_count=Count("company_leads", distinct=True),
     ).order_by("-date_joined")
 
     # Search
@@ -62,24 +67,25 @@ def user_list(request):
     if search:
         qs = qs.filter(Q(email__icontains=search) | Q(username__icontains=search) | Q(first_name__icontains=search) | Q(last_name__icontains=search))
 
-    # Filters
+    # Filters — expressed as database predicates so pagination never loads every user.
     paid_status = request.GET.get("paid", "").strip()
     if paid_status == "paid":
-        qs = [u for u in qs if u.subscription.has_active_paid_subscription]
+        qs = qs.filter(paid_subscription_q())
     elif paid_status == "unpaid":
-        qs = [u for u in qs if not u.subscription.has_active_paid_subscription]
+        qs = qs.exclude(paid_subscription_q())
     elif paid_status == "complimentary":
-        qs = [u for u in qs if u.subscription.has_valid_complimentary_access]
+        qs = qs.filter(complimentary_q())
 
     tier = request.GET.get("tier", "").strip()
-    if tier in ["pro", "business", "free"]:
-        qs = [u for u in qs if u.subscription.effective_tier == tier] if isinstance(qs, list) else qs.filter(subscription__tier=tier)
+    if tier in ("free", "pro", "business", "enterprise", "custom"):
+        qs = qs.filter(effective_tier_q(tier))
 
     active_filter = request.GET.get("active", "").strip()
     if active_filter == "1":
-        qs = [u for u in qs if u.is_active] if isinstance(qs, list) else qs.filter(is_active=True)
+        qs = qs.filter(is_active=True)
     elif active_filter == "0":
-        qs = [u for u in qs if not u.is_active] if isinstance(qs, list) else qs.filter(is_active=False)
+        qs = qs.filter(is_active=False)
+
 
     # Server-side Paginator
     paginator = Paginator(qs, 20)
@@ -210,9 +216,9 @@ def subscription_list(request):
 
     entitlement = request.GET.get("entitlement", "").strip()
     if entitlement == "yes":
-        subs = [s for s in subs if s.has_entitlement]
+        subs = subs.filter(entitlement_q(prefix=""))
     elif entitlement == "no":
-        subs = [s for s in subs if not s.has_entitlement]
+        subs = subs.exclude(entitlement_q(prefix=""))
 
     paginator = Paginator(subs, 20)
     page_obj = paginator.get_page(request.GET.get("page"))

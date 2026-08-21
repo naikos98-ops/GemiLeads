@@ -9,7 +9,7 @@
 * **Database:** PostgreSQL (Production via `dj-database-url`), SQLite (Development)
 * **Frontend:** Django Templates with Tailwind CSS (via local classes or CDN), Vanilla JS (`app.js`)
 * **Email Delivery:** Brevo (SMTP)
-* **Payments:** Stripe (Checkout, Customer Portal, Webhooks)
+* **Payments:** Stripe (Checkout, Customer Portal, Webhooks) — price ids for Pro, Business and Enterprise
 * **Background Jobs:** `django-q2` (Database-backed queue and scheduler)
 * **Error Tracking:** Sentry
 * **Deployment:** Render (Docker container, Gunicorn, Whitenoise for static files)
@@ -28,7 +28,7 @@ The system operates on a daily pipeline (`python manage.py run_daily_pipeline`):
 * `CustomerRadar`: A user's saved search criteria (NACE codes, location, etc.).
 * `UserCompanyLead`: The actual "lead" object assigned to a user. Tracks lifecycle statuses (`new`, `viewed`, `contacted`, `converted`, `rejected`), user notes, and favorites.
 * `RadarMatch`: The junction tracking exactly *why* a company matched a specific radar.
-* `UserSubscription`: Tracks a user's Stripe subscription status and limits their active radars (Free: 1, Pro: 5, Business: 25).
+* `UserSubscription`: Tracks a user's Stripe subscription status and limits their active radars. Limits live in `RADAR_LIMITS` in `gemiapp/models.py` (Free: 0, Pro: 5, Business: 10, Enterprise/Custom: 15) and may be overridden per account via `custom_radar_limit`.
 
 ## 5. Key Integrations & Configurations
 * **Authentication:** Built-in Django Auth with enforced email verification (`is_active=False` on signup). Users confirm via tokenized email links. Rate limiting (`django-ratelimit`) protects login/signup endpoints.

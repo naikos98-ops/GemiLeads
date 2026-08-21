@@ -870,3 +870,203 @@ class SuperadminTests(TestCase):
 
         sent, skipped = send_digests(today, frequency="intraday")
         self.assertTrue(sent >= 0)
+
+
+class RegressionTests(TestCase):
+    """Covers the defects found during the 2026-08-21 audit."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("ent@example.com", "ent@example.com", "StrongPass123")
+        DigestPreference.objects.get_or_create(user=self.user)
+        sub = self.user.subscription
+        sub.tier = "enterprise"
+        sub.status = "active"
+        sub.save()
+        self.today = timezone.localdate()
+
+    def _company(self, gemi, name, day=None):
+        return Company.objects.create(
+            gemi_number=gemi, name=name, vat_number=gemi[:9],
+            incorporation_date=day or self.today, prefecture="ΑΤΤΙΚΗΣ",
+            legal_type="Ιδιωτική Κεφαλαιουχική Εταιρεία", is_active=True,
+        )
+
+    def test_repeated_intraday_digests_do_not_crash_on_unique_constraint(self):
+        """Intraday runs 6x per day against a unique (user, date, frequency) constraint."""
+        self._company("900000000001", "ALPHA ΕΝΕΡΓΕΙΑΚΗ ΙΚΕ")
+        first_sent, _ = send_digests(self.today, frequency="intraday")
+        self.assertEqual(first_sent, 1)
+
+        # A second company arrives three hours later; the second run must not raise.
+        self._company("900000000002", "BETA ΕΝΕΡΓΕΙΑΚΗ ΙΚΕ")
+        second_sent, _ = send_digests(self.today, frequency="intraday")
+        self.assertEqual(second_sent, 1)
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertEqual(
+            DigestDelivery.objects.filter(user=self.user, digest_date=self.today, frequency="intraday").count(),
+            1,
+        )
+
+    def test_manual_yesterday_digest_can_be_sent_twice(self):
+        from .services import send_user_yesterday_digest
+
+        yesterday = self.today - timedelta(days=1)
+        self._company("900000000003", "GAMMA ΙΚΕ", day=yesterday)
+        self.assertEqual(send_user_yesterday_digest(self.user), 1)
+        self.assertEqual(send_user_yesterday_digest(self.user), 1)
+        self.assertEqual(
+            DigestDelivery.objects.filter(user=self.user, frequency="manual_yesterday").count(), 1
+        )
+
+    def test_bulk_import_runs_radar_matching_without_error(self):
+        """import_companies_since_date used to end in a NameError on an undefined function."""
+        from .services import import_companies_since_date, match_companies_in_range
+
+        radar = CustomerRadar.objects.create(
+            user=self.user, name="Αττική", prefectures=["ΑΤΤΙΚΗΣ"],
+            monitor_from=timezone.now() - timedelta(days=30),
+        )
+        start = self.today - timedelta(days=2)
+        self._company("900000000004", "DELTA ΙΚΕ", day=start)
+        self._company("900000000005", "EPSILON ΙΚΕ", day=self.today)
+
+        summary = match_companies_in_range(start, self.today)
+        self.assertEqual(summary.new_matches, 2)
+        self.assertEqual(UserCompanyLead.objects.filter(user=self.user).count(), 2)
+
+        # Historical matches keep the incorporation date, so a backfill cannot flood today's digest.
+        self.assertEqual(
+            set(RadarMatch.objects.filter(radar=radar).values_list("matched_on", flat=True)),
+            {start, self.today},
+        )
+
+        with patch("gemiapp.services._get", return_value={"searchResults": []}):
+            self.assertEqual(import_companies_since_date(start), (0, 0))
+
+    def test_radar_name_filter_is_accent_insensitive_and_indexed(self):
+        from .services import filter_companies_for_radar
+
+        self._company("900000000006", "ΕΝΕΡΓΕΙΑΚΉ ΛΎΣΗ ΙΚΕ")
+        self._company("900000000007", "ΤΕΧΝΙΚΗ ΑΕ")
+        matches = filter_companies_for_radar(Company.objects.all(), name_query="ενεργειακη λυση")
+        self.assertEqual([c.gemi_number for c in matches], ["900000000006"])
+
+    def test_search_name_is_maintained_on_save_and_update(self):
+        company = self._company("900000000008", "ΆΛΦΑ ΙΚΕ")
+        self.assertEqual(company.search_name, "ΑΛΦΑ ΙΚΕ")
+        company.name = "ΒΉΤΑ ΙΚΕ"
+        company.save(update_fields=["name"])
+        company.refresh_from_db()
+        self.assertEqual(company.search_name, "ΒΗΤΑ ΙΚΕ")
+
+    def test_radar_limits_come_from_a_single_source(self):
+        from .models import RADAR_LIMITS
+
+        sub = self.user.subscription
+        for tier, expected in RADAR_LIMITS.items():
+            sub.tier = tier
+            sub.status = "active"
+            sub.complimentary_tier = "none"
+            sub.custom_radar_limit = None
+            sub.save()
+            self.assertEqual(self.user.subscription.radar_limit, expected, tier)
+
+        sub.custom_radar_limit = 42
+        sub.save()
+        self.assertEqual(self.user.subscription.radar_limit, 42)
+
+
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class SubscriptionQueryHelperTests(TestCase):
+    """The database predicates must agree with the model properties for every combination."""
+
+    def test_query_helpers_match_python_properties(self):
+        from .models import (
+            UserSubscription,
+            complimentary_q,
+            effective_tier_q,
+            entitlement_q,
+            paid_subscription_q,
+        )
+
+        tiers = ["free", "pro", "business", "enterprise", "custom"]
+        statuses = ["active", "canceled", "past_due", "unpaid", "inactive"]
+        complimentary = ["none", "pro", "business", "enterprise", "custom"]
+        untils = [None, timezone.now() + timedelta(days=5), timezone.now() - timedelta(days=5)]
+
+        index = 0
+        for tier in tiers:
+            for status in statuses:
+                for comp in complimentary:
+                    for until in untils:
+                        index += 1
+                        user = User.objects.create_user(f"u{index}@example.com", f"u{index}@example.com", "x")
+                        UserSubscription.objects.filter(user=user).update(
+                            tier=tier, status=status, complimentary_tier=comp,
+                            complimentary_until=until if comp != "none" else None,
+                        )
+
+        users = list(User.objects.select_related("subscription"))
+        self.assertEqual(len(users), index)
+
+        def db_ids(q):
+            return set(User.objects.filter(q).values_list("id", flat=True))
+
+        def py_ids(predicate):
+            return {u.id for u in users if predicate(u.subscription)}
+
+        self.assertEqual(db_ids(paid_subscription_q()), py_ids(lambda s: s.has_active_paid_subscription))
+        self.assertEqual(db_ids(complimentary_q()), py_ids(lambda s: s.has_valid_complimentary_access))
+        self.assertEqual(db_ids(entitlement_q()), py_ids(lambda s: s.has_entitlement))
+        for tier in tiers:
+            self.assertEqual(
+                db_ids(effective_tier_q(tier)),
+                py_ids(lambda s, t=tier: s.effective_tier == t),
+                f"effective_tier_q({tier})",
+            )
+
+        self.assertEqual(
+            UserSubscription.objects.filter(entitlement_q(prefix="")).count(),
+            len(py_ids(lambda s: s.has_entitlement)),
+        )
+
+
+@override_settings(
+    STRIPE_PRICE_PRO="price_pro", STRIPE_PRICE_BUSINESS="price_biz",
+    STRIPE_PRICE_ENTERPRISE="price_ent",
+)
+class StripeTierMappingTests(TestCase):
+    def test_price_ids_map_to_tiers_in_both_directions(self):
+        from .billing import price_id_for_tier, tier_for_price_id
+
+        for tier, price in (("pro", "price_pro"), ("business", "price_biz"), ("enterprise", "price_ent")):
+            self.assertEqual(price_id_for_tier(tier), price)
+            self.assertEqual(tier_for_price_id(price), tier)
+
+        self.assertIsNone(tier_for_price_id("price_unknown"))
+        self.assertIsNone(tier_for_price_id(None))
+        self.assertIsNone(price_id_for_tier("custom"))
+
+    @override_settings(STRIPE_PRICE_ENTERPRISE=None)
+    def test_unconfigured_price_never_maps_to_a_tier(self):
+        from .billing import tier_for_price_id
+
+        self.assertIsNone(tier_for_price_id(None))
+        self.assertEqual(tier_for_price_id("price_pro"), "pro")
+
+    def test_enterprise_checkout_tier_is_accepted(self):
+        user = User.objects.create_user("buyer@example.com", "buyer@example.com", "StrongPass123")
+        self.client.force_login(user)
+        with patch("stripe.checkout.Session.create") as create:
+            create.return_value = type("S", (), {"url": "https://stripe.test/checkout"})()
+            response = self.client.post(reverse("create_checkout_session"), {"tier": "enterprise"})
+        self.assertEqual(create.call_args.kwargs["line_items"], [{"price": "price_ent", "quantity": 1}])
+        self.assertEqual(response.status_code, 303)
+
+    def test_unknown_tier_is_rejected(self):
+        user = User.objects.create_user("buyer2@example.com", "buyer2@example.com", "StrongPass123")
+        self.client.force_login(user)
+        with patch("stripe.checkout.Session.create") as create:
+            response = self.client.post(reverse("create_checkout_session"), {"tier": "bogus"})
+        create.assert_not_called()
+        self.assertRedirects(response, reverse("pricing"))

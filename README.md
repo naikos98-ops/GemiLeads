@@ -68,6 +68,20 @@ $env:GEMI_API_KEY = [Environment]::GetEnvironmentVariable("GEMI_API_KEY", "User"
 - Διαχείριση Radars: `http://127.0.0.1:8000/radars/`
 - Lead Inbox: `http://127.0.0.1:8000/leads/`
 
+## Πλάνα και όρια Ραντάρ
+
+| Πλάνο | Τιμή | Ενεργά Ραντάρ |
+|---|---|---|
+| Free (legacy) | — | 0 |
+| Pro | €19/μήνα | 5 |
+| Business | €49/μήνα | 10 |
+| Enterprise / Real-Time | €99/μήνα | 15 (+ 3ωρα alerts) |
+| Custom | κατόπιν συμφωνίας | 15 |
+
+Τα όρια ορίζονται στο `RADAR_LIMITS` (`gemiapp/models.py`) και είναι η μοναδική πηγή αλήθειας. Ανά λογαριασμό μπορούν να παρακαμφθούν από το Superadmin μέσω `custom_radar_limit`.
+
+Για να λειτουργήσει το Stripe checkout χρειάζονται και τα τρία price ids: `STRIPE_PRICE_PRO`, `STRIPE_PRICE_BUSINESS`, `STRIPE_PRICE_ENTERPRISE`.
+
 ## Email
 
 Σε development τα email τυπώνονται στο terminal. Για πραγματική αποστολή, όρισε τις SMTP μεταβλητές του `.env.example` στο environment του server.
@@ -85,7 +99,7 @@ python manage.py run_daily_pipeline
 ## Production checklist
 
 - PostgreSQL αντί SQLite
-- `DJANGO_DEBUG=0` και ισχυρό `DJANGO_SECRET_KEY`
+- `DJANGO_DEBUG=0` και ισχυρό `DJANGO_SECRET_KEY` (με `DJANGO_DEBUG=0` ενεργοποιούνται αυτόματα HTTPS redirect, HSTS και secure cookies· επαλήθευσε με `manage.py check --deploy`)
 - HTTPS, production WSGI server και `collectstatic`
 - SMTP provider με SPF/DKIM/DMARC
 - Daily database backups και error monitoring

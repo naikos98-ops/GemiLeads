@@ -4,7 +4,7 @@ import stripe
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
@@ -13,12 +13,47 @@ from .models import UserSubscription
 
 logger = logging.getLogger(__name__)
 
+
+class HttpResponseSeeOther(HttpResponseRedirect):
+    """303 See Other, which is what Stripe expects after a POST to its hosted pages."""
+
+    status_code = 303
+
 stripe.api_key = settings.STRIPE_SECRET_KEY
+
+# Stripe's SignatureVerificationError moved to the top-level namespace; stripe.error is a legacy
+# alias that will disappear in a future major release.
+SignatureVerificationError = getattr(
+    stripe, "SignatureVerificationError", getattr(stripe, "error", stripe).SignatureVerificationError
+)
+
+
+def tier_for_price_id(price_id):
+    """Map a Stripe price id back to the subscription tier it grants."""
+    if not price_id:
+        return None
+    mapping = {
+        settings.STRIPE_PRICE_PRO: "pro",
+        settings.STRIPE_PRICE_BUSINESS: "business",
+        settings.STRIPE_PRICE_ENTERPRISE: "enterprise",
+    }
+    mapping.pop(None, None)
+    return mapping.get(price_id)
+
+
+def price_id_for_tier(tier):
+    return {
+        "pro": settings.STRIPE_PRICE_PRO,
+        "business": settings.STRIPE_PRICE_BUSINESS,
+        "enterprise": settings.STRIPE_PRICE_ENTERPRISE,
+    }.get(tier)
+
 
 def pricing(request):
     context = {
         "stripe_price_pro": settings.STRIPE_PRICE_PRO,
         "stripe_price_business": settings.STRIPE_PRICE_BUSINESS,
+        "stripe_price_enterprise": settings.STRIPE_PRICE_ENTERPRISE,
     }
     return render(request, "pricing.html", context)
 
@@ -27,11 +62,8 @@ def pricing(request):
 @require_POST
 def create_checkout_session(request):
     tier = request.POST.get("tier")
-    if tier == "pro":
-        price_id = settings.STRIPE_PRICE_PRO
-    elif tier == "business":
-        price_id = settings.STRIPE_PRICE_BUSINESS
-    else:
+    price_id = price_id_for_tier(tier)
+    if tier not in ("pro", "business", "enterprise"):
         return redirect("pricing")
 
     if not price_id:
@@ -64,7 +96,7 @@ def create_checkout_session(request):
             session_args["customer_email"] = request.user.email
 
         checkout_session = stripe.checkout.Session.create(**session_args)
-        return redirect(checkout_session.url, code=303)
+        return HttpResponseSeeOther(checkout_session.url)
     except Exception as e:
         logger.error(f"Stripe Checkout Error: {str(e)}")
         return render(request, "pricing.html", {"error": str(e)})
@@ -87,7 +119,7 @@ def customer_portal(request):
             customer=customer_id,
             return_url=domain_url + reverse("settings"),
         )
-        return redirect(session.url, code=303)
+        return HttpResponseSeeOther(session.url)
     except Exception as e:
         logger.error(f"Stripe Portal Error: {str(e)}")
         return redirect("settings")
@@ -108,9 +140,9 @@ def stripe_webhook(request):
         event = stripe.Webhook.construct_event(
             payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
         )
-    except ValueError as e:
+    except ValueError:
         return HttpResponse(status=400)
-    except stripe.error.SignatureVerificationError as e:
+    except SignatureVerificationError:
         return HttpResponse(status=400)
 
     # Handle the checkout.session.completed event
@@ -131,11 +163,9 @@ def stripe_webhook(request):
                     sub.status = stripe_sub.get("status", "inactive")
                     items = stripe_sub.get("items", {}).get("data", [])
                     if items:
-                        price_id = items[0]["price"]["id"]
-                        if price_id == settings.STRIPE_PRICE_BUSINESS:
-                            sub.tier = "business"
-                        elif price_id == settings.STRIPE_PRICE_PRO:
-                            sub.tier = "pro"
+                        tier = tier_for_price_id(items[0]["price"]["id"])
+                        if tier:
+                            sub.tier = tier
                 except Exception as e:
                     logger.error(f"Error retrieving subscription {stripe_subscription_id}: {str(e)}")
                     sub.status = "inactive"
@@ -151,11 +181,9 @@ def stripe_webhook(request):
             sub.status = status or ("canceled" if event["type"] == "customer.subscription.deleted" else "inactive")
             items = subscription.get("items", {}).get("data", [])
             if items:
-                price_id = items[0]["price"]["id"]
-                if price_id == settings.STRIPE_PRICE_BUSINESS:
-                    sub.tier = "business"
-                elif price_id == settings.STRIPE_PRICE_PRO:
-                    sub.tier = "pro"
+                tier = tier_for_price_id(items[0]["price"]["id"])
+                if tier:
+                    sub.tier = tier
             sub.save()
         except UserSubscription.DoesNotExist:
             logger.error(f"Subscription {stripe_subscription_id} not found in DB")
