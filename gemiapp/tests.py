@@ -37,7 +37,7 @@ class AppTests(TestCase):
         sub.tier = "pro"
         sub.status = "active"
         sub.save()
-        DigestPreference.objects.create(user=self.user)
+        DigestPreference.objects.get_or_create(user=self.user)
         self.kad = ActivityCode.objects.create(
             code="62.01.00.00", normalized_code="62010000", description="ΔΡΑΣΤΗΡΙΟΤΗΤΕΣ ΠΡΟΓΡΑΜΜΑΤΙΣΜΟΥ",
             search_text="62.01.00.00 62010000 ΔΡΑΣΤΗΡΙΟΤΗΤΕΣ ΠΡΟΓΡΑΜΜΑΤΙΣΜΟΥ",
@@ -432,7 +432,7 @@ class AppTests(TestCase):
 class PaidOnlyModelTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="paidtest@example.com", password="password123", first_name="PaidUser")
-        DigestPreference.objects.create(user=self.user)
+        DigestPreference.objects.get_or_create(user=self.user)
 
     def test_one_user_subscription_per_user(self):
         from .models import UserSubscription
@@ -594,7 +594,7 @@ class PaidOnlyModelTests(TestCase):
 class AuthFlowTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="testauth@example.com", password="password123", first_name="AuthUser")
-        DigestPreference.objects.create(user=self.user)
+        DigestPreference.objects.get_or_create(user=self.user)
 
     def test_signup_creates_inactive_user(self):
         response = self.client.post(reverse("signup"), {
@@ -648,9 +648,9 @@ class SuperadminTests(TestCase):
         self.superuser = User.objects.create_superuser(username="admin@gemileads.gr", email="admin@gemileads.gr", password="SuperPassword123")
         self.normal_user = User.objects.create_user(username="normal@example.com", email="normal@example.com", password="NormalPassword123")
         self.staff_user = User.objects.create_user(username="staff@example.com", email="staff@example.com", password="StaffPassword123", is_staff=True, is_superuser=False)
-        DigestPreference.objects.create(user=self.superuser)
-        DigestPreference.objects.create(user=self.normal_user)
-        DigestPreference.objects.create(user=self.staff_user)
+        DigestPreference.objects.get_or_create(user=self.superuser)
+        DigestPreference.objects.get_or_create(user=self.normal_user)
+        DigestPreference.objects.get_or_create(user=self.staff_user)
 
     def test_superadmin_access_control(self):
         # 1. Anonymous user redirected to login
@@ -863,7 +863,7 @@ class SuperadminTests(TestCase):
         sub_normal.save()
 
         ent_user = User.objects.create_user(username="ent@example.com", email="ent@example.com", password="Password123")
-        DigestPreference.objects.create(user=ent_user)
+        DigestPreference.objects.get_or_create(user=ent_user)
         sub_ent, _ = UserSubscription.objects.get_or_create(user=ent_user, defaults={"complimentary_tier": "enterprise"})
         sub_ent.complimentary_tier = "enterprise"
         sub_ent.save()
@@ -1234,3 +1234,106 @@ class PipelineOverlapGuardTests(TestCase):
         from django.conf import settings
 
         self.assertGreater(settings.Q_CLUSTER["retry"], settings.Q_CLUSTER["timeout"])
+
+
+class DigestRecipientTests(TestCase):
+    """Why a digest reaches a user, or does not. This is what made the Enterprise accounts silent."""
+
+    def _user(self, name, tier="enterprise", status="active"):
+        user = User.objects.create_user(name, f"{name}@example.com", "StrongPass123")
+        sub = user.subscription
+        sub.tier = tier
+        sub.status = status
+        sub.save()
+        return user
+
+    def test_every_new_user_gets_a_subscription_and_a_digest_preference(self):
+        user = User.objects.create_user("fresh", "fresh@example.com", "StrongPass123")
+        self.assertIsNotNone(getattr(user, "subscription", None))
+        self.assertIsNotNone(getattr(user, "digest_preference", None))
+
+    def test_signup_still_works_now_that_the_signal_creates_the_preference(self):
+        response = self.client.post(reverse("signup"), {
+            "first_name": "Νίκος",
+            "email": "signup@example.com",
+            "password1": "StrongPass123!",
+            "password2": "StrongPass123!",
+        })
+        self.assertEqual(response.status_code, 200)
+        user = User.objects.get(email="signup@example.com")
+        self.assertEqual(DigestPreference.objects.filter(user=user).count(), 1)
+
+    def test_entitled_enterprise_user_is_a_valid_intraday_recipient(self):
+        from .services import digest_skip_reason
+
+        user = self._user("ent")
+        self.assertIsNone(digest_skip_reason(user, "intraday"))
+        self.assertIsNone(digest_skip_reason(user, "daily"))
+
+    def test_complimentary_enterprise_access_is_enough(self):
+        from .services import digest_skip_reason
+
+        user = self._user("comp", tier="free", status="inactive")
+        sub = user.subscription
+        sub.complimentary_tier = "enterprise"
+        sub.complimentary_until = timezone.now() + timedelta(days=30)
+        sub.save()
+        self.assertIsNone(digest_skip_reason(User.objects.get(pk=user.pk), "intraday"))
+
+    def test_pro_user_is_excluded_from_intraday_but_not_from_daily(self):
+        from .services import digest_skip_reason
+
+        user = self._user("pro", tier="pro")
+        self.assertIn("enterprise/custom", digest_skip_reason(user, "intraday"))
+        self.assertIsNone(digest_skip_reason(user, "daily"))
+
+    def test_each_blocking_condition_is_reported_distinctly(self):
+        from .services import NO_ENTITLEMENT, digest_skip_reason
+
+        unpaid = self._user("unpaid", tier="free", status="inactive")
+        self.assertEqual(digest_skip_reason(unpaid, "daily"), NO_ENTITLEMENT)
+
+        no_pref = self._user("nopref")
+        no_pref.digest_preference.delete()
+        self.assertIn("DigestPreference", digest_skip_reason(User.objects.get(pk=no_pref.pk), "intraday"))
+
+        unsubscribed = self._user("off")
+        unsubscribed.digest_preference.frequency = "off"
+        unsubscribed.digest_preference.save()
+        self.assertIn("frequency=off", digest_skip_reason(unsubscribed, "intraday"))
+
+        inactive = self._user("inactive")
+        inactive.is_active = False
+        inactive.save()
+        self.assertIn("Ανενεργός", digest_skip_reason(inactive, "intraday"))
+
+        no_email = self._user("noemail")
+        no_email.email = ""
+        no_email.save()
+        self.assertIn("email", digest_skip_reason(no_email, "intraday"))
+
+    def test_intraday_never_tries_to_mail_a_user_without_an_address(self):
+        """The intraday branch used to skip the email check that the daily branch had."""
+        user = self._user("blank")
+        user.email = ""
+        user.save()
+        Company.objects.create(
+            gemi_number="910000000001", name="ΤΕΣΤ ΙΚΕ", incorporation_date=timezone.localdate(),
+        )
+        sent, skipped = send_digests(timezone.localdate(), frequency="intraday")
+        self.assertEqual(sent, 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_digest_recipients_command_reports_both_groups(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        self._user("good")
+        self._user("bad", tier="free", status="inactive")
+
+        out = StringIO()
+        call_command("digest_recipients", "--frequency", "intraday", stdout=out)
+        output = out.getvalue()
+        self.assertIn("good@example.com", output)
+        self.assertIn("bad@example.com", output)
+        self.assertIn("No active subscription entitlement", output)

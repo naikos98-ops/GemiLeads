@@ -36,7 +36,7 @@ class SignupForm(UserCreationForm):
         user.is_active = False
         if commit:
             user.save()
-            DigestPreference.objects.create(user=user)
+            DigestPreference.objects.get_or_create(user=user)
             CustomerRadar.objects.create(user=user, name="Όλες οι νέες επιχειρήσεις")
         return user
 

@@ -330,6 +330,34 @@ def import_for_date(target_date: date) -> ImportRun:
     return run
 
 
+NO_ENTITLEMENT = "No active subscription entitlement"
+TOP_TIERS = ("enterprise", "custom")
+
+
+def digest_skip_reason(user, frequency):
+    """Why this user would not receive this digest, or None if they are a valid recipient.
+
+    Shared by send_digests and the `digest_recipients` management command, so the diagnostic can
+    never drift away from the behaviour it is meant to explain.
+    """
+    preference = getattr(user, "digest_preference", None)
+    if preference is None:
+        return "Δεν έχει DigestPreference (ο λογαριασμός δεν πέρασε ποτέ από signup/dashboard)"
+    if preference.frequency == "off":
+        return "Έχει απεγγραφεί (frequency=off)"
+    if not user.is_active:
+        return "Ανενεργός λογαριασμός (μη επιβεβαιωμένο email)"
+    if not user.email:
+        return "Ο λογαριασμός δεν έχει email"
+
+    subscription = getattr(user, "subscription", None)
+    if subscription is None or not subscription.has_entitlement:
+        return NO_ENTITLEMENT
+    if frequency == "intraday" and subscription.effective_tier not in TOP_TIERS:
+        return f"Το intraday απαιτεί enterprise/custom (τρέχον tier: {subscription.effective_tier})"
+    return None
+
+
 def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]:
     from datetime import timedelta
     sent = skipped = 0
@@ -343,22 +371,20 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
     for preference in preferences:
         user = preference.user
 
-        # Intraday alerts are exclusive to Top Tier subscribers (Enterprise / Custom)
-        if frequency == "intraday":
-            if not (hasattr(user, "subscription") and user.subscription.has_entitlement and user.subscription.effective_tier in ("enterprise", "custom")):
-                skipped += 1
-                continue
-        else:
-            existing = DigestDelivery.objects.filter(user=user, digest_date=target_date, frequency=frequency).first()
-            if not user.email or (existing and existing.status in {"sent", "skipped"}):
-                skipped += 1
-                continue
-
-            if not (hasattr(user, "subscription") and user.subscription.has_entitlement):
+        reason = digest_skip_reason(user, frequency)
+        if reason:
+            # Only the entitlement case is recorded, to keep the delivery log meaningful.
+            if frequency != "intraday" and reason == NO_ENTITLEMENT:
                 DigestDelivery.objects.update_or_create(
                     user=user, digest_date=target_date, frequency=frequency,
-                    defaults={"status": "skipped", "company_count": 0, "error_message": "No active subscription entitlement"}
+                    defaults={"status": "skipped", "company_count": 0, "error_message": NO_ENTITLEMENT}
                 )
+            skipped += 1
+            continue
+
+        if frequency != "intraday":
+            existing = DigestDelivery.objects.filter(user=user, digest_date=target_date, frequency=frequency).first()
+            if existing and existing.status in {"sent", "skipped"}:
                 skipped += 1
                 continue
 

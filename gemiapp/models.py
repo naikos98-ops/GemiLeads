@@ -346,4 +346,7 @@ from django.dispatch import receiver
 @receiver(post_save, sender=User)
 def create_user_subscription(sender, instance, created, **kwargs):
     if created:
-        UserSubscription.objects.create(user=instance)
+        UserSubscription.objects.get_or_create(user=instance)
+        # send_digests iterates DigestPreference, so an account without one is silently
+        # unreachable no matter which tier it is on.
+        DigestPreference.objects.get_or_create(user=instance)
