@@ -7,6 +7,12 @@
 {% empty %}Δεν καταγράφηκαν νέες επιχειρήσεις με βάση τα ενεργά Ραντάρ σου.
 {% endfor %}
 
+{% if general_companies %}
+{% if frequency == 'intraday' %}ΝΕΕΣ ΕΓΓΡΑΦΕΣ ΓΕΜΗ ΠΟΥ ΔΗΜΟΣΙΕΥΘΗΚΑΝ ΠΡΟΣΦΑΤΑ{% else %}ΟΛΕΣ ΟΙ ΝΕΕΣ ΕΓΓΡΑΦΕΣ ΓΕΜΗ ΤΗΣ ΗΜΕΡΑΣ{% endif %} ({{ general_companies|length }})
+
+{% for company in general_companies %}- {{ company.name }} | ΓΕΜΗ {{ company.gemi_number }} | {{ company.city|default:company.prefecture }}
+{% endfor %}
+{% endif %}
 Συνδέσου στο Gemi Leads Inbox (https://gemileads.gr/leads/) για πλήρη διαχείριση.
 
 Για να σταματήσετε να λαμβάνετε αυτά τα email, κάντε κλικ εδώ:

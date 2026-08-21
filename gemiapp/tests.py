@@ -1462,3 +1462,116 @@ class RealtimeDashboardTests(TestCase):
         self.assertNotContains(response, "Real-Time ΓΕΜΗ")
         # The company itself is still listed; only the panel is tier specific.
         self.assertContains(response, "ΣΗΜΕΡΙΝΗ REALTIME ΙΚΕ")
+
+
+class IntradayIncrementalTests(TestCase):
+    """Each 3-hour alert must carry only what is new since the previous one.
+
+    The general section was already incremental, but radar matches were selected purely by
+    matched_on, so the same matched companies were repeated in all six emails of the day.
+    """
+
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.user = User.objects.create_user("inc@example.com", "inc@example.com", "StrongPass123")
+        sub = self.user.subscription
+        sub.tier = "enterprise"
+        sub.status = "active"
+        sub.save()
+        self.kad = ActivityCode.objects.create(
+            code="62.01.00.00", normalized_code="62010000", description="ΠΡΟΓΡΑΜΜΑΤΙΣΜΟΣ",
+            search_text="62010000 ΠΡΟΓΡΑΜΜΑΤΙΣΜΟΣ",
+        )
+        self.radar = CustomerRadar.objects.create(
+            user=self.user, name="Αττική", prefectures=["ΑΤΤΙΚΗΣ"],
+            monitor_from=timezone.now() - timedelta(days=1),
+        )
+
+    def _matched_company(self, gemi, name):
+        """A company that both exists today and is matched by the radar."""
+        company = Company.objects.create(
+            gemi_number=gemi, name=name, incorporation_date=self.today,
+            prefecture="ΑΤΤΙΚΗΣ", is_active=True,
+        )
+        lead, _ = UserCompanyLead.objects.get_or_create(user=self.user, company=company)
+        RadarMatch.objects.create(
+            radar=self.radar, lead=lead, company=company, matched_on=self.today,
+            matched_activity_codes=[], match_reason={},
+        )
+        return company
+
+    def _bodies(self):
+        return "\n".join(message.body for message in mail.outbox)
+
+    def test_a_radar_match_is_not_repeated_in_the_next_alert(self):
+        first = self._matched_company("800000000001", "ΠΡΩΤΗ ΜΑΤΣ ΙΚΕ")
+
+        sent, _ = send_digests(self.today, frequency="intraday")
+        self.assertEqual(sent, 1)
+        self.assertIn("ΠΡΩΤΗ ΜΑΤΣ ΙΚΕ", self._bodies())
+
+        # Three hours later, nothing new has arrived.
+        mail.outbox.clear()
+        sent, _ = send_digests(self.today, frequency="intraday")
+        self.assertEqual(sent, 0, "the same radar match was sent again")
+        self.assertEqual(len(mail.outbox), 0)
+
+        # And once something new does arrive, only that one is included.
+        second = self._matched_company("800000000002", "ΔΕΥΤΕΡΗ ΜΑΤΣ ΙΚΕ")
+        sent, _ = send_digests(self.today, frequency="intraday")
+        self.assertEqual(sent, 1)
+        body = self._bodies()
+        self.assertIn("ΔΕΥΤΕΡΗ ΜΑΤΣ ΙΚΕ", body)
+        self.assertNotIn("ΠΡΩΤΗ ΜΑΤΣ ΙΚΕ", body)
+        self.user.subscription.refresh_from_db()
+        self.assertGreaterEqual(
+            self.user.subscription.last_sent_company_id, second.id
+        )
+        self.assertGreater(second.id, first.id)
+
+    def test_general_and_radar_sections_share_one_pointer(self):
+        plain = Company.objects.create(
+            gemi_number="800000000010", name="ΓΕΝΙΚΗ ΙΚΕ", incorporation_date=self.today,
+            prefecture="ΗΡΑΚΛΕΙΟΥ", is_active=True,
+        )
+        matched = self._matched_company("800000000011", "ΜΑΤΣ ΙΚΕ")
+
+        sent, _ = send_digests(self.today, frequency="intraday")
+        self.assertEqual(sent, 1)
+        body = self._bodies()
+        self.assertIn("ΓΕΝΙΚΗ ΙΚΕ", body)
+        self.assertIn("ΜΑΤΣ ΙΚΕ", body)
+
+        self.user.subscription.refresh_from_db()
+        self.assertEqual(
+            self.user.subscription.last_sent_company_id, max(plain.id, matched.id)
+        )
+
+        mail.outbox.clear()
+        sent, skipped = send_digests(self.today, frequency="intraday")
+        self.assertEqual(sent, 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_the_daily_digest_is_still_a_full_snapshot(self):
+        """Only intraday is incremental; the daily digest must keep reporting the whole day."""
+        self._matched_company("800000000020", "ΗΜΕΡΗΣΙΑ ΜΑΤΣ ΙΚΕ")
+        self.user.subscription.last_sent_company_id = 99999999
+        self.user.subscription.save()
+
+        sent, _ = send_digests(self.today, frequency="daily")
+        self.assertEqual(sent, 1)
+        self.assertIn("ΗΜΕΡΗΣΙΑ ΜΑΤΣ ΙΚΕ", self._bodies())
+
+    def test_pointer_is_not_advanced_when_sending_fails(self):
+        self._matched_company("800000000030", "ΑΠΟΤΥΧΙΑ ΙΚΕ")
+        with patch("gemiapp.services.send_mail", side_effect=RuntimeError("smtp down")):
+            sent, _ = send_digests(self.today, frequency="intraday")
+        self.assertEqual(sent, 0)
+
+        self.user.subscription.refresh_from_db()
+        self.assertEqual(self.user.subscription.last_sent_company_id, 0)
+
+        # The retry three hours later still contains it.
+        sent, _ = send_digests(self.today, frequency="intraday")
+        self.assertEqual(sent, 1)
+        self.assertIn("ΑΠΟΤΥΧΙΑ ΙΚΕ", self._bodies())

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 from django.conf import settings
-from django.core.mail import EmailMultiAlternatives, send_mail
+from django.core.mail import send_mail
 from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -359,7 +359,6 @@ def digest_skip_reason(user, frequency):
 
 
 def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]:
-    from datetime import timedelta
     if frequency == "weekly":
         raise ValueError("Το εβδομαδιαίο digest έχει καταργηθεί.")
 
@@ -387,6 +386,9 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
                 skipped += 1
                 continue
 
+        subscription = getattr(user, "subscription", None)
+        last_sent_id = (subscription.last_sent_company_id or 0) if subscription else 0
+
         radar_filter = {
             "radar__user": user,
             "radar__is_active": True,
@@ -394,7 +396,12 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
             "matched_on__gte": start_date,
             "matched_on__lte": end_date,
         }
-        if frequency != "intraday":
+        if frequency == "intraday":
+            # A real-time alert must only carry what is new since the previous send. Without this
+            # the same matched companies were repeated in all six emails of the day, while the
+            # general section was already incremental.
+            radar_filter["company__id__gt"] = last_sent_id
+        else:
             radar_filter["radar__frequency"] = frequency
 
         matches = RadarMatch.objects.filter(**radar_filter).select_related("company", "radar")
@@ -415,9 +422,12 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
         # Fetch general companies (all incorporated on target date or unsent today's companies for intraday)
         general_companies = []
         if frequency == "intraday":
-            today = timezone.localdate()
-            last_id = getattr(user.subscription, "last_sent_company_id", 0) if hasattr(user, "subscription") else 0
-            gen_qs = Company.objects.filter(incorporation_date=today, id__gt=last_id).exclude(id__in=radar_company_ids).order_by("id")
+            gen_qs = (
+                Company.objects
+                .filter(incorporation_date=target_date, id__gt=last_sent_id)
+                .exclude(id__in=radar_company_ids)
+                .order_by("id")
+            )
             general_companies = list(gen_qs)
         else:
             gen_qs = Company.objects.filter(incorporation_date=target_date).exclude(id__in=radar_company_ids).order_by("-id")
@@ -464,13 +474,13 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
             body_html = render_to_string(html_tmpl, context)
             send_mail(subject, body_text, settings.DEFAULT_FROM_EMAIL, [user.email], html_message=body_html)
 
-            if frequency == "intraday" and hasattr(user, "subscription"):
+            if frequency == "intraday" and subscription is not None:
                 all_sent_ids = [c.id for c in general_companies] + list(radar_company_ids)
                 if all_sent_ids:
                     max_sent_id = max(all_sent_ids)
-                    if max_sent_id > (user.subscription.last_sent_company_id or 0):
-                        user.subscription.last_sent_company_id = max_sent_id
-                        user.subscription.save(update_fields=["last_sent_company_id"])
+                    if max_sent_id > last_sent_id:
+                        subscription.last_sent_company_id = max_sent_id
+                        subscription.save(update_fields=["last_sent_company_id"])
 
             DigestDelivery.objects.update_or_create(
                 user=user, digest_date=target_date, frequency=frequency,
