@@ -1070,3 +1070,83 @@ class StripeTierMappingTests(TestCase):
             response = self.client.post(reverse("create_checkout_session"), {"tier": "bogus"})
         create.assert_not_called()
         self.assertRedirects(response, reverse("pricing"))
+
+
+class ScheduleRegistrationTests(TestCase):
+    """The scheduler swallows its own exceptions, so these assert on effects, not on calls.
+
+    A missing croniter used to make django-q raise inside the scheduler transaction, which rolled
+    back every schedule in the same pass and silently stopped the daily digest too.
+    """
+
+    def setUp(self):
+        from django_q.models import Schedule
+
+        Schedule.objects.all().delete()
+        from gemiapp.apps import setup_daily_pipeline_schedule
+
+        setup_daily_pipeline_schedule(None)
+
+    def test_both_pipelines_are_registered_with_a_resolvable_cron(self):
+        from django_q.models import Schedule
+
+        schedules = {s.func: s for s in Schedule.objects.all()}
+        self.assertEqual(
+            set(schedules),
+            {"gemiapp.tasks.run_daily_pipeline_task", "gemiapp.tasks.run_intraday_pipeline_task"},
+        )
+        for schedule in schedules.values():
+            self.assertEqual(schedule.schedule_type, Schedule.CRON)
+            self.assertEqual(schedule.repeats, -1)
+            # Raises ImportError if croniter is not installed.
+            self.assertGreater(schedule.calculate_next_run(), timezone.now())
+
+    def test_new_schedules_do_not_fire_immediately_on_deploy(self):
+        from django_q.models import Schedule
+
+        for schedule in Schedule.objects.all():
+            self.assertGreater(schedule.next_run, timezone.now(), schedule.name)
+
+    def test_scheduler_enqueues_a_task_for_every_due_schedule(self):
+        from django_q.brokers import get_broker
+        from django_q.models import OrmQ, Schedule
+        from django_q.scheduler import scheduler
+
+        past = timezone.now() - timedelta(minutes=5)
+        Schedule.objects.update(next_run=past)
+
+        broker = get_broker()
+        broker.purge_queue()
+        scheduler(broker=broker)
+
+        queued = OrmQ.objects.count()
+        self.assertEqual(queued, 2, "the scheduler produced no task - check the cron dependency")
+
+        funcs = {entry.task["func"] for entry in OrmQ.objects.all()}
+        self.assertEqual(
+            funcs,
+            {"gemiapp.tasks.run_daily_pipeline_task", "gemiapp.tasks.run_intraday_pipeline_task"},
+        )
+
+        # Every schedule must have moved on, otherwise the same run repeats every tick.
+        for schedule in Schedule.objects.all():
+            self.assertGreater(schedule.next_run, timezone.now(), schedule.name)
+
+    def test_schedule_definition_changes_are_applied_to_existing_rows(self):
+        from django_q.models import Schedule
+        from gemiapp.apps import setup_daily_pipeline_schedule
+
+        stale = Schedule.objects.get(func="gemiapp.tasks.run_intraday_pipeline_task")
+        stale.cron = "0 3 * * *"
+        stale.name = "Old name"
+        stale.save()
+        kept_next_run = stale.next_run
+
+        setup_daily_pipeline_schedule(None)
+
+        stale.refresh_from_db()
+        self.assertEqual(stale.cron, "0 8,11,14,17,20,23 * * *")
+        self.assertEqual(stale.name, "Intraday 3-Hour GEMI Pipeline (Top Tier)")
+        self.assertEqual(Schedule.objects.count(), 2)
+        # An existing row keeps its next_run; only creation seeds it.
+        self.assertEqual(stale.next_run, kept_next_run)

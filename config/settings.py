@@ -141,6 +141,8 @@ Q_CLUSTER = {
     "cpu_affinity": 1,
     "label": "Django Q",
     "orm": "default",
+    # Skip slots missed during downtime instead of replaying them as a burst of emails.
+    "catch_up": False,
 }
 
 AUTHENTICATION_BACKENDS = [
