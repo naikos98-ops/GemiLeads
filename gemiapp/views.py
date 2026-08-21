@@ -14,7 +14,7 @@ from django.contrib.auth.models import User
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
-from django.core.signing import TimestampSigner, BadSignature
+from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -39,6 +39,8 @@ from .services import filter_companies_for_radar
 
 
 MAX_SELECTED_KADS = 25
+# An unfiltered export would otherwise buffer every company in the database into one response.
+MAX_EXPORT_ROWS = 5000
 LEAD_STATUSES = dict(UserCompanyLead.STATUSES)
 
 
@@ -135,12 +137,15 @@ def unsubscribe(request, token):
     try:
         user_id = signer.unsign(token, max_age=timedelta(days=30))
         user = User.objects.get(pk=user_id)
-        pref = user.digest_preference
-        pref.frequency = "off"
-        pref.save()
-        return render(request, "unsubscribed.html")
-    except (BadSignature, User.DoesNotExist):
+    except (BadSignature, SignatureExpired, User.DoesNotExist):
         return render(request, "unsubscribed.html", {"error": "Ο σύνδεσμος είναι άκυρος ή έχει λήξει."})
+
+    # get_or_create, not user.digest_preference: a legacy account without the row used to raise
+    # RelatedObjectDoesNotExist here, turning an unsubscribe link into a 500.
+    preference, _ = DigestPreference.objects.get_or_create(user=user)
+    preference.frequency = "off"
+    preference.save(update_fields=["frequency", "updated_at"])
+    return render(request, "unsubscribed.html")
 
 
 def _filtered_companies(request):
@@ -401,16 +406,25 @@ def lead_list(request):
 @login_required
 def company_detail(request, gemi_number):
     company = get_object_or_404(Company.objects.prefetch_related("activity_records"), gemi_number=gemi_number)
-    lead, _ = UserCompanyLead.objects.get_or_create(user=request.user, company=company)
-    if lead.status == "new":
+
+    # A lead is a radar outcome, not a side effect of browsing. Creating one for a user without an
+    # entitlement polluted their Lead Inbox and the Superadmin lead metrics with rows that have no
+    # RadarMatch behind them. Existing leads stay visible either way.
+    subscription = getattr(request.user, "subscription", None)
+    if subscription is not None and subscription.has_entitlement:
+        lead, _ = UserCompanyLead.objects.get_or_create(user=request.user, company=company)
+    else:
+        lead = UserCompanyLead.objects.filter(user=request.user, company=company).first()
+
+    if lead is not None and lead.status == "new":
         lead.status = "viewed"
         lead.save(update_fields=["status", "updated_at"])
 
     return render(request, "companies/detail.html", {
         "lead": lead,
         "company": company,
-        "status_form": LeadStatusForm(instance=lead),
-        "notes_form": LeadNotesForm(instance=lead),
+        "status_form": LeadStatusForm(instance=lead) if lead is not None else None,
+        "notes_form": LeadNotesForm(instance=lead) if lead is not None else None,
     })
 
 
@@ -577,6 +591,10 @@ def export_csv(request):
     response.write("\ufeff")
     writer = csv.writer(response)
     writer.writerow(["Ημερομηνία", "Αρ. ΓΕΜΗ", "ΑΦΜ", "Επωνυμία", "Νομική μορφή", "Νομός", "Πόλη", "Email", "Website"])
-    for company in _filtered_companies(request):
+    companies = _filtered_companies(request).only(
+        "incorporation_date", "gemi_number", "vat_number", "name",
+        "legal_type", "prefecture", "city", "email", "website",
+    )
+    for company in companies[:MAX_EXPORT_ROWS].iterator(chunk_size=1000):
         writer.writerow([company.incorporation_date, company.gemi_number, company.vat_number, company.name, company.legal_type, company.prefecture, company.city, company.email, company.website])
     return response

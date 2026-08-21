@@ -1575,3 +1575,130 @@ class IntradayIncrementalTests(TestCase):
         sent, _ = send_digests(self.today, frequency="intraday")
         self.assertEqual(sent, 1)
         self.assertIn("ΑΠΟΤΥΧΙΑ ΙΚΕ", self._bodies())
+
+
+class UnsubscribeRobustnessTests(TestCase):
+    """Every digest email carries this link, so it must never 500."""
+
+    def test_unsubscribe_works_when_the_preference_row_is_missing(self):
+        from django.core.signing import TimestampSigner
+
+        user = User.objects.create_user("legacy@example.com", "legacy@example.com", "StrongPass123")
+        DigestPreference.objects.filter(user=user).delete()
+
+        token = TimestampSigner().sign(user.id)
+        response = self.client.get(reverse("unsubscribe", args=[token]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(DigestPreference.objects.get(user=user).frequency, "off")
+
+    def test_unsubscribe_turns_off_an_existing_preference(self):
+        from django.core.signing import TimestampSigner
+
+        user = User.objects.create_user("on@example.com", "on@example.com", "StrongPass123")
+        token = TimestampSigner().sign(user.id)
+
+        self.assertEqual(self.client.get(reverse("unsubscribe", args=[token])).status_code, 200)
+        self.assertEqual(DigestPreference.objects.get(user=user).frequency, "off")
+
+    def test_a_tampered_token_is_rejected_without_changing_anything(self):
+        from django.core.signing import TimestampSigner
+
+        user = User.objects.create_user("safe@example.com", "safe@example.com", "StrongPass123")
+        token = TimestampSigner().sign(user.id)
+
+        response = self.client.get(reverse("unsubscribe", args=[token + "x"]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "άκυρος")
+        self.assertEqual(DigestPreference.objects.get(user=user).frequency, "daily")
+
+
+class LeadsAreRadarOutcomesTests(TestCase):
+    """Browsing a company must not manufacture a lead for a user with no entitlement."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            gemi_number="990000000001", name="ΔΟΚΙΜΗ ΙΚΕ",
+            incorporation_date=timezone.localdate(), prefecture="ΑΤΤΙΚΗΣ", is_active=True,
+        )
+
+    def _user(self, name, entitled):
+        user = User.objects.create_user(name, f"{name}@example.com", "StrongPass123")
+        if entitled:
+            sub = user.subscription
+            sub.tier = "pro"
+            sub.status = "active"
+            sub.save()
+        return user
+
+    def test_unpaid_user_browsing_does_not_create_a_lead(self):
+        user = self._user("free", entitled=False)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("company_detail", args=[self.company.gemi_number]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(UserCompanyLead.objects.filter(user=user).count(), 0)
+        self.assertContains(response, "Δες τα πλάνα")
+
+    def test_entitled_user_browsing_still_gets_a_lead(self):
+        user = self._user("paid", entitled=True)
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("company_detail", args=[self.company.gemi_number]))
+
+        self.assertEqual(response.status_code, 200)
+        lead = UserCompanyLead.objects.get(user=user, company=self.company)
+        self.assertEqual(lead.status, "viewed")
+
+    def test_a_lead_earned_before_cancellation_stays_visible(self):
+        user = self._user("lapsed", entitled=True)
+        UserCompanyLead.objects.create(user=user, company=self.company, notes="κράτα με")
+        sub = user.subscription
+        sub.tier = "free"
+        sub.status = "inactive"
+        sub.save()
+
+        self.client.force_login(user)
+        response = self.client.get(reverse("company_detail", args=[self.company.gemi_number]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(UserCompanyLead.objects.filter(user=user).count(), 1)
+
+
+class ExportBoundsTests(TestCase):
+    """An unfiltered export used to buffer the entire company table into one response."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("exp@example.com", "exp@example.com", "StrongPass123")
+        sub = self.user.subscription
+        sub.tier = "pro"
+        sub.status = "active"
+        sub.save()
+        self.client.force_login(self.user)
+
+    def test_export_is_capped(self):
+        from .views import MAX_EXPORT_ROWS
+
+        today = timezone.localdate()
+        Company.objects.bulk_create([
+            Company(gemi_number=f"9910000{i:05d}", name=f"ΕΤΑΙΡΕΙΑ {i}",
+                    incorporation_date=today, prefecture="ΑΤΤΙΚΗΣ", is_active=True)
+            for i in range(12)
+        ])
+
+        response = self.client.get(reverse("export_csv"))
+        self.assertEqual(response.status_code, 200)
+
+        body = response.content.decode("utf-8-sig")
+        data_rows = [line for line in body.splitlines() if line.strip()][1:]
+        self.assertEqual(len(data_rows), 12)
+        self.assertLessEqual(len(data_rows), MAX_EXPORT_ROWS)
+
+    def test_export_still_requires_a_subscription(self):
+        sub = self.user.subscription
+        sub.tier = "free"
+        sub.status = "inactive"
+        sub.save()
+        response = self.client.get(reverse("export_csv"))
+        self.assertRedirects(response, reverse("pricing"))
