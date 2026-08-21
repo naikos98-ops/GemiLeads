@@ -1,0 +1,11 @@
+{
+  "name": "gemi-leads",
+  "private": true,
+  "description": "Tailwind build for the Gemi Leads Django templates",
+  "scripts": {
+    "build:css": "tailwindcss -i ./static/src/input.css -o ./static/css/app.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}

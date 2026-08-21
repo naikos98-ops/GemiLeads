@@ -1,11 +1,15 @@
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
+from django.contrib.sitemaps.views import sitemap
 from django.urls import include, path
 
+from gemiapp.seo import SITEMAPS, robots_txt
 from gemiapp.views import RateLimitedLoginView
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("robots.txt", robots_txt, name="robots_txt"),
+    path("sitemap.xml", sitemap, {"sitemaps": SITEMAPS}, name="sitemap"),
     path("superadmin/", include("gemiapp.superadmin.urls")),
     path("login/", RateLimitedLoginView.as_view(template_name="registration/login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),

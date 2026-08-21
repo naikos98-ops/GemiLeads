@@ -1833,3 +1833,87 @@ class ResendVerificationRateLimitTests(TestCase):
             self.client.post(url, {"email": f"x{i}@example.com"}).status_code for i in range(7)
         ]
         self.assertIn(403, statuses, f"rate limit never triggered: {statuses}")
+
+
+class SeoSurfaceTests(TestCase):
+    """robots.txt, sitemap.xml and the head metadata that search engines actually read."""
+
+    def test_robots_txt_allows_public_and_blocks_private(self):
+        response = self.client.get("/robots.txt")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/plain")
+
+        body = response.content.decode()
+        for private in ("/superadmin/", "/dashboard/", "/leads/", "/api/", "/admin/"):
+            self.assertIn(f"Disallow: {private}", body)
+        self.assertIn("Sitemap:", body)
+        self.assertIn("sitemap.xml", body)
+
+    def test_sitemap_lists_only_public_pages(self):
+        response = self.client.get("/sitemap.xml")
+        self.assertEqual(response.status_code, 200)
+
+        body = response.content.decode()
+        self.assertIn(reverse("home"), body)
+        self.assertIn(reverse("pricing"), body)
+        # Nothing behind a login should ever be advertised.
+        for private in (reverse("dashboard"), reverse("lead_list"), reverse("settings")):
+            self.assertNotIn(f"<loc>{private}</loc>", body)
+            self.assertNotIn(private, body.replace(reverse("home"), ""))
+
+    def test_public_pages_are_indexable_and_described(self):
+        for name in ("home", "pricing", "signup"):
+            response = self.client.get(reverse(name))
+            html = response.content.decode()
+            self.assertIn('name="robots" content="index, follow"', html, name)
+            self.assertIn('name="description"', html, name)
+            self.assertIn('property="og:title"', html, name)
+            self.assertIn('rel="canonical"', html, name)
+
+    def test_private_pages_are_noindex(self):
+        user = User.objects.create_user("seo@example.com", "seo@example.com", "StrongPass123")
+        self.client.force_login(user)
+        for name in ("dashboard", "settings", "lead_list", "radar_list"):
+            html = self.client.get(reverse(name)).content.decode()
+            self.assertIn('content="noindex, nofollow"', html, name)
+
+    def test_every_page_declares_a_viewport_and_language(self):
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertIn('name="viewport" content="width=device-width, initial-scale=1"', html)
+        self.assertIn('lang="el"', html)
+
+
+class FrontendAssetTests(TestCase):
+    """The Tailwind CDN shipped a 120 KB JIT compiler that ran on every visitor's device."""
+
+    def test_pages_use_the_compiled_stylesheet_not_the_cdn(self):
+        html = self.client.get(reverse("home")).content.decode()
+        self.assertNotIn("cdn.tailwindcss.com", html)
+        self.assertIn("css/app.css", html)
+
+    def test_the_compiled_stylesheet_exists_and_is_small(self):
+        from pathlib import Path
+        from django.conf import settings
+
+        css = Path(settings.BASE_DIR) / "static" / "css" / "app.css"
+        self.assertTrue(css.exists(), "run: npm run build:css")
+        self.assertLess(css.stat().st_size, 150 * 1024)
+
+    def test_the_nav_height_class_is_generated(self):
+        """base.html used h-18, which Tailwind does not define by default, so the fixed nav had
+        no height while main compensated with a hardcoded padding."""
+        from pathlib import Path
+        from django.conf import settings
+
+        css = (Path(settings.BASE_DIR) / "static" / "css" / "app.css").read_text(encoding="utf-8")
+        self.assertIn(".h-18", css)
+        self.assertIn(".pt-18", css)
+
+    def test_images_stay_within_a_sane_budget(self):
+        from pathlib import Path
+        from django.conf import settings
+
+        images = Path(settings.BASE_DIR) / "static" / "images"
+        for name, limit_kb in (("favicon.png", 40), ("logo.png", 150)):
+            size_kb = (images / name).stat().st_size / 1024
+            self.assertLess(size_kb, limit_kb, f"{name} is {size_kb:.0f} KB")

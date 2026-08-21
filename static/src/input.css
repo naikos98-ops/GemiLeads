@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Previously inlined in base.html; kept here so it ships in the compiled stylesheet. */
+@layer utilities {
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity .75s cubic-bezier(.2,.8,.2,1), transform .75s cubic-bezier(.2,.8,.2,1);
+  }
+  [data-reveal].visible { opacity: 1; transform: none; }
+
+  .noise {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E");
+  }
+
+  .glass { backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+  [data-reveal] { opacity: 1; transform: none; }
+}
+
+/* Touch targets: several controls use py-1/py-1.5 and land well under the 44px guideline.
+   Applied only to coarse pointers so the desktop layout is untouched. */
+@media (pointer: coarse) {
+  a[class*="rounded-full"],
+  button:not([class*="h-"]),
+  input[type="submit"] {
+    min-height: 44px;
+  }
+  a[class*="rounded-full"],
+  button:not([class*="h-"]) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* A table inside its own scroller must never widen the page itself. */
+.overflow-auto, .overflow-x-auto { max-width: 100%; -webkit-overflow-scrolling: touch; }

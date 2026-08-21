@@ -18,8 +18,14 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt /app/
 RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
+# Build the Tailwind stylesheet before collectstatic, otherwise the image ships without styles.
+COPY package.json package-lock.json /app/
+RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm     && npm ci --no-audit --no-fund     && rm -rf /var/lib/apt/lists/*
+
 # Copy project files
 COPY . /app/
+
+RUN npm run build:css
 
 # Make entrypoint executable
 RUN chmod +x /app/scripts/entrypoint.sh
