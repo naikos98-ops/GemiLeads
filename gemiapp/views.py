@@ -31,7 +31,6 @@ from .models import (
     DigestPreference,
     DigestDelivery,
     ImportRun,
-    RadarMatch,
     UserCompanyLead,
     get_user_radar_limit,
 )

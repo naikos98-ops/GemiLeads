@@ -57,10 +57,6 @@ class AppTests(TestCase):
     @patch("gemiapp.services.fetch_companies", return_value=[SAMPLE])
     def test_idempotent_import(self, _fetch):
         first = import_for_date(date(2026, 8, 1))
-
-    @patch("gemiapp.services.fetch_companies", return_value=[SAMPLE])
-    def test_idempotent_import(self, _fetch):
-        first = import_for_date(date(2026, 8, 1))
         second = import_for_date(date(2026, 8, 1))
         self.assertEqual(first.created_count, 1)
         self.assertEqual(second.updated_count, 1)
@@ -70,8 +66,8 @@ class AppTests(TestCase):
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     @patch("gemiapp.services.fetch_companies", return_value=[SAMPLE])
     def test_digest_sent_once_and_deduplication(self, _fetch):
-        radar1 = CustomerRadar.objects.create(user=self.user, name="Radar 1", prefectures=["ΑΤΤΙΚΗΣ"], frequency="daily", monitor_from=timezone.make_aware(datetime(2026, 8, 1, 0, 0)))
-        radar2 = CustomerRadar.objects.create(user=self.user, name="Radar 2", legal_types=["Ιδιωτική Κεφαλαιουχική Εταιρεία"], frequency="daily", monitor_from=timezone.make_aware(datetime(2026, 8, 1, 0, 0)))
+        CustomerRadar.objects.create(user=self.user, name="Radar 1", prefectures=["ΑΤΤΙΚΗΣ"], frequency="daily", monitor_from=timezone.make_aware(datetime(2026, 8, 1, 0, 0)))
+        CustomerRadar.objects.create(user=self.user, name="Radar 2", legal_types=["Ιδιωτική Κεφαλαιουχική Εταιρεία"], frequency="daily", monitor_from=timezone.make_aware(datetime(2026, 8, 1, 0, 0)))
         import_for_date(date(2026, 8, 1))
 
         self.assertEqual(send_digests(date(2026, 8, 1), frequency="daily"), (1, 0))
@@ -265,7 +261,7 @@ class AppTests(TestCase):
         self.assertEqual(second_radar.matches.get().lead, radar.matches.get().lead)
 
     def test_radar_cutoff_toggle_soft_delete_and_ownership(self):
-        other_user = User.objects.create_user("other@example.com", "other@example.com", "StrongPass123")
+        User.objects.create_user("other@example.com", "other@example.com", "StrongPass123")
         radar = CustomerRadar.objects.create(
             user=self.user,
             name="Future Radar",
@@ -567,7 +563,7 @@ class PaidOnlyModelTests(TestCase):
         # Create active radar for unpaid user
         CustomerRadar.objects.create(user=self.user, name="Unpaid Radar", is_active=True, monitor_from=timezone.now() - timedelta(days=1))
 
-        company = Company.objects.create(gemi_number="999001", vat_number="9990001", name="MATCH ME LTD", incorporation_date=today)
+        Company.objects.create(gemi_number="999001", vat_number="9990001", name="MATCH ME LTD", incorporation_date=today)
         import_run = ImportRun.objects.create(target_date=today, status="success")
 
         summary = match_imported_companies(import_run)
@@ -587,7 +583,7 @@ class PaidOnlyModelTests(TestCase):
         from datetime import date
         company = Company.objects.create(gemi_number="888001", vat_number="8880001", name="PRESERVED LTD", incorporation_date=date.today())
         lead = UserCompanyLead.objects.create(user=self.user, company=company, notes="Important Note", is_favorite=True)
-        radar = CustomerRadar.objects.create(user=self.user, name="Historical Radar", is_active=True)
+        CustomerRadar.objects.create(user=self.user, name="Historical Radar", is_active=True)
 
         # User subscription cancelled
         sub = self.user.subscription
@@ -822,7 +818,7 @@ class SuperadminTests(TestCase):
         self.assertEqual(res_email.status_code, 302)
 
         # 2. Login using username if different
-        user = User.objects.create_superuser(username="super_user", email="superuser@gemileads.gr", password="Password123!")
+        User.objects.create_superuser(username="super_user", email="superuser@gemileads.gr", password="Password123!")
         res_user = self.client.post(reverse("login"), {"username": "superuser@gemileads.gr", "password": "Password123!"})
         self.assertEqual(res_user.status_code, 302)
 

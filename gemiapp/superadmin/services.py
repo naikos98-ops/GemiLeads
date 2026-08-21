@@ -3,7 +3,7 @@ import logging
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import connection
-from django.db.models import Count, Q, Sum
+from django.db.models import Count
 from django.utils import timezone
 from ..models import (
     ActivityCode,
@@ -12,7 +12,6 @@ from ..models import (
     CompanyActivity,
     CustomerRadar,
     DigestDelivery,
-    ImportRun,
     RadarMatch,
     UserCompanyLead,
     UserSubscription,
