@@ -20,7 +20,7 @@ The system operates on a daily pipeline (`python manage.py run_daily_pipeline`):
 2. **Normalize:** Parses and normalizes NACE (ΚΑΔ) codes and company data.
 3. **Match:** Checks every new company against every active `CustomerRadar` created by users.
 4. **Lead Generation:** For every match, a `UserCompanyLead` is generated for the specific user, and a `RadarMatch` links the lead to the radar that found it.
-5. **Digest:** The pipeline sends daily or weekly email digests to users summarizing their new leads.
+5. **Digest:** The pipeline sends a daily email digest to every entitled user, plus a 3-hourly real-time digest to Enterprise/Custom tiers. The weekly digest was removed on 2026-08-22.
 
 ## 4. Key Database Models (`gemiapp/models.py`)
 * `Company`: The core model storing official GEMI data (AFM, Name, GEMI number, Registration Date, Legal Form, Address).
@@ -38,7 +38,7 @@ The system operates on a daily pipeline (`python manage.py run_daily_pipeline`):
 ## 6. Features Implemented (Completed Phases)
 * **Phase 1 (Core Radars):** Idempotent matching logic, NACE code catalog with autocomplete, Radar CRUD, soft deletion.
 * **Phase 2 (Lead Inbox):** Personal inbox per user, advanced filtering, lead lifecycles, private notes, favorites, CSV exports per radar.
-* **Phase 3 (Digest Integration):** Radar-based daily and weekly email digests, deduplication across multiple radars, HTML/TXT email templates.
+* **Phase 3 (Digest Integration):** Radar-based daily email digests, deduplication across multiple radars, HTML/TXT email templates.
 * **Phase 4 & 6 (Production Hardening):** PostgreSQL setup, Sentry integration, dynamic limits per subscription tier, Docker and `django-q2` deployment setup.
 * **Phase 5 (Auth Flow):** Email verification on signup, password reset flow, secure unsubscribe links without login.
 * **Phase 7 (Stripe):** Full payment integration with test-mode readiness.

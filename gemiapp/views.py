@@ -176,7 +176,7 @@ def dashboard(request):
     page_obj = paginator.get_page(page_num)
 
     if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.GET.get("format") == "json" or (request.GET.get("page") and str(request.GET.get("page")).isdigit() and int(request.GET.get("page")) > 1):
-        html = render_to_string("includes/dashboard_rows.html", {"companies": page_obj, "request": request, "is_ajax": True})
+        html = render_to_string("includes/dashboard_rows.html", {"companies": page_obj, "request": request, "is_ajax": True, "today": today})
         return JsonResponse({
             "html": html,
             "has_next": page_obj.has_next(),
@@ -201,7 +201,15 @@ def dashboard(request):
     date_from = parse_date(request.GET.get("date_from", "").strip())
     date_to = parse_date(request.GET.get("date_to", "").strip())
     user_leads = UserCompanyLead.objects.filter(user=request.user)
-    has_paid = hasattr(request.user, "subscription") and request.user.subscription.has_entitlement
+    subscription = getattr(request.user, "subscription", None)
+    has_paid = subscription is not None and subscription.has_entitlement
+    # Enterprise / Custom are the tiers fed by the 3-hour GEMI pipeline, so they get a live panel
+    # showing what today's intraday runs have already brought in.
+    is_realtime_tier = has_paid and subscription.effective_tier in ("enterprise", "custom")
+    last_intraday_run = (
+        ImportRun.objects.filter(target_date=today, status="success").order_by("-finished_at").first()
+        if is_realtime_tier else None
+    )
     context = {
         "companies": page_obj,
         "page_obj": page_obj,
@@ -225,6 +233,9 @@ def dashboard(request):
         ).count() if has_paid else 0,
         "recent_leads": user_leads.select_related("company").prefetch_related("radar_matches__radar")[:6],
         "has_active_paid_subscription": has_paid,
+        "today": today,
+        "is_realtime_tier": is_realtime_tier,
+        "last_intraday_run": last_intraday_run,
     }
     return render(request, "dashboard.html", context)
 

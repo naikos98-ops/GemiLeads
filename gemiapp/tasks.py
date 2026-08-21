@@ -1,5 +1,8 @@
 import logging
-from datetime import date, timedelta
+from datetime import timedelta
+
+from django.utils import timezone
+
 from gemiapp.services import import_for_date, send_digests
 
 logger = logging.getLogger(__name__)
@@ -12,7 +15,6 @@ def _pipeline_is_already_running(target_date):
     is how a duplicated schedule row made every nightly run hit the task timeout.
     """
     from django.conf import settings
-    from django.utils import timezone
     from gemiapp.models import ImportRun
 
     # A run older than the task timeout must have been killed, so it no longer blocks anything.
@@ -24,7 +26,7 @@ def _pipeline_is_already_running(target_date):
 
 def run_daily_pipeline_task():
     try:
-        target = date.today() - timedelta(days=1)
+        target = timezone.localdate() - timedelta(days=1)
         if _pipeline_is_already_running(target):
             logger.warning("Skipping daily pipeline: a run for %s is still in progress", target)
             return
@@ -33,10 +35,7 @@ def run_daily_pipeline_task():
         
         sent, skipped = send_digests(target, frequency="daily")
         logger.info(f"Daily Email: {sent} εστάλησαν, {skipped} παραλείφθηκαν")
-        
-        if target.weekday() == 6:  # Sunday
-            w_sent, w_skipped = send_digests(target, frequency="weekly")
-            logger.info(f"Weekly Email: {w_sent} εστάλησαν, {w_skipped} παραλείφθηκαν")
+
     except Exception as exc:
         logger.error(f"Pipeline error: {exc}", exc_info=True)
         raise
@@ -44,17 +43,17 @@ def run_daily_pipeline_task():
 
 def run_intraday_pipeline_task():
     """
-    Intra-day 3-hour GEMI API pipeline task running between 08:00 and 00:00.
-    Sends real-time email alerts ONLY to Top Tier (Enterprise / Real-Time) subscribers.
+    Runs every three hours between 08:00 and 23:00 Europe/Athens, on the cron slots registered in
+    apps.py. Calls the GEMI API for companies incorporated *today* and sends real-time alerts to
+    Enterprise / Custom subscribers only.
     """
-    from django.utils import timezone
     current_hour = timezone.localtime().hour
-    if not (8 <= current_hour <= 23 or current_hour == 0):
-        logger.info("Skipping intraday task outside 08:00 - 00:00 window (hour=%s)", current_hour)
+    if not 8 <= current_hour <= 23:
+        logger.info("Skipping intraday task outside the 08:00-23:00 window (hour=%s)", current_hour)
         return
 
     try:
-        today = date.today()
+        today = timezone.localdate()
         if _pipeline_is_already_running(today):
             logger.warning("Skipping intraday pipeline: a run for %s is still in progress", today)
             return

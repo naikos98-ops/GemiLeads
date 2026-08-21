@@ -4,7 +4,10 @@
     <a href="{% url 'company_detail' company.gemi_number %}" class="max-w-sm font-bold text-navy-950 hover:text-blue-600 hover:underline block">{{ company.name }}</a>
     <p class="mt-1 text-xs text-navy-700/45">ΓΕΜΗ {{ company.gemi_number }}{% if company.vat_number %} · ΑΦΜ {{ company.vat_number }}{% endif %}</p>
   </td>
-  <td class="px-5 py-5 text-sm font-medium">{{ company.incorporation_date|date:'d/m/Y' }}</td>
+  <td class="px-5 py-5 text-sm font-medium">
+    {{ company.incorporation_date|date:'d/m/Y' }}
+    {% if company.incorporation_date == today %}<span class="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-blue-700">Σήμερα</span>{% endif %}
+  </td>
   <td class="px-5 py-5 text-sm text-navy-700/60">{{ company.legal_type|default:'—' }}</td>
   <td class="px-5 py-5 text-sm text-navy-700/60">{{ company.city|default:company.prefecture|default:'—' }}</td>
   <td class="px-5 py-5">

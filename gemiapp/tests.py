@@ -139,12 +139,20 @@ class AppTests(TestCase):
     def test_settings_save_global_digest_preferences(self):
         self.client.login(username="member@example.com", password="StrongPass123")
         response = self.client.post(reverse("settings"), {
-            "frequency": "weekly", "include_empty_digest": "on",
+            "frequency": "off", "include_empty_digest": "on",
         })
         self.assertRedirects(response, reverse("settings"))
         preference = DigestPreference.objects.get(user=self.user)
-        self.assertEqual(preference.frequency, "weekly")
+        self.assertEqual(preference.frequency, "off")
         self.assertTrue(preference.include_empty_digest)
+
+    def test_weekly_is_no_longer_offered_anywhere(self):
+        from .models import CustomerRadar as Radar
+
+        self.assertNotIn("weekly", dict(DigestPreference.FREQUENCIES))
+        self.assertNotIn("weekly", dict(Radar.FREQUENCIES))
+        self.client.login(username="member@example.com", password="StrongPass123")
+        self.assertNotContains(self.client.get(reverse("settings")), "Εβδομαδιαία")
 
     def test_signup_creates_initial_broad_radar(self):
         response = self.client.post(reverse("signup"), {
@@ -392,15 +400,18 @@ class AppTests(TestCase):
 
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     @patch("gemiapp.services.fetch_companies", return_value=[SAMPLE])
-    def test_digest_weekly_and_empty_digest(self, _fetch):
-        radar = CustomerRadar.objects.create(user=self.user, name="Weekly Radar", prefectures=["ΘΕΣΣΑΛΟΝΙΚΗΣ"], frequency="weekly", monitor_from=timezone.make_aware(datetime(2026, 8, 1, 0, 0)))
+    def test_empty_digest_is_still_sent_when_requested(self, _fetch):
+        CustomerRadar.objects.create(user=self.user, name="Άδειο Radar", prefectures=["ΘΕΣΣΑΛΟΝΙΚΗΣ"], frequency="daily", monitor_from=timezone.make_aware(datetime(2026, 8, 1, 0, 0)))
         preference = self.user.digest_preference
         preference.include_empty_digest = True
         preference.save()
         import_for_date(date(2026, 8, 1))
-        self.assertEqual(send_digests(date(2026, 8, 1), frequency="weekly"), (1, 0))
+        self.assertEqual(send_digests(date(2026, 8, 1), frequency="daily"), (1, 0))
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("Δεν καταγράφηκαν", mail.outbox[0].body)
+
+    def test_requesting_a_weekly_digest_is_refused(self):
+        with self.assertRaises(ValueError):
+            send_digests(date(2026, 8, 1), frequency="weekly")
 
     def test_user_subscription_limits(self):
         self.client.login(username="member@example.com", password="StrongPass123")
@@ -1337,3 +1348,117 @@ class DigestRecipientTests(TestCase):
         self.assertIn("good@example.com", output)
         self.assertIn("bad@example.com", output)
         self.assertIn("No active subscription entitlement", output)
+
+
+def _gemi_item(ar_gemi, name, incorporation_date):
+    return {
+        "arGemi": ar_gemi, "afm": str(ar_gemi)[:9], "coNameEl": name, "coTitlesEl": [],
+        "incorporationDate": incorporation_date.isoformat(),
+        "legalType": {"descr": "Ιδιωτική Κεφαλαιουχική Εταιρεία"},
+        "status": {"descr": "Ενεργή", "isActive": True},
+        "city": "ΑΘΗΝΑ", "prefecture": {"descr": "ΑΤΤΙΚΗΣ"}, "activities": [],
+    }
+
+
+class IntradayFetchesTodayTests(TestCase):
+    """The 3-hour pipeline must hit the GEMI API and keep today's registrations, not yesterday's."""
+
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.yesterday = self.today - timedelta(days=1)
+
+    def test_fetch_companies_keeps_only_the_requested_day(self):
+        from .services import fetch_companies
+
+        page = {
+            "searchResults": [
+                _gemi_item(700000000001, "ΣΗΜΕΡΙΝΗ ΑΛΦΑ ΙΚΕ", self.today),
+                _gemi_item(700000000002, "ΣΗΜΕΡΙΝΗ ΒΗΤΑ ΙΚΕ", self.today),
+                _gemi_item(700000000003, "ΧΘΕΣΙΝΗ ΓΑΜΑ ΙΚΕ", self.yesterday),
+            ],
+            "searchMetadata": {"totalCount": 3},
+        }
+        with patch("gemiapp.services._get", return_value=page) as api:
+            found = fetch_companies(self.today)
+
+        self.assertTrue(api.called, "the GEMI API was never called")
+        self.assertEqual(api.call_args.args[0], "/companies")
+        self.assertEqual(
+            sorted(str(item["arGemi"]) for item in found),
+            ["700000000001", "700000000002"],
+        )
+
+    def test_intraday_pipeline_asks_the_api_for_today(self):
+        from .tasks import run_intraday_pipeline_task
+
+        midday = timezone.localtime().replace(hour=10, minute=0)
+        with patch("gemiapp.tasks.timezone.localtime", return_value=midday), \
+             patch("gemiapp.services.fetch_companies", return_value=[]) as fetch:
+            run_intraday_pipeline_task()
+
+        fetch.assert_called_once_with(self.today)
+
+    def test_intraday_import_stores_todays_companies(self):
+        from .services import import_for_date
+
+        with patch(
+            "gemiapp.services.fetch_companies",
+            return_value=[_gemi_item(700000000010, "ΝΕΑ ΣΗΜΕΡΙΝΗ ΙΚΕ", self.today)],
+        ):
+            run = import_for_date(self.today)
+
+        self.assertEqual(run.status, "success")
+        self.assertEqual(run.created_count, 1)
+        company = Company.objects.get(gemi_number="700000000010")
+        self.assertEqual(company.incorporation_date, self.today)
+
+    def test_pipeline_is_skipped_outside_the_window(self):
+        from .tasks import run_intraday_pipeline_task
+
+        night = timezone.localtime().replace(hour=3, minute=0)
+        with patch("gemiapp.tasks.timezone.localtime", return_value=night), \
+             patch("gemiapp.services.fetch_companies") as fetch:
+            run_intraday_pipeline_task()
+        fetch.assert_not_called()
+
+
+class RealtimeDashboardTests(TestCase):
+    """Enterprise/Custom must see what the 3-hour pipeline just imported."""
+
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.user = User.objects.create_user("rt@example.com", "rt@example.com", "StrongPass123")
+        sub = self.user.subscription
+        sub.tier = "enterprise"
+        sub.status = "active"
+        sub.save()
+        self.client.force_login(self.user)
+        self.company = Company.objects.create(
+            gemi_number="700000000020", name="ΣΗΜΕΡΙΝΗ REALTIME ΙΚΕ",
+            incorporation_date=self.today, prefecture="ΑΤΤΙΚΗΣ", is_active=True,
+        )
+
+    def test_todays_companies_appear_in_the_dashboard(self):
+        response = self.client.get(reverse("dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "ΣΗΜΕΡΙΝΗ REALTIME ΙΚΕ")
+        self.assertContains(response, "Σήμερα")
+
+    def test_realtime_panel_shows_the_last_intraday_run(self):
+        ImportRun.objects.create(
+            target_date=self.today, status="success", finished_at=timezone.now()
+        )
+        response = self.client.get(reverse("dashboard"))
+        self.assertContains(response, "Real-Time ΓΕΜΗ")
+        self.assertTrue(response.context["is_realtime_tier"])
+        self.assertIsNotNone(response.context["last_intraday_run"])
+
+    def test_lower_tiers_do_not_get_the_realtime_panel(self):
+        sub = self.user.subscription
+        sub.tier = "pro"
+        sub.save()
+        response = self.client.get(reverse("dashboard"))
+        self.assertFalse(response.context["is_realtime_tier"])
+        self.assertNotContains(response, "Real-Time ΓΕΜΗ")
+        # The company itself is still listed; only the panel is tier specific.
+        self.assertContains(response, "ΣΗΜΕΡΙΝΗ REALTIME ΙΚΕ")

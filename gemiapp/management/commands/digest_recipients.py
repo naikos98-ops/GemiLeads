@@ -14,7 +14,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--frequency",
             default="intraday",
-            choices=["daily", "weekly", "intraday"],
+            choices=["daily", "intraday"],
             help="Ποιο digest να ελεγχθεί (προεπιλογή: intraday).",
         )
 

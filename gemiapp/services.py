@@ -360,12 +360,11 @@ def digest_skip_reason(user, frequency):
 
 def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]:
     from datetime import timedelta
-    sent = skipped = 0
     if frequency == "weekly":
-        start_date = target_date - timedelta(days=6)
-        end_date = target_date
-    else:
-        start_date = end_date = target_date
+        raise ValueError("Το εβδομαδιαίο digest έχει καταργηθεί.")
+
+    sent = skipped = 0
+    start_date = end_date = target_date
 
     preferences = DigestPreference.objects.select_related("user", "user__subscription").exclude(frequency="off").filter(user__is_active=True)
     for preference in preferences:
@@ -452,11 +451,7 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
                 "frequency": frequency,
                 "unsubscribe_url": unsubscribe_url,
             }
-            if frequency == "weekly":
-                subject = f"Gemi Leads · {total_companies_count} νέες επιχειρήσεις · {start_date:%d/%m/%Y} - {end_date:%d/%m/%Y}"
-                txt_tmpl = "emails/weekly_digest.txt"
-                html_tmpl = "emails/weekly_digest.html"
-            elif frequency == "intraday":
+            if frequency == "intraday":
                 subject = f"Gemi Leads Real-Time Alert · {total_companies_count} νέες επιχειρήσεις"
                 txt_tmpl = "emails/daily_digest.txt"
                 html_tmpl = "emails/daily_digest.html"

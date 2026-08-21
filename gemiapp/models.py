@@ -83,7 +83,7 @@ class CompanyActivity(models.Model):
 
 
 class DigestPreference(models.Model):
-    FREQUENCIES = [("daily", "Καθημερινά"), ("weekly", "Εβδομαδιαία"), ("off", "Ανενεργό")]
+    FREQUENCIES = [("daily", "Καθημερινά"), ("off", "Ανενεργό")]
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="digest_preference")
     frequency = models.CharField(max_length=10, choices=FREQUENCIES, default="daily")
     legal_types = models.JSONField(default=list, blank=True)
@@ -98,7 +98,7 @@ class DigestPreference(models.Model):
 
 
 class CustomerRadar(models.Model):
-    FREQUENCIES = [("daily", "Καθημερινά"), ("weekly", "Εβδομαδιαία"), ("off", "Χωρίς email")]
+    FREQUENCIES = [("daily", "Καθημερινά"), ("off", "Χωρίς email")]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="customer_radars")
     name = models.CharField("Όνομα Radar", max_length=80)
@@ -203,7 +203,7 @@ class RadarMatch(models.Model):
 
 class DigestDelivery(models.Model):
     STATUSES = [("sent", "Εστάλη"), ("skipped", "Παραλείφθηκε"), ("failed", "Απέτυχε")]
-    FREQUENCIES = [("daily", "Καθημερινά"), ("weekly", "Εβδομαδιαία"), ("intraday", "3-ωρο / Real-Time"), ("manual_yesterday", "Χειροκίνητο (Χθες)")]
+    FREQUENCIES = [("daily", "Καθημερινά"), ("intraday", "3-ωρο / Real-Time"), ("manual_yesterday", "Χειροκίνητο (Χθες)"), ("weekly", "Εβδομαδιαία (καταργήθηκε)")]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="digest_deliveries")
     frequency = models.CharField(max_length=30, choices=FREQUENCIES, default="daily")
     digest_date = models.DateField(db_index=True)

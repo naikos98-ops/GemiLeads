@@ -48,6 +48,29 @@
       </a>
     </div>
 
+    {% if is_realtime_tier %}
+    <div data-reveal class="mt-6 rounded-[2rem] border border-blue-500/20 bg-gradient-to-r from-blue-50 to-white p-6 shadow-soft">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="relative flex h-2.5 w-2.5">
+              <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-60"></span>
+              <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-600"></span>
+            </span>
+            <h2 class="font-extrabold text-navy-950">Real-Time ΓΕΜΗ · σημερινές εγγραφές</h2>
+          </div>
+          <p class="mt-1 text-xs text-navy-700/50">
+            Το ΓΕΜΗ API καλείται κάθε 3 ώρες (08:00–23:00) και οι νέες σημερινές επιχειρήσεις εμφανίζονται αμέσως εδώ.
+            {% if last_intraday_run %}Τελευταία ενημέρωση: <b>{{ last_intraday_run.finished_at|date:'H:i' }}</b>.{% else %}Δεν έχει ολοκληρωθεί ακόμη κλήση για σήμερα.{% endif %}
+          </p>
+        </div>
+        <a href="?date_from={{ today|date:'Y-m-d' }}&date_to={{ today|date:'Y-m-d' }}" class="rounded-2xl bg-navy-950 px-5 py-3 text-xs font-bold text-white transition hover:-translate-y-0.5">
+          Δες μόνο τις σημερινές ({{ today_count }})
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Chart & Pipeline Row -->
     <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_300px]">
       <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft" data-reveal>

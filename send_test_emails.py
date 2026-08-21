@@ -1,6 +1,6 @@
 import os
 import django
-from datetime import date, timedelta
+from datetime import date
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 
@@ -54,24 +54,6 @@ msg = EmailMultiAlternatives(
 )
 msg.attach_alternative(html_content, "text/html")
 msg.send()
-
-# 2. Weekly Digest
-context_weekly = {
-    'company_data': company_data,
-    'start_date': digest_date - timedelta(days=7),
-    'end_date': digest_date,
-    'unsubscribe_url': unsubscribe_url,
-}
-html_content_w = render_to_string('emails/weekly_digest.html', context_weekly)
-
-msg_w = EmailMultiAlternatives(
-    subject="Gemi Leads: Εβδομαδιαίο Σήμα (Test Weekly)",
-    body=text_content,
-    from_email=None,
-    to=[recipient]
-)
-msg_w.attach_alternative(html_content_w, "text/html")
-msg_w.send()
 
 # 3. Verification Email
 context_verify = {
