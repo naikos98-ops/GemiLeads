@@ -135,6 +135,21 @@ STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO")
 STRIPE_PRICE_BUSINESS = os.getenv("STRIPE_PRICE_BUSINESS")
 STRIPE_PRICE_ENTERPRISE = os.getenv("STRIPE_PRICE_ENTERPRISE")
 
+# Legal / imprint details for the privacy policy and terms. Empty values keep both pages in
+# an explicit draft state (banner shown, noindex) rather than publishing invented information.
+LEGAL_CONTROLLER_NAME = os.getenv("LEGAL_CONTROLLER_NAME", "")
+LEGAL_VAT = os.getenv("LEGAL_VAT", "")
+LEGAL_GEMI = os.getenv("LEGAL_GEMI", "")
+LEGAL_ADDRESS = os.getenv("LEGAL_ADDRESS", "")
+LEGAL_CONTACT_EMAIL = os.getenv("LEGAL_CONTACT_EMAIL", EMAIL_REPLY_TO)
+LEGAL_LAST_UPDATED = os.getenv("LEGAL_LAST_UPDATED", "22 Αυγούστου 2026")
+LEGAL_REFUND_POLICY = os.getenv(
+    "LEGAL_REFUND_POLICY",
+    "Δεν προβλέπεται επιστροφή για το τρέχον διάστημα συνδρομής, εκτός αν ορίζει διαφορετικά ο νόμος.",
+)
+# Flip to "1" once real payments go live so the billing clauses replace the pre-launch notice.
+LEGAL_BILLING_ACTIVE = os.getenv("LEGAL_BILLING_ACTIVE", "0") == "1"
+
 # Google Analytics 4 measurement id (G-XXXXXXXXXX). Unset disables analytics entirely.
 GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "")
 

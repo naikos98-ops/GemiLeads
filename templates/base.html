@@ -117,7 +117,11 @@
   <footer class="border-t border-navy-900/10 bg-sand-100 px-5 py-10">
     <div class="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-sm text-navy-900/60 sm:flex-row">
       <p>© 2026 Gemi Leads · Δεδομένα από το επίσημο Open Data API ΓΕΜΗ.</p>
-      <p><a href="{% url 'pricing' %}" class="font-bold text-navy-900/70 transition hover:text-blue-700">Συνδρομές &amp; Πλάνα</a></p>
+      <p class="flex flex-wrap gap-x-4 gap-y-2">
+        <a href="{% url 'pricing' %}" class="font-bold text-navy-900/70 transition hover:text-blue-700">Συνδρομές &amp; Πλάνα</a>
+        <a href="{% url 'privacy' %}" class="font-bold text-navy-900/70 transition hover:text-blue-700">Πολιτική Απορρήτου</a>
+        <a href="{% url 'terms' %}" class="font-bold text-navy-900/70 transition hover:text-blue-700">Όροι Χρήσης</a>
+      </p>
       <p class="text-xs text-navy-700/50">Το Gemi Leads είναι ανεξάρτητη υπηρεσία και δεν αποτελεί υπηρεσία του ΓΕΜΗ.</p>
     </div>
   </footer>

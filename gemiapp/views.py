@@ -193,6 +193,35 @@ def unsubscribe(request, token):
     return render(request, "unsubscribed.html")
 
 
+def _legal_context():
+    """Shared context for the privacy policy and terms.
+
+    A page is a draft until the controller is identified. Publishing a policy with invented
+    company details would be worse than having none, so the pages stay noindex and carry a
+    visible warning until LEGAL_CONTROLLER_NAME is set.
+    """
+    controller = settings.LEGAL_CONTROLLER_NAME.strip()
+    return {
+        "legal_controller_name": controller or "— δεν έχει οριστεί ακόμη —",
+        "legal_vat": settings.LEGAL_VAT.strip(),
+        "legal_gemi": settings.LEGAL_GEMI.strip(),
+        "legal_address": settings.LEGAL_ADDRESS.strip(),
+        "legal_contact_email": settings.LEGAL_CONTACT_EMAIL,
+        "legal_last_updated": settings.LEGAL_LAST_UPDATED,
+        "legal_refund_policy": settings.LEGAL_REFUND_POLICY,
+        "legal_billing_active": settings.LEGAL_BILLING_ACTIVE,
+        "legal_is_draft": not controller,
+    }
+
+
+def privacy(request):
+    return render(request, "legal/privacy.html", _legal_context())
+
+
+def terms(request):
+    return render(request, "legal/terms.html", _legal_context())
+
+
 def _filtered_companies(request):
     today = timezone.localdate()
     qs = Company.objects.filter(incorporation_date__lte=today)

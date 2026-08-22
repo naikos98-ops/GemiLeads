@@ -27,6 +27,8 @@ urlpatterns = [
     path("unsubscribe/<token>/", views.unsubscribe, name="unsubscribe"),
     # Billing / Stripe
     path("pricing/", billing.pricing, name="pricing"),
+    path("privacy/", views.privacy, name="privacy"),
+    path("terms/", views.terms, name="terms"),
     path("api/stripe/create-checkout-session/", billing.create_checkout_session, name="create_checkout_session"),
     # GET-safe landing point after login when a plan was chosen while logged out.
     path("checkout/resume/", billing.resume_checkout, name="resume_checkout"),

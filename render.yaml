@@ -34,6 +34,18 @@ services:
         value: Gemi Leads <notifications@send.gemileads.gr>
       - key: EMAIL_REPLY_TO
         value: info@gemileads.gr
+      - key: LEGAL_CONTROLLER_NAME
+        sync: false
+      - key: LEGAL_VAT
+        sync: false
+      - key: LEGAL_GEMI
+        sync: false
+      - key: LEGAL_ADDRESS
+        sync: false
+      - key: LEGAL_CONTACT_EMAIL
+        sync: false
+      - key: LEGAL_BILLING_ACTIVE
+        value: "0"
       - key: GA_MEASUREMENT_ID
         sync: false
       - key: GOOGLE_SITE_VERIFICATION

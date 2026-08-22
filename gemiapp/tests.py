@@ -2577,3 +2577,69 @@ class AnalyticsConsentTests(TestCase):
     def test_measurement_id_cannot_break_out_of_the_script(self):
         html = self._html()
         self.assertNotIn("<script>alert(1)</script>", html)
+
+
+@override_settings(ALLOWED_HOSTS=["gemileads.gr", "testserver"], RATELIMIT_ENABLE=False)
+class LegalPagesTests(TestCase):
+    """A policy naming no controller is not binding, so it must never be published as if it were."""
+
+    def _get(self, name):
+        return self.client.get(reverse(name), HTTP_HOST="gemileads.gr").content.decode()
+
+    @override_settings(LEGAL_CONTROLLER_NAME="")
+    def test_draft_pages_are_noindex_and_warn(self):
+        for name in ("privacy", "terms"):
+            html = self._get(name)
+            self.assertIn("noindex, nofollow", html, name)
+            self.assertIn("Προσχέδιο", html, name)
+
+    @override_settings(LEGAL_CONTROLLER_NAME="ΔΟΚΙΜΗ ΙΚΕ", LEGAL_VAT="EL123456789")
+    def test_completed_pages_become_indexable(self):
+        for name in ("privacy", "terms"):
+            html = self._get(name)
+            self.assertIn("index, follow", html, name)
+            self.assertNotIn("Προσχέδιο", html, name)
+            self.assertIn("ΔΟΚΙΜΗ ΙΚΕ", html, name)
+
+    @override_settings(LEGAL_CONTROLLER_NAME="")
+    def test_no_invented_company_details_are_shown(self):
+        """Empty optional fields are omitted rather than rendered blank."""
+        html = self._get("privacy")
+        for label in ("ΑΦΜ:", "Αριθμός ΓΕΜΗ:", "Διεύθυνση:"):
+            self.assertNotIn(label, html)
+
+    @override_settings(LEGAL_BILLING_ACTIVE=False)
+    def test_terms_do_not_promise_billing_before_it_exists(self):
+        html = self._get("terms")
+        self.assertIn("δεν είναι ακόμη ενεργές", html)
+        self.assertNotIn("ανανεώνεται αυτόματα", html)
+
+    @override_settings(LEGAL_BILLING_ACTIVE=True)
+    def test_billing_clauses_appear_once_payments_are_live(self):
+        html = self._get("terms")
+        self.assertIn("ανανεώνεται αυτόματα", html)
+
+    def test_privacy_covers_the_processors_actually_in_use(self):
+        html = self._get("privacy")
+        for processor in ("Render", "Brevo", "Sentry", "Google Analytics", "Cloudflare"):
+            self.assertIn(processor, html, processor)
+
+    def test_privacy_names_the_supervisory_authority(self):
+        self.assertIn("dpa.gr", self._get("privacy"))
+
+    def test_footer_links_to_both_pages_from_every_public_page(self):
+        for name in ("home", "pricing", "login"):
+            html = self.client.get(reverse(name), HTTP_HOST="gemileads.gr").content.decode()
+            self.assertIn(reverse("privacy"), html, name)
+            self.assertIn(reverse("terms"), html, name)
+
+    @override_settings(GA_MEASUREMENT_ID="G-TEST123456")
+    def test_cookie_banner_links_to_the_privacy_policy(self):
+        html = self._get("home")
+        self.assertIn(reverse("privacy"), html)
+
+    def test_pages_are_public(self):
+        for name in ("privacy", "terms"):
+            self.assertEqual(
+                self.client.get(reverse(name), HTTP_HOST="gemileads.gr").status_code, 200, name
+            )
