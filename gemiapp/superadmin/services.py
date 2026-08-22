@@ -22,6 +22,9 @@ from ..models import (
 
 logger = logging.getLogger(__name__)
 
+# A scheduler failure older than this is history, not an active problem.
+SCHEDULER_FAILURE_WINDOW_DAYS = 7
+
 # Plan Prices for Subscription MRR Calculation
 PLAN_PRICES = {
     "pro": 19,
@@ -331,15 +334,35 @@ def get_system_health():
         checks["stripe"] = {"name": "Stripe Payments", "status": "Warning", "details": "Stripe keys or price IDs missing."}
 
     # 5. django-q2 Scheduler Check
+    #
+    # Only recent failures are actionable. django-q2 prunes successful tasks via save_limit but
+    # never deletes failed ones, so counting every failure ever recorded pins this check to
+    # Warning permanently, even after the underlying bug is fixed. A health check that can never
+    # return to green stops carrying information.
     try:
-        from django_q.models import Task, Schedule
+        from django_q.models import Schedule, Task
+
         scheduled_count = Schedule.objects.count()
-        failed_tasks = Task.objects.filter(success=False).count()
-        checks["scheduler"] = {
-            "name": "django-q2 Scheduler",
-            "status": "Warning" if failed_tasks > 0 else "Operational",
-            "details": f"{scheduled_count} scheduled tasks, {failed_tasks} failed task runs.",
-        }
+        cutoff = timezone.now() - timedelta(days=SCHEDULER_FAILURE_WINDOW_DAYS)
+        recent_failures = Task.objects.filter(success=False, started__gte=cutoff).count()
+        older_failures = Task.objects.filter(success=False, started__lt=cutoff).count()
+
+        if scheduled_count == 0:
+            status = "Warning"
+            details = "No scheduled tasks registered. The daily and intraday pipelines will not run."
+        elif recent_failures:
+            status = "Warning"
+            details = (
+                f"{scheduled_count} scheduled tasks, {recent_failures} failed run(s) in the last "
+                f"{SCHEDULER_FAILURE_WINDOW_DAYS} days."
+            )
+        else:
+            status = "Operational"
+            details = f"{scheduled_count} scheduled tasks, no failures in the last {SCHEDULER_FAILURE_WINDOW_DAYS} days."
+            if older_failures:
+                details += f" ({older_failures} older failure(s) retained for history.)"
+
+        checks["scheduler"] = {"name": "django-q2 Scheduler", "status": status, "details": details}
     except Exception:
         checks["scheduler"] = {"name": "django-q2 Scheduler", "status": "Warning", "details": "django-q2 tables not installed or idle."}
 

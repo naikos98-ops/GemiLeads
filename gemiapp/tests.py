@@ -2172,3 +2172,101 @@ class HomepageAnswerContentTests(TestCase):
         self.assertIn('aria-label="Μενού"', self.html)
         button = self.html[self.html.index('id="menuButton"'):]
         self.assertIn('aria-hidden="true"', button[:400])
+
+
+class SchedulerHealthCheckTests(TestCase):
+    """The check counted every failure ever recorded, so it pinned itself to Warning forever.
+
+    django-q2 prunes successful tasks via save_limit but never deletes failed ones, so a bug
+    fixed months ago would still show as a live problem.
+    """
+
+    def _failure(self, days_ago):
+        from django_q.models import Task
+
+        task = Task.objects.create(
+            id=f"fail-{days_ago}", name=f"fail-{days_ago}",
+            func="gemiapp.tasks.run_daily_pipeline_task",
+            started=timezone.now(), stopped=timezone.now(), success=False,
+        )
+        Task.objects.filter(pk=task.pk).update(started=timezone.now() - timedelta(days=days_ago))
+
+    def _status(self):
+        from gemiapp.superadmin.services import get_system_health
+
+        return get_system_health()["services"]["scheduler"]
+
+    def test_healthy_when_schedules_exist_and_nothing_failed(self):
+        self.assertEqual(self._status()["status"], "Operational")
+
+    def test_old_failures_do_not_keep_the_check_red(self):
+        from gemiapp.superadmin.services import SCHEDULER_FAILURE_WINDOW_DAYS
+
+        self._failure(days_ago=SCHEDULER_FAILURE_WINDOW_DAYS + 23)
+        status = self._status()
+        self.assertEqual(status["status"], "Operational")
+        self.assertIn("older failure", status["details"])
+
+    def test_recent_failure_raises_a_warning(self):
+        self._failure(days_ago=1)
+        status = self._status()
+        self.assertEqual(status["status"], "Warning")
+        self.assertIn("failed run", status["details"])
+
+    def test_missing_schedules_warn_even_with_no_failures(self):
+        """Nothing registered means the pipelines silently never run."""
+        from django_q.models import Schedule
+
+        Schedule.objects.all().delete()
+        status = self._status()
+        self.assertEqual(status["status"], "Warning")
+        self.assertIn("No scheduled tasks", status["details"])
+
+
+class PurgeFailedTasksCommandTests(TestCase):
+    """Recent failures signal a live problem and must survive the purge."""
+
+    def _failure(self, key, days_ago):
+        from django_q.models import Task
+
+        task = Task.objects.create(
+            id=key, name=key, func="gemiapp.tasks.run_daily_pipeline_task",
+            started=timezone.now(), stopped=timezone.now(), success=False,
+        )
+        Task.objects.filter(pk=task.pk).update(started=timezone.now() - timedelta(days=days_ago))
+
+    def _run(self, *args):
+        from io import StringIO
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("purge_failed_tasks", *args, stdout=out)
+        return out.getvalue()
+
+    def test_dry_run_deletes_nothing(self):
+        from django_q.models import Task
+
+        self._failure("old", days_ago=30)
+        output = self._run("--dry-run")
+        self.assertIn("dry-run", output)
+        self.assertEqual(Task.objects.filter(success=False).count(), 1)
+
+    def test_old_failures_are_removed_and_recent_ones_kept(self):
+        from django_q.models import Task
+
+        self._failure("old", days_ago=30)
+        self._failure("fresh", days_ago=1)
+
+        self._run()
+
+        remaining = list(Task.objects.filter(success=False).values_list("id", flat=True))
+        self.assertEqual(remaining, ["fresh"], "a recent failure must not be purged")
+
+    def test_successful_tasks_are_never_touched(self):
+        from django_q.models import Task
+
+        Task.objects.create(id="ok", name="ok", func="gemiapp.tasks.run_daily_pipeline_task",
+                            started=timezone.now() - timedelta(days=99),
+                            stopped=timezone.now(), success=True)
+        self._run()
+        self.assertTrue(Task.objects.filter(id="ok").exists())
