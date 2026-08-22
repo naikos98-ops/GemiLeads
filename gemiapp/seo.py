@@ -5,16 +5,30 @@ leads, company detail, settings, superadmin) is deliberately excluded and marked
 because crawlers cannot reach it and because it would leak nothing but login redirects.
 """
 
+from datetime import date
+
 from django.contrib.sitemaps import Sitemap
 from django.http import HttpResponse
 from django.urls import reverse
 
 
 class StaticViewSitemap(Sitemap):
-    """The public marketing and entry pages."""
+    """The public marketing and entry pages.
+
+    changefreq and priority are omitted deliberately: Google ignores both, and "daily" was
+    inaccurate for static marketing pages. lastmod is hardcoded and must be bumped by hand
+    when a page's visible content changes. Do not wire it to timezone.now() or to Company
+    data: an always-fresh lastmod is the pattern Google learns to distrust.
+    """
 
     protocol = "https"
-    changefreq = "daily"
+
+    LAST_MODIFIED = {
+        "home": date(2026, 8, 22),     # answer sections added
+        "pricing": date(2026, 8, 22),  # tier copy corrected
+        "signup": date(2026, 8, 22),
+        "login": date(2026, 8, 22),
+    }
 
     def items(self):
         return ["home", "pricing", "signup", "login"]
@@ -22,8 +36,8 @@ class StaticViewSitemap(Sitemap):
     def location(self, item):
         return reverse(item)
 
-    def priority(self, item):
-        return {"home": 1.0, "pricing": 0.9, "signup": 0.7}.get(item, 0.5)
+    def lastmod(self, item):
+        return self.LAST_MODIFIED.get(item)
 
 
 SITEMAPS = {"static": StaticViewSitemap}

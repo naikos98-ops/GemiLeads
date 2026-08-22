@@ -105,7 +105,7 @@
           <a href="{% url 'signup' %}" class="rounded-full bg-sand-100 px-5 py-2 font-bold text-navy-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-white">Ξεκίνα τώρα</a>
         {% endif %}
       </div>
-      <button id="menuButton" class="rounded-xl border border-white/15 p-2 md:hidden" aria-label="Μενού"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <button id="menuButton" class="rounded-xl border border-white/15 p-2 md:hidden" aria-label="Μενού"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
     <div id="mobileMenu" class="hidden border-t border-white/10 px-5 py-4 md:hidden">
       <div class="flex flex-col gap-4 text-sm">{% if user.is_authenticated %}{% if user.is_staff or user.is_superuser %}<a href="{% url 'superadmin:overview' %}" class="font-extrabold text-purple-400">👑 Superadmin Control Center</a>{% endif %}<a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'lead_list' %}">Leads</a><a href="{% url 'radar_list' %}">Radars</a><a href="{% url 'settings' %}">Ρυθμίσεις</a>{% else %}<a href="#how-it-works">Πώς λειτουργεί</a><a href="#features">Δυνατότητες</a><a href="{% url 'pricing' %}">Τιμές</a><a href="{% url 'login' %}">Σύνδεση</a><a href="{% url 'signup' %}" class="font-bold text-blue-400">Ξεκίνα τώρα →</a>{% endif %}</div>

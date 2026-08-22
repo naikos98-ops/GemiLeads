@@ -46,7 +46,7 @@
             <p class="mt-1 text-xs font-semibold uppercase tracking-wider text-white/50">Αυτοματοποιημένο</p>
           </div>
           <div>
-            <p class="text-2xl font-extrabold text-white sm:text-3xl">9.744</p>
+            <p class="text-2xl font-extrabold text-white sm:text-3xl">9.651</p>
             <p class="mt-1 text-xs font-semibold uppercase tracking-wider text-white/50">ΚΑΔ 2025</p>
           </div>
           <div>
@@ -346,4 +346,64 @@
     </div>
   </div>
 </section>
+
+<!-- Answer-first section: self-contained passages an answer engine can quote.
+     Every figure here is traceable to source: the CSV columns come from export_csv,
+     the schedule from apps.py SCHEDULES, the catalogue size from kad_2025.json. -->
+<section id="syxnes-erotiseis" class="bg-white py-24 lg:py-28">
+  <div class="mx-auto max-w-4xl px-5 lg:px-8">
+    <p class="text-xs font-bold uppercase tracking-[0.2em] text-blue-700">Συχνές ερωτήσεις</p>
+    <h2 class="mt-3 text-3xl font-extrabold text-navy-950 sm:text-4xl">Τι είναι το Gemi Leads και πώς δουλεύει</h2>
+
+    <div class="mt-12 space-y-12">
+      <article data-reveal>
+        <h3 class="text-xl font-extrabold text-navy-950">Τι είναι το ΓΕΜΗ;</h3>
+        <p class="mt-3 leading-7 text-navy-900/75">
+          Το ΓΕΜΗ (Γενικό Εμπορικό Μητρώο) είναι το επίσημο μητρώο στο οποίο εγγράφονται υποχρεωτικά
+          όλες οι εμπορικές επιχειρήσεις που δραστηριοποιούνται στην Ελλάδα. Κάθε νέα εταιρεία, από την
+          ατομική επιχείρηση μέχρι την ανώνυμη εταιρεία, λαμβάνει αριθμό ΓΕΜΗ κατά τη σύστασή της.
+          Ένα μέρος αυτών των στοιχείων δημοσιεύεται ως ανοικτά δεδομένα μέσω του επίσημου
+          <a href="https://opendata.businessportal.gr/" target="_blank" rel="noopener" class="font-semibold text-blue-700 hover:underline">Open Data API του Business Portal</a>.
+          Το Gemi Leads διαβάζει αυτή την πηγή και σου παρουσιάζει μόνο τις εγγραφές που ταιριάζουν στα
+          κριτήριά σου. Είναι ανεξάρτητη υπηρεσία και δεν αποτελεί υπηρεσία του ΓΕΜΗ.
+        </p>
+      </article>
+
+      <article data-reveal>
+        <h3 class="text-xl font-extrabold text-navy-950">Τι περιλαμβάνει κάθε lead;</h3>
+        <p class="mt-3 leading-7 text-navy-900/75">
+          Κάθε εγγραφή που λαμβάνεις περιέχει εννέα πεδία, όσα ακριβώς εξάγονται και στο αρχείο CSV:
+          ημερομηνία σύστασης, αριθμό ΓΕΜΗ, ΑΦΜ, επωνυμία, νομική μορφή, νομό, πόλη, καθώς και
+          email και ιστοσελίδα όπου αυτά έχουν δηλωθεί στο μητρώο. Τα στοιχεία επικοινωνίας
+          προέρχονται απευθείας από τη δημόσια εγγραφή και δεν συμπληρώνονται από εμάς, οπότε
+          δεν υπάρχουν σε κάθε εταιρεία. Μπορείς να κατεβάσεις τα αποτελέσματα σε CSV και να τα
+          εισαγάγεις στο Excel ή στο CRM σου.
+        </p>
+      </article>
+
+      <article data-reveal>
+        <h3 class="text-xl font-extrabold text-navy-950">Πόσο συχνά ενημερώνονται τα δεδομένα;</h3>
+        <p class="mt-3 leading-7 text-navy-900/75">
+          Το Gemi Leads ελέγχει το ΓΕΜΗ μία φορά την ημέρα και στέλνει το ημερήσιο digest στις 09:00
+          ώρα Ελλάδας, με τις εγγραφές της προηγούμενης ημέρας. Στα πλάνα Enterprise και Custom η
+          ίδια διαδικασία τρέχει κάθε τρεις ώρες, από τις 08:00 έως τις 23:00, και κάθε ειδοποίηση
+          περιέχει μόνο όσες εταιρείες προστέθηκαν μετά την προηγούμενη αποστολή. Αν δεν υπάρχουν
+          νέες εγγραφές που να ταιριάζουν στα κριτήριά σου, δεν στέλνεται email.
+        </p>
+      </article>
+
+      <article data-reveal>
+        <h3 class="text-xl font-extrabold text-navy-950">Πώς φιλτράρονται οι επιχειρήσεις ανά ΚΑΔ;</h3>
+        <p class="mt-3 leading-7 text-navy-900/75">
+          Ο ΚΑΔ (Κωδικός Αριθμός Δραστηριότητας) περιγράφει το αντικείμενο κάθε επιχείρησης. Το Gemi
+          Leads χρησιμοποιεί τον επίσημο κατάλογο ΚΑΔ 2025 με 9.651 κωδικούς, ώστε να επιλέγεις τον
+          κλάδο που σε ενδιαφέρει με ακρίβεια. Σε ένα Ραντάρ Πελατών μπορείς να συνδυάσεις ΚΑΔ,
+          περιοχή και νομική μορφή: οι επιλογές μέσα στην ίδια κατηγορία λειτουργούν διαζευκτικά,
+          ενώ οι διαφορετικές κατηγορίες συνδυάζονται μεταξύ τους.
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
+
 {% endblock %}

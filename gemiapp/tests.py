@@ -1892,7 +1892,8 @@ class FrontendAssetTests(TestCase):
     def test_pages_use_the_compiled_stylesheet_not_the_cdn(self):
         html = self.client.get(reverse("home")).content.decode()
         self.assertNotIn("cdn.tailwindcss.com", html)
-        self.assertIn("css/app.css", html)
+        # ManifestStaticFilesStorage hashes the filename: css/app.<hash>.css
+        self.assertRegex(html, r"css/app(\.[0-9a-f]{12})?\.css")
 
     def test_the_compiled_stylesheet_exists_and_is_small(self):
         from pathlib import Path
@@ -1991,7 +1992,8 @@ class OpenGraphImageTests(TestCase):
         html = self.client.get("/", HTTP_HOST="gemileads.gr").content.decode()
         og = re.search(r'property="og:image" content="([^"]+)"', html).group(1)
         self.assertTrue(og.startswith("http://gemileads.gr/"), og)
-        self.assertIn("logo.png", og)
+        # Hashed by ManifestStaticFilesStorage: logo.<hash>.png
+        self.assertRegex(og, r"logo(\.[0-9a-f]{12})?\.png$")
 
 
 class CachedAggregateTests(TestCase):
@@ -2120,3 +2122,53 @@ class SocialMetadataUniquenessTests(TestCase):
         for tag in ('rel="canonical"', 'name="description"', 'name="robots"',
                     "og:title", "og:url", "og:image", "og:description"):
             self.assertEqual(html.count(tag), 1, f"{tag} appears {html.count(tag)} times")
+
+
+@override_settings(ALLOWED_HOSTS=["gemileads.gr", "testserver"], RATELIMIT_ENABLE=False)
+class HomepageAnswerContentTests(TestCase):
+    """P2-2: the homepage had no passage an answer engine could quote, and never stated
+    what a lead actually contains."""
+
+    def setUp(self):
+        self.html = self.client.get(reverse("home"), HTTP_HOST="gemileads.gr").content.decode()
+
+    def test_question_form_headings_exist(self):
+        for question in ("Τι είναι το ΓΕΜΗ", "Τι περιλαμβάνει κάθε lead",
+                         "Πόσο συχνά ενημερώνονται", "Πώς φιλτράρονται"):
+            self.assertIn(question, self.html, f"missing answer block: {question}")
+
+    def test_lead_fields_are_named_on_the_page(self):
+        """The strongest selling point was previously invisible."""
+        for field in ("ΑΦΜ", "επωνυμία", "νομική μορφή", "email"):
+            self.assertIn(field, self.html, f"lead field not described: {field}")
+
+    def test_stated_schedule_matches_the_scheduler(self):
+        from gemiapp.apps import SCHEDULES
+
+        crons = {e["func"].rsplit(".", 1)[-1]: e["cron"] for e in SCHEDULES}
+        self.assertEqual(crons["run_daily_pipeline_task"], "0 9 * * *")
+        self.assertEqual(crons["run_intraday_pipeline_task"], "0 8,11,14,17,20,23 * * *")
+        self.assertIn("09:00", self.html)
+        self.assertIn("23:00", self.html)
+
+    def test_kad_figure_matches_the_catalogue(self):
+        """P2-4: the page claimed 9.744, which matched neither the catalogue nor the DB."""
+        import json
+        from pathlib import Path
+        from django.conf import settings
+
+        catalogue = json.loads(
+            (Path(settings.BASE_DIR) / "gemiapp" / "data" / "kad_2025.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(len(catalogue), 9651)
+        self.assertIn("9.651", self.html)
+        self.assertNotIn("9.744", self.html)
+
+    def test_links_to_the_primary_source(self):
+        self.assertIn("opendata.businessportal.gr", self.html)
+
+    def test_menu_icon_is_hidden_from_assistive_tech(self):
+        """P2-3: the button has aria-label; its decorative icon should not be announced too."""
+        self.assertIn('aria-label="Μενού"', self.html)
+        button = self.html[self.html.index('id="menuButton"'):]
+        self.assertIn('aria-hidden="true"', button[:400])
