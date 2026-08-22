@@ -135,6 +135,10 @@ STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO")
 STRIPE_PRICE_BUSINESS = os.getenv("STRIPE_PRICE_BUSINESS")
 STRIPE_PRICE_ENTERPRISE = os.getenv("STRIPE_PRICE_ENTERPRISE")
 
+# Google Search Console site verification. Set to the token value only (not the full tag).
+# Leave unset to omit the meta tag entirely; DNS TXT verification needs nothing here.
+GOOGLE_SITE_VERIFICATION = os.getenv("GOOGLE_SITE_VERIFICATION", "")
+
 GEMI_API_KEY = os.environ.get("GEMI_API_KEY", "")
 GEMI_API_BASE = "https://opendata-api.businessportal.gr/api/opendata/v1"
 

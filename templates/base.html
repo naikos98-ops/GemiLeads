@@ -19,6 +19,7 @@
      ?utm_source=... URL self-canonicalise instead of consolidating to the clean path. #}
   <link rel="canonical" href="{% block canonical %}{{ request.scheme }}://{{ request.get_host }}{{ request.path }}{% endblock %}">
   <meta name="robots" content="{% block robots %}index, follow{% endblock %}">
+  {% if google_site_verification %}<meta name="google-site-verification" content="{{ google_site_verification }}">{% endif %}
 
   <meta property="og:site_name" content="Gemi Leads">
   <meta property="og:type" content="{% block og_type %}website{% endblock %}">

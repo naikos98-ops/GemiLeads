@@ -2487,3 +2487,43 @@ class PostOnlyEndpointExposureTests(TestCase):
         response = self.client.post(reverse("lead_favorite", args=[lead.pk]))
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("login"), response["Location"])
+
+
+@override_settings(ALLOWED_HOSTS=["gemileads.gr", "testserver"], RATELIMIT_ENABLE=False)
+class SearchConsoleVerificationTests(TestCase):
+    """Meta-tag verification is env-driven so the token is never committed and can be
+    changed without a code deploy. DNS TXT verification needs none of this."""
+
+    def _html(self):
+        return self.client.get(reverse("home"), HTTP_HOST="gemileads.gr").content.decode()
+
+    @override_settings(GOOGLE_SITE_VERIFICATION="")
+    def test_no_empty_meta_tag_when_unconfigured(self):
+        self.assertNotIn("google-site-verification", self._html())
+
+    @override_settings(GOOGLE_SITE_VERIFICATION="tok3n-value")
+    def test_tag_is_emitted_when_configured(self):
+        self.assertIn('<meta name="google-site-verification" content="tok3n-value">', self._html())
+
+    @override_settings(GOOGLE_SITE_VERIFICATION="tok3n-value")
+    def test_tag_appears_on_every_public_page(self):
+        """Google may check any URL, not only the homepage."""
+        for name in ("home", "pricing", "signup", "login"):
+            html = self.client.get(reverse(name), HTTP_HOST="gemileads.gr").content.decode()
+            self.assertIn("google-site-verification", html, name)
+
+    def test_sitemap_is_reachable_and_lists_only_public_pages(self):
+        """Search Console rejects a sitemap it cannot fetch."""
+        response = self.client.get("/sitemap.xml", HTTP_HOST="gemileads.gr")
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("<loc>", body)
+        for private in ("/dashboard/", "/leads/", "/settings/", "/superadmin/"):
+            self.assertNotIn(f"<loc>https://gemileads.gr{private}</loc>", body)
+
+    def test_robots_does_not_block_the_pages_in_the_sitemap(self):
+        """A sitemap URL blocked by robots.txt is reported as an error in Search Console."""
+        robots = self.client.get("/robots.txt", HTTP_HOST="gemileads.gr").content.decode()
+        for allowed in ("/pricing/", "/signup/", "/login/"):
+            self.assertNotIn(f"Disallow: {allowed}", robots)
+        self.assertIn("Sitemap:", robots)
