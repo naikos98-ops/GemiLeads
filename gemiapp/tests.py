@@ -2076,3 +2076,47 @@ class StructuredDataTests(TestCase):
         raw = " ".join(re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S))
         for banned in ("aggregateRating", "review", "address", "vatID", "legalName", "sameAs"):
             self.assertNotIn(banned, raw, f"{banned} must not be fabricated")
+
+
+@override_settings(ALLOWED_HOSTS=["gemileads.gr", "testserver"], RATELIMIT_ENABLE=False)
+class SocialMetadataUniquenessTests(TestCase):
+    """og:title once referenced {{ page_title }}, which no view sets, so every page emitted the
+    same generic value while <title> correctly differed."""
+
+    PUBLIC_PAGES = ["home", "pricing", "signup", "login"]
+
+    def _meta(self, name, pattern):
+        html = self.client.get(reverse(name), HTTP_HOST="gemileads.gr").content.decode()
+        match = re.search(pattern, html)
+        self.assertIsNotNone(match, f"{name}: {pattern} not found")
+        return match.group(1)
+
+    def test_og_title_is_unique_per_page(self):
+        titles = [self._meta(n, r'property="og:title" content="([^"]*)"') for n in self.PUBLIC_PAGES]
+        self.assertEqual(len(set(titles)), len(titles), f"duplicate og:title values: {titles}")
+
+    def test_og_title_matches_the_page_title(self):
+        import html as html_module
+
+        for name in self.PUBLIC_PAGES:
+            title = html_module.unescape(self._meta(name, r"<title>(.*?)</title>"))
+            og = html_module.unescape(self._meta(name, r'property="og:title" content="([^"]*)"'))
+            self.assertEqual(og, title, f"{name}: og:title does not match <title>")
+
+    def test_og_description_is_unique_per_page(self):
+        descs = [self._meta(n, r'property="og:description" content="([^"]*)"') for n in self.PUBLIC_PAGES]
+        self.assertEqual(len(set(descs)), len(descs), "duplicate og:description values")
+
+    def test_no_unresolved_template_variable_leaks_into_meta(self):
+        """A missing context variable renders empty; assert none of these tags are blank."""
+        for name in self.PUBLIC_PAGES:
+            for pattern in (r'property="og:title" content="([^"]*)"',
+                            r'property="og:description" content="([^"]*)"',
+                            r'name="description" content="([^"]*)"'):
+                self.assertNotEqual(self._meta(name, pattern).strip(), "", f"{name}: {pattern} empty")
+
+    def test_head_tags_are_not_duplicated(self):
+        html = self.client.get(reverse("pricing"), HTTP_HOST="gemileads.gr").content.decode()
+        for tag in ('rel="canonical"', 'name="description"', 'name="robots"',
+                    "og:title", "og:url", "og:image", "og:description"):
+            self.assertEqual(html.count(tag), 1, f"{tag} appears {html.count(tag)} times")

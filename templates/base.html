@@ -23,7 +23,8 @@
   <meta property="og:site_name" content="Gemi Leads">
   <meta property="og:type" content="{% block og_type %}website{% endblock %}">
   <meta property="og:locale" content="el_GR">
-  <meta property="og:title" content="{% block og_title %}{{ page_title|default:'Gemi Leads' }}{% endblock %}">
+  {# Overridden per page; page_title is not a context variable, so no default lookup here. #}
+  <meta property="og:title" content="{% block og_title %}Gemi Leads{% endblock %}">
   <meta property="og:description" content="{% block og_description %}Παρακολούθησε καθημερινά τις νέες επιχειρήσεις που εγγράφονται στο ΓΕΜΗ.{% endblock %}">
   <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
   <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'images/logo.png' %}">
