@@ -2,6 +2,48 @@
 {% load static %}
 
 {% block title %}Συνδρομές & Πλάνα | Gemi Leads{% endblock %}
+{% block head %}
+  {# Mirrors the tiers visible on this page. Custom is quote-based, so it has no Offer. #}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "@id": "{{ request.scheme }}://{{ request.get_host }}/#software",
+    "name": "Gemi Leads",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "url": "{{ request.scheme }}://{{ request.get_host }}/",
+    "inLanguage": "el",
+    "provider": { "@id": "{{ request.scheme }}://{{ request.get_host }}/#organization" },
+    "offers": [
+      {
+        "@type": "Offer",
+        "name": "Pro",
+        "price": "19",
+        "priceCurrency": "EUR",
+        "url": "{{ request.scheme }}://{{ request.get_host }}{% url 'pricing' %}",
+        "availability": "https://schema.org/InStock"
+      },
+      {
+        "@type": "Offer",
+        "name": "Business",
+        "price": "49",
+        "priceCurrency": "EUR",
+        "url": "{{ request.scheme }}://{{ request.get_host }}{% url 'pricing' %}",
+        "availability": "https://schema.org/InStock"
+      },
+      {
+        "@type": "Offer",
+        "name": "Enterprise / Real-Time",
+        "price": "99",
+        "priceCurrency": "EUR",
+        "url": "{{ request.scheme }}://{{ request.get_host }}{% url 'pricing' %}",
+        "availability": "https://schema.org/InStock"
+      }
+    ]
+  }
+  </script>
+{% endblock %}
 {% block meta_description %}Πλάνα συνδρομής Gemi Leads: Pro, Business και Enterprise με ειδοποιήσεις σε πραγματικό χρόνο κάθε 3 ώρες από το ΓΕΜΗ.{% endblock %}
 
 {% block content %}
@@ -97,7 +139,7 @@
         <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Έως 10 Ενεργά Ραντάρ</li>
         <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Απεριόριστα Leads & CSV</li>
         <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Όλα τα features του Pro</li>
-        <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Daily & Weekly Digest</li>
+        <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Daily Email Digest</li>
         <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Προτεραιότητα support</li>
       </ul>
       
@@ -139,7 +181,7 @@
 
       <ul class="my-6 flex-1 space-y-3 text-xs font-medium text-navy-900">
         <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> ⚡ <strong>15 Ενεργά Ραντάρ</strong></li>
-        <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> 🔄 <strong>Ενημέρωση ανά 3 ώρες (08:00 - 00:00)</strong></li>
+        <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> 🔄 <strong>Ενημέρωση ανά 3 ώρες (08:00 - 23:00)</strong></li>
         <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> 📧 <strong>Real-Time Email Alerts</strong></li>
         <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Απεριόριστα CSV & Notes</li>
         <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> VIP Support</li>

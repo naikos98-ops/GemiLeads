@@ -15,7 +15,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <meta name="description" content="{% block meta_description %}Παρακολούθησε καθημερινά τις νέες επιχειρήσεις που εγγράφονται στο ΓΕΜΗ. Φίλτρα ΚΑΔ και περιοχής, Ραντάρ Πελατών, CSV export και email ειδοποιήσεις.{% endblock %}">
-  <link rel="canonical" href="{% block canonical %}{{ request.build_absolute_uri|slice:':512' }}{% endblock %}">
+  {# Parameter-free: build_absolute_uri echoes the query string, which would make every
+     ?utm_source=... URL self-canonicalise instead of consolidating to the clean path. #}
+  <link rel="canonical" href="{% block canonical %}{{ request.scheme }}://{{ request.get_host }}{{ request.path }}{% endblock %}">
   <meta name="robots" content="{% block robots %}index, follow{% endblock %}">
 
   <meta property="og:site_name" content="Gemi Leads">
@@ -23,9 +25,39 @@
   <meta property="og:locale" content="el_GR">
   <meta property="og:title" content="{% block og_title %}{{ page_title|default:'Gemi Leads' }}{% endblock %}">
   <meta property="og:description" content="{% block og_description %}Παρακολούθησε καθημερινά τις νέες επιχειρήσεις που εγγράφονται στο ΓΕΜΗ.{% endblock %}">
-  <meta property="og:url" content="{{ request.build_absolute_uri|slice:':512' }}">
-  <meta property="og:image" content="{% static 'images/logo.png' %}">
+  <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
+  <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'images/logo.png' %}">
   <meta name="twitter:card" content="summary_large_image">
+
+  {# Entity definition for search and AI engines. Encode only verifiable facts here:
+     no address, VAT id, ratings or reviews exist publicly, so those properties stay out. #}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "{{ request.scheme }}://{{ request.get_host }}/#organization",
+        "name": "Gemi Leads",
+        "url": "{{ request.scheme }}://{{ request.get_host }}/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "{{ request.scheme }}://{{ request.get_host }}{% static 'images/logo.png' %}"
+        },
+        "email": "info@gemileads.gr",
+        "description": "Καθημερινή παρακολούθηση νέων επιχειρήσεων από το επίσημο Open Data API του ΓΕΜΗ, με φίλτρα ΚΑΔ και περιοχής."
+      },
+      {
+        "@type": "WebSite",
+        "@id": "{{ request.scheme }}://{{ request.get_host }}/#website",
+        "url": "{{ request.scheme }}://{{ request.get_host }}/",
+        "name": "Gemi Leads",
+        "inLanguage": "el",
+        "publisher": { "@id": "{{ request.scheme }}://{{ request.get_host }}/#organization" }
+      }
+    ]
+  }
+  </script>
 
   {% block head %}{% endblock %}
 </head>
@@ -68,14 +100,14 @@
         {% else %}
           <a href="#how-it-works" class="text-white/70 transition hover:text-white">Πώς λειτουργεί</a>
           <a href="#features" class="text-white/70 transition hover:text-white">Δυνατότητες</a>
-          <a href="{% url 'login' %}" class="text-white/70 transition hover:text-white">Σύνδεση</a>
+          <a href="{% url 'pricing' %}" class="text-white/70 transition hover:text-white">Τιμές</a><a href="{% url 'login' %}" class="text-white/70 transition hover:text-white">Σύνδεση</a>
           <a href="{% url 'signup' %}" class="rounded-full bg-sand-100 px-5 py-2 font-bold text-navy-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-white">Ξεκίνα τώρα</a>
         {% endif %}
       </div>
       <button id="menuButton" class="rounded-xl border border-white/15 p-2 md:hidden" aria-label="Μενού"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
     <div id="mobileMenu" class="hidden border-t border-white/10 px-5 py-4 md:hidden">
-      <div class="flex flex-col gap-4 text-sm">{% if user.is_authenticated %}{% if user.is_staff or user.is_superuser %}<a href="{% url 'superadmin:overview' %}" class="font-extrabold text-purple-400">👑 Superadmin Control Center</a>{% endif %}<a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'lead_list' %}">Leads</a><a href="{% url 'radar_list' %}">Radars</a><a href="{% url 'settings' %}">Ρυθμίσεις</a>{% else %}<a href="#how-it-works">Πώς λειτουργεί</a><a href="#features">Δυνατότητες</a><a href="{% url 'login' %}">Σύνδεση</a><a href="{% url 'signup' %}" class="font-bold text-blue-400">Ξεκίνα τώρα →</a>{% endif %}</div>
+      <div class="flex flex-col gap-4 text-sm">{% if user.is_authenticated %}{% if user.is_staff or user.is_superuser %}<a href="{% url 'superadmin:overview' %}" class="font-extrabold text-purple-400">👑 Superadmin Control Center</a>{% endif %}<a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'lead_list' %}">Leads</a><a href="{% url 'radar_list' %}">Radars</a><a href="{% url 'settings' %}">Ρυθμίσεις</a>{% else %}<a href="#how-it-works">Πώς λειτουργεί</a><a href="#features">Δυνατότητες</a><a href="{% url 'pricing' %}">Τιμές</a><a href="{% url 'login' %}">Σύνδεση</a><a href="{% url 'signup' %}" class="font-bold text-blue-400">Ξεκίνα τώρα →</a>{% endif %}</div>
     </div>
   </nav>
   {% if messages %}<div class="fixed right-5 top-24 z-50 space-y-2">{% for message in messages %}<div data-toast class="rounded-2xl bg-navy-900 px-5 py-4 text-sm text-white shadow-soft">{{ message }}</div>{% endfor %}</div>{% endif %}
@@ -83,6 +115,7 @@
   <footer class="border-t border-navy-900/10 bg-sand-100 px-5 py-10">
     <div class="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-sm text-navy-900/60 sm:flex-row">
       <p>© 2026 Gemi Leads · Δεδομένα από το επίσημο Open Data API ΓΕΜΗ.</p>
+      <p><a href="{% url 'pricing' %}" class="font-bold text-navy-900/70 transition hover:text-blue-700">Συνδρομές &amp; Πλάνα</a></p>
       <p class="text-xs text-navy-700/50">Το Gemi Leads είναι ανεξάρτητη υπηρεσία και δεν αποτελεί υπηρεσία του ΓΕΜΗ.</p>
     </div>
   </footer>

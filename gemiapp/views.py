@@ -77,11 +77,23 @@ def _radar_companies(form, activity_codes):
 
 
 def home(request):
+    from django.core.cache import cache
+
     today = timezone.localdate()
+    # Public landing page: these aggregates change at most once per daily import, so a short
+    # cache keeps three COUNT queries off the critical path without affecting correctness.
     context = {
-        "today_count": Company.objects.filter(incorporation_date=today).count(),
+        "today_count": cache.get_or_set(
+            f"home_today_count_{today}",
+            lambda: Company.objects.filter(incorporation_date=today).count(),
+            600,
+        ),
         "latest_companies": Company.objects.all()[:6],
-        "recent_count": Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).count(),
+        "recent_count": cache.get_or_set(
+            f"home_recent_count_{today}",
+            lambda: Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).count(),
+            600,
+        ),
     }
     return render(request, "home.html", context)
 

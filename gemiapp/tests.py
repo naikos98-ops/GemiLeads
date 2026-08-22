@@ -1,8 +1,11 @@
+import json
 import re
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.core import mail
+from django.core.cache import cache
+from django.db.utils import OperationalError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -1917,3 +1920,159 @@ class FrontendAssetTests(TestCase):
         for name, limit_kb in (("favicon.png", 40), ("logo.png", 150)):
             size_kb = (images / name).stat().st_size / 1024
             self.assertLess(size_kb, limit_kb, f"{name} is {size_kb:.0f} KB")
+
+
+class PricingAccuracyTests(TestCase):
+    """P0-2: the pricing page advertised two capabilities the product does not provide."""
+
+    def test_weekly_digest_is_not_advertised(self):
+        """send_digests raises ValueError for weekly, so it must not be sold."""
+        html = self.client.get(reverse("pricing")).content.decode()
+        self.assertNotIn("Weekly Digest", html)
+
+        with self.assertRaises(ValueError):
+            send_digests(timezone.localdate(), frequency="weekly")
+
+    def test_intraday_window_matches_the_scheduler(self):
+        html = self.client.get(reverse("pricing")).content.decode()
+        self.assertIn("08:00 - 23:00", html)
+        self.assertNotIn("08:00 - 00:00", html)
+
+
+class PricingDiscoverabilityTests(TestCase):
+    """P0-3: /pricing/ had zero inbound internal links from any public page."""
+
+    def test_public_pages_link_to_pricing(self):
+        for name in ("home", "login", "signup"):
+            html = self.client.get(reverse(name)).content.decode()
+            self.assertIn(reverse("pricing"), html, f"{name} does not link to pricing")
+
+    def test_anonymous_visitor_sees_the_pricing_link(self):
+        html = self.client.get(reverse("home")).content.decode()
+        # Nav + mobile menu + footer.
+        self.assertGreaterEqual(html.count('href="%s"' % reverse("pricing")), 3)
+
+    def test_authenticated_nav_still_works(self):
+        user = User.objects.create_user("nav@example.com", "nav@example.com", "StrongPass123")
+        self.client.force_login(user)
+        response = self.client.get(reverse("home"))
+        self.assertEqual(response.status_code, 200)
+
+
+@override_settings(ALLOWED_HOSTS=["gemileads.gr", "testserver"])
+class CanonicalTests(TestCase):
+    """P1-1: build_absolute_uri echoed the query string, so parameter URLs self-canonicalised."""
+
+    def _canonical(self, url):
+        html = self.client.get(url, HTTP_HOST="gemileads.gr").content.decode()
+        match = re.search(r'<link rel="canonical" href="([^"]+)"', html)
+        self.assertIsNotNone(match, "no canonical tag rendered")
+        return match.group(1)
+
+    def test_parameter_urls_consolidate_to_the_clean_path(self):
+        self.assertEqual(self._canonical("/"), "http://gemileads.gr/")
+        self.assertEqual(self._canonical("/?utm_source=test"), "http://gemileads.gr/")
+        self.assertEqual(self._canonical("/?utm_source=a&page=2&x=1"), "http://gemileads.gr/")
+
+    def test_each_page_self_references(self):
+        self.assertEqual(self._canonical("/pricing/"), "http://gemileads.gr/pricing/")
+
+    def test_og_url_matches_the_canonical(self):
+        html = self.client.get("/?utm_source=test", HTTP_HOST="gemileads.gr").content.decode()
+        og = re.search(r'property="og:url" content="([^"]+)"', html).group(1)
+        self.assertEqual(og, "http://gemileads.gr/")
+
+
+@override_settings(ALLOWED_HOSTS=["gemileads.gr", "testserver"])
+class OpenGraphImageTests(TestCase):
+    """P1-4: og:image was root-relative, so scrapers could not resolve it."""
+
+    def test_og_image_is_absolute(self):
+        html = self.client.get("/", HTTP_HOST="gemileads.gr").content.decode()
+        og = re.search(r'property="og:image" content="([^"]+)"', html).group(1)
+        self.assertTrue(og.startswith("http://gemileads.gr/"), og)
+        self.assertIn("logo.png", og)
+
+
+class CachedAggregateTests(TestCase):
+    """P1-2: an uncached COUNT(*) ran on every request site-wide."""
+
+    def setUp(self):
+        cache.clear()
+        Company.objects.bulk_create([
+            Company(gemi_number=f"6660000{i:05d}", name=f"ΕΤΑΙΡΕΙΑ {i}",
+                    incorporation_date=timezone.localdate(), prefecture="ΑΤΤΙΚΗΣ")
+            for i in range(15)
+        ])
+
+    def test_repeat_requests_avoid_the_count_queries(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as cold:
+            self.client.get(reverse("home"))
+        with CaptureQueriesContext(connection) as warm:
+            self.client.get(reverse("home"))
+
+        self.assertGreater(len(cold), len(warm), "caching did not reduce queries")
+        counts = [q for q in warm.captured_queries if "COUNT" in q["sql"].upper()]
+        self.assertEqual(counts, [], "a COUNT query still runs on a warm request")
+
+    def test_values_are_still_correct(self):
+        response = self.client.get(reverse("home"))
+        self.assertEqual(response.context["today_count"], 15)
+        self.assertEqual(response.context["global_company_count"], 15)
+
+    def test_cache_failure_does_not_break_the_page(self):
+        """global_stats must degrade gracefully, as it did before."""
+        with patch("gemiapp.context_processors.Company.objects.count", side_effect=OperationalError):
+            cache.clear()
+            response = self.client.get(reverse("home"))
+        self.assertEqual(response.status_code, 200)
+
+
+@override_settings(ALLOWED_HOSTS=["gemileads.gr", "testserver"])
+class StructuredDataTests(TestCase):
+    """P1-3: no structured data existed in any format."""
+
+    def _blocks(self, url):
+        html = self.client.get(url, HTTP_HOST="gemileads.gr").content.decode()
+        raw = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+        return [json.loads(block) for block in raw]
+
+    def test_organization_and_website_are_valid_json_ld(self):
+        blocks = self._blocks("/")
+        self.assertEqual(len(blocks), 1)
+        nodes = {n["@type"]: n for n in blocks[0]["@graph"]}
+        self.assertEqual(set(nodes), {"Organization", "WebSite"})
+        for required in ("name", "url", "logo", "email"):
+            self.assertIn(required, nodes["Organization"])
+        self.assertEqual(nodes["WebSite"]["publisher"]["@id"], nodes["Organization"]["@id"])
+
+    def test_software_application_offers_match_the_visible_prices(self):
+        blocks = self._blocks("/pricing/")
+        software = [b for b in blocks if b.get("@type") == "SoftwareApplication"][0]
+        prices = sorted(o["price"] for o in software["offers"])
+        self.assertEqual(prices, ["19", "49", "99"])
+        for offer in software["offers"]:
+            self.assertEqual(offer["priceCurrency"], "EUR")
+
+    def test_quote_based_tier_has_no_offer(self):
+        """Custom is 'Κατόπιν Επικοινωνίας'; an Offer with price 0 would say it is free."""
+        software = [b for b in self._blocks("/pricing/") if b.get("@type") == "SoftwareApplication"][0]
+        names = {o["name"] for o in software["offers"]}
+        self.assertNotIn("Custom Package", names)
+        self.assertNotIn("0", {o["price"] for o in software["offers"]})
+
+    def test_entity_graph_has_no_dangling_references(self):
+        """Each block validates alone even when @id references break, so assert it explicitly."""
+        ids = {n["@id"] for b in self._blocks("/pricing/") for n in b.get("@graph", [b])}
+        software = [b for b in self._blocks("/pricing/") if b.get("@type") == "SoftwareApplication"][0]
+        self.assertIn(software["provider"]["@id"], ids)
+
+    def test_no_fabricated_properties(self):
+        """Nothing unverifiable may be encoded."""
+        html = self.client.get("/pricing/", HTTP_HOST="gemileads.gr").content.decode()
+        raw = " ".join(re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S))
+        for banned in ("aggregateRating", "review", "address", "vatID", "legalName", "sameAs"):
+            self.assertNotIn(banned, raw, f"{banned} must not be fabricated")
