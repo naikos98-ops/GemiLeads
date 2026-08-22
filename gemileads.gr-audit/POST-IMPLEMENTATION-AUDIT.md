@@ -1,42 +1,27 @@
 # Post-Implementation SEO Audit — gemileads.gr
 
-**Date:** 2026-08-22 · **Audited against:** `FINAL-SEO-IMPLEMENTATION-PLAN.md`
-**Live production commit:** `340c26b` · **Local HEAD:** `d32b197` · **Unpushed: 2 commits**
+**Date:** 2026-08-22 (re-run after deployment) · **Audited against:** `FINAL-SEO-IMPLEMENTATION-PLAN.md`
+**Live production commit:** `bdd5f9d` · **Local HEAD:** `bdd5f9d` · **Unpushed: 0**
 
 ---
 
-## ⚠ Overriding Finding
+## Deployment Confirmed
 
-**Nothing has been deployed. Production is byte-for-byte unchanged.**
-
-```
-origin/main : 340c26b
-local  HEAD : d32b197
-unpushed    : 2 commits (446a28f, d32b197)
-```
-
-Live verification of the homepage (HTTP 200, 24,966 bytes — identical to the pre-implementation
-audit):
+The previous run of this audit found nothing deployed. That has changed:
 
 ```
-/robots.txt                 404          (expected 200)
-/sitemap.xml                404          (expected 200)
-cdn.tailwindcss.com present   1          (expected 0)
-links to /pricing/            0          (expected ≥3)
-canonical tag                 0          (expected 1)
-JSON-LD blocks                0          (expected 1)
-og:image                      0          (expected 1)
-meta description              0          (expected 1)
-favicon                 132,331 bytes    (expected ~22,000)
+origin/main : bdd5f9d   (was 340c26b)
+local  HEAD : bdd5f9d
+unpushed    : 0
 ```
 
-The instruction was explicit: **do not mark something FIXED based only on source code changes.**
-Applying that rule honestly, **every P0 and P1 item is NOT FIXED in production**, despite all of them
-being correctly implemented and verified locally.
+Commits `446a28f` and `d32b197` are now live. `bdd5f9d` adds only audit documentation — no
+application code.
 
-To keep this useful rather than merely pedantic, the table below reports **two** columns: the live
-production state (which governs the status) and the verified local state (which governs deployment
-confidence).
+**The Render build succeeded.** This was the primary deployment risk, and it is now settled by
+evidence rather than assumption: `https://gemileads.gr/static/css/app.css` returns **HTTP 200 at
+40,679 bytes**, byte-identical to the locally built artefact. Had the `npm run build:css` step
+failed, this file would 404 and the site would render unstyled.
 
 ---
 
@@ -44,130 +29,114 @@ confidence).
 
 | # | Issue | Previous state | Current state (LIVE) | Verification method | Status | Remaining risk |
 |---|---|---|---|---|---|---|
-| **P0-1** | Tailwind Play CDN: 120 KB render-blocking JIT compiler | Present on all pages | **Still present** — `grep -c cdn.tailwindcss.com` = **1**. Local build verified: 0, compiled `app.css` served instead | Live `curl` + local render under production settings | **NOT FIXED** | Deploy must run `npm ci && npm run build:css` or the site ships **unstyled**. Build chain simulated end-to-end and **succeeds**; `package.json`, `package-lock.json`, `tailwind.config.js`, `static/src/input.css` all tracked; generated `app.css` correctly gitignored. Risk materially reduced but non-zero until observed in the real build log. |
-| **P0-2** | Pricing page advertises two capabilities the product lacks | "Daily & Weekly Digest"; "08:00 - 00:00" | **Both still live** — `Weekly Digest` = 1, `08:00 - 00:00` = 1, `08:00 - 23:00` = 0. Local: 0 / 0 / 1 | Live `curl` on `/pricing/`; local render; cross-checked against `services.py:363` and `tasks.py:51` | **NOT FIXED** | **Highest-severity item.** A €49/month tier is currently sold on a feature the code raises `ValueError` on. Consumer-protection and chargeback exposure, live right now. |
-| **P0-3** | `/pricing/` orphaned — zero inbound internal links | 0 links from any public page | **Still 0 live.** Local: **3** (desktop nav, mobile menu, footer) | Crawled live public pages; local render count | **NOT FIXED** | None in the fix itself. Verified no anchors were removed — the 2 "removed" diff lines are the same lines re-emitted with the pricing link inserted. |
-| **P1-1** | Canonical echoed query strings; params self-canonicalised | No canonical at all live | **Still absent live.** Local verified: `/?utm_source=test&page=2` → `https://gemileads.gr/` | Live `grep`; local render of 3 param variants | **NOT FIXED** | Low. `{% block canonical %}` retained so a future paginated view can override deliberately. |
-| **P1-2** | Uncached `COUNT(*)` over 17,789 rows on every request | ~0.83 s TTFB, 3 aggregates/request | **Unchanged live** (cannot isolate remotely). Local measured: **3 queries cold → 0 warm**, values identical (`today_count=15`, `global=15`) | `CaptureQueriesContext` test, cold vs warm | **NOT FIXED** *(live)* / verified locally | **Falsifiable claim:** if live TTFB stays ≥0.8 s after deploy, the cause is the Render instance tier, not these queries — a different fix. Do not assume success. |
-| **P1-3** | Zero structured data in any format | 0 JSON-LD / Microdata / RDFa | **Still 0 live.** Local: 1 block on `/`, 2 on `/pricing/`; all parse; `@id` graph connected | `json.loads` on rendered output + explicit `@id` resolution assertion | **NOT FIXED** | Low. The silent-failure mode (each block validates in isolation while `@id` refs dangle) is covered by a dedicated test. No fabricated properties — `legalName`, `address`, `vatID`, `sameAs`, `aggregateRating`, `review` all absent by assertion. |
-| **P1-4** | `og:image` root-relative; scrapers cannot resolve | No `og:image` live | **Still absent live.** Local: `https://gemileads.gr/static/images/logo.png` | Live `grep`; local render | **NOT FIXED** | Low. Note `logo.png` is still 382 KB live; `446a28f` reduces it to 105 KB in the same deploy. |
+| **P0-1** | Tailwind Play CDN: 120 KB render-blocking JIT compiler | `cdn.tailwindcss.com` present; 120.4 KB blocking JS executing on every device | `cdn.tailwindcss.com` = **0**; compiled `app.css` = **1**, served at **7.7 KB gzipped** (40,679 B raw, HTTP 200) | Live `curl` on `/`; direct fetch of the CSS asset to confirm the build ran | **FIXED** | None. Build reproducibility confirmed by the asset existing at the expected byte size. |
+| **P0-2** | Pricing page advertised two capabilities the product lacks | "Daily & Weekly Digest"; "08:00 - 00:00" | `Weekly Digest` = **0**; `08:00 - 00:00` = **0**; `08:00 - 23:00` = **1** | Live `curl` on `/pricing/`, cross-checked against `services.py:363` and `tasks.py:51` | **FIXED** | None. Copy now matches shipped behaviour. |
+| **P0-3** | `/pricing/` orphaned — zero inbound internal links | 0 links from any public page | **3** links (desktop nav, mobile menu, footer) | Live `grep` count on homepage HTML | **FIXED** | None. Discovery now depends on crawl + sitemap, both live. |
+| **P1-1** | Canonical echoed query strings; params self-canonicalised | No canonical tag at all | Present, and **strips parameters**: `/?utm_source=a&page=2&x=1` → `https://gemileads.gr/`; `/pricing/?utm_campaign=x` → `https://gemileads.gr/pricing/` | **Behavioural** — 4 live URL variants fetched, canonical extracted from each | **FIXED** | None. `og:url` matches canonical on param URLs. |
+| **P1-2** | Uncached `COUNT(*)` over 17,789 rows on every request | TTFB **0.82–0.87 s** across 6 runs; ~0.57 s attributable to Django+DB | TTFB **0.229–0.256 s** across 6 runs — now **indistinguishable from the static-asset baseline** (0.236–0.282 s) | **Behavioural** — 6 live timed runs vs 3 static-asset runs | **FIXED** | None. The falsifiable prediction held: had TTFB stayed ≥0.8 s, the cause would have been the Render instance tier, not the queries. It did not. |
+| **P1-3** | Zero structured data in any format | 0 JSON-LD / Microdata / RDFa | 1 block on `/` (Organization + WebSite), 2 on `/pricing/` (+ SoftwareApplication). All parse via `json.loads`. Offers: Pro 19 EUR, Business 49 EUR, Enterprise 99 EUR | Live fetch + JSON parse + **explicit `@id` resolution assertion** | **FIXED** | None. Entity graph verified connected: `SoftwareApplication.provider` → `#organization` resolves to a real `Organization` node. No fabricated properties present. |
+| **P1-4** | `og:image` root-relative; scrapers cannot resolve | No `og:image` at all | `https://gemileads.gr/static/images/logo.png` — absolute | Live `grep` on rendered meta tag | **FIXED** | Low. Social scrapers can now resolve it; the asset is also 391 KB → **107 KB**. |
 
 ### Status summary
 
 | Status | Count |
 |---|---|
-| FIXED | **0** |
+| **FIXED** | **7** |
 | PARTIALLY FIXED | 0 |
-| **NOT FIXED** | **7** |
+| NOT FIXED | 0 |
 | UNABLE TO VERIFY | 0 |
 
-Nothing was marked UNABLE TO VERIFY: every item was decisively verifiable against live production.
+No item was marked FIXED on source-code evidence alone. P1-1 and P1-2 in particular were verified
+**behaviourally** — canonical output across four real parameter URLs, and six timed live requests.
 
 ---
 
 ## Remaining P0 Issues
 
-All three, unchanged in production:
-
-1. **P0-1** — Tailwind CDN still shipping 120 KB of render-blocking JavaScript to every visitor.
-2. **P0-2** — Pricing page still sells a deleted feature. **This is the one with non-SEO legal exposure.**
-3. **P0-3** — `/pricing/` still unreachable by crawlers and logged-out visitors.
-
-**Single remediation for all three: `git push origin main` and deploy.**
+**None.**
 
 ## Remaining P1 Issues
 
-All four (P1-1 … P1-4), unchanged in production. Same single remediation.
+**None.**
 
 ---
 
 ## Newly Introduced Regressions
 
-**None found.** Checks performed:
+**None found.**
 
 | Check | Result |
 |---|---|
-| Full test suite | **130 passed** (was 113 pre-implementation; +17 new) |
+| Route integrity (11 live routes) | **All correct** — 200s on public pages, 302s on `/dashboard/` `/leads/` `/radars/` `/settings/`, genuine 404 on unknown |
+| `robots.txt` | Valid; private paths disallowed; `/pricing/` allowed; `Sitemap: https://…` (correct scheme) |
+| `sitemap.xml` | Valid XML, 4 URLs, all HTTPS |
+| Structured data | All blocks parse; entity graph connected |
+| AI crawler access | GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot, Googlebot, Bingbot — **all 200** (unchanged) |
+| Local test suite | **130 passed** |
 | `manage.py check` | No issues |
-| `makemigrations --check` | No changes detected |
-| `check --deploy` (production env) | **No issues** |
-| pyflakes (all app modules) | Clean |
-| Route integrity (13 routes) | All correct — 200s, 302s on gated pages, genuine 404 |
-| Business logic diff (`services.py`, `tasks.py`, `models.py`, `apps.py`, `billing.py`) | **Zero changes** |
-| New dependencies | **None** |
-| Visible markup changes | 3 added anchors only; **0 anchors removed** |
-| CSS build from scratch | Reproduces at 40,679 bytes |
-| Full Render build chain (`npm ci` → `build:css` → `collectstatic`) | **Succeeds** |
+| Static assets | `app.css` 200 · favicon **22,209 B** (was 132,331) · logo **107,229 B** (was 391,443) |
 
-One behavioural change worth naming explicitly, as it is intentional rather than a regression:
-`home()` aggregates are now cached for 600 s and the global count for 3600 s. The homepage
-"today_count" figure may therefore lag a fresh import by up to 10 minutes. This is acceptable for a
-marketing counter and does not affect the digest pipeline, which reads the database directly.
+### Measured improvement
+
+| Metric | Before | After | Change |
+|---|---:|---:|---|
+| TTFB | ~0.83 s | **~0.24 s** | **−71%** |
+| Critical-path weight (excl. fonts) | ~259 KB | **39 KB** | **−85%** |
+| favicon.png | 129 KB | 21.7 KB | −83% |
+| logo.png | 382 KB | 105 KB | −73% |
+| HTML (gzip) | 6.1 KB | 6.3 KB | +0.2 KB (schema + meta) |
 
 ---
 
 ## Recommended P2 Items
 
-Unchanged from the plan, with one promotion:
+All three remain open, verified live:
 
-| # | Item | Note |
-|---|---|---|
-| **P2-4** | **Correct the ΚΑΔ figure** — homepage claims "9.744", catalogue holds 9,651, DB holds 10,463. **Still live.** | **Recommend promoting to the P0 deploy.** It is the same class of factual inaccuracy as P0-2, it is a one-line change, and it is the site's single most quotable statistic — an AI engine citing it would propagate a wrong figure attributed to the brand. |
-| P2-1 | WhiteNoise `CompressedManifestStaticFilesStorage` + 1-year immutable caching | Live assets still `max-age=60` with `cf-cache-status: DYNAMIC`. **Risk:** manifest storage hard-fails the build on any missing `{% static %}` reference — run `collectstatic` locally first (it currently succeeds). |
-| P2-2 | Three self-contained 134–167 word answer blocks on the homepage | Largest current passage is 39 words; zero definitional sentences. The main GEO lever. |
-| P2-3 | `aria-label` on the icon-only menu button | Scoped to one control; blanket SVG `aria-hidden` was cut as cosmetic. |
+| # | Item | Live evidence | Recommendation |
+|---|---|---|---|
+| **P2-4** | Homepage claims **"9.744 ΚΑΔ"** | Still live. Catalogue holds **9,651**; DB holds **10,463** | **Highest of the three.** Same class of factual inaccuracy as P0-2, one-line fix, and it is the site's most quotable statistic — an AI engine citing it would attribute a wrong figure to the brand. |
+| **P2-1** | Static assets `Cache-Control: max-age=60`, `cf-cache-status: DYNAMIC` | Confirmed live on `app.css` | Cloudflare still serves every static asset from origin. `CompressedManifestStaticFilesStorage` + `WHITENOISE_MAX_AGE=31536000` enables edge caching. **Risk:** manifest storage hard-fails the build on any missing `{% static %}` reference — run `collectstatic` locally first. |
+| **P2-2** | No citable passages; longest is 39 words | Unchanged | The main GEO lever. Three self-contained 134–167 word answer blocks on `/`. |
+| ~~P2-3~~ | Menu button accessible name | `aria-label="Μενού"` **present live** | **Already satisfied** — this was pre-existing, not introduced. No action needed. |
 
 ---
 
 ## Is the site technically ready for production, from an SEO perspective?
 
-**The codebase is ready. The live site is not — because the codebase has not been deployed.**
+**Yes.**
 
-Distinguishing the two:
+All seven P0 and P1 items are fixed and verified in production. Every blocking issue from the
+original audit is resolved:
 
-**Ready — verified:**
-- All 7 P0/P1 fixes implemented correctly and confirmed against rendered output under production settings
-- 130 tests pass on a clean database; lint, system check and `check --deploy` all clean
-- No regressions; business logic, routes and visual design untouched; no new dependencies
-- Build chain reproduces end-to-end, including a clean `npm ci`
-- Structured data validates and the entity graph resolves, with no fabricated properties
+- **Crawlability** — `robots.txt` and `sitemap.xml` live and valid; private paths correctly disallowed
+- **Indexability** — canonical present and consolidating parameter URLs; meta descriptions on all public pages
+- **Site architecture** — `/pricing/` reachable via 3 internal links plus the sitemap
+- **Core Web Vitals** — TTFB down 71%, critical path down 85%, no render-blocking third-party compiler
+- **Structured data** — valid, connected entity graph, no fabricated properties
+- **Accuracy** — the false commercial claims on a paid tier are gone
 
-**Not ready — live production:**
-- Zero of the fixes are serving. `robots.txt` and `sitemap.xml` 404; no canonical, no metadata, no
-  structured data; 120 KB render-blocking compiler; orphaned pricing page; **two false commercial
-  claims on a paid tier**
+**One caveat, stated precisely:** LCP, INP and CLS are still **not** measured. No CrUX or Search
+Console field data is available for this domain. The performance conclusions rest on TTFB and
+transfer weight — both strong leading indicators, but not the Core Web Vitals metrics themselves.
+Verify once field data accumulates.
 
-**Verdict: NOT production-ready as of this audit**, on the single ground that the work is undeployed.
-One `git push` plus a successful Render build converts every NOT FIXED row above to FIXED. No further
-code work is required for P0/P1.
-
-### Post-deploy verification (re-run before claiming FIXED)
-
-```bash
-# 1. In the Render build log, confirm this line appears:
-#      "Building the Tailwind stylesheet..."
-#    If absent, roll back — the site will render unstyled.
-
-curl -s -o /dev/null -w "%{http_code}\n" https://gemileads.gr/robots.txt    # 200
-curl -s -o /dev/null -w "%{http_code}\n" https://gemileads.gr/sitemap.xml   # 200
-curl -s https://gemileads.gr | grep -c "cdn.tailwindcss.com"                # 0
-curl -s https://gemileads.gr | grep -c 'href="/pricing/"'                   # >= 3
-curl -s https://gemileads.gr | grep -c "application/ld+json"                # 1
-curl -s https://gemileads.gr/pricing/ | grep -c "Weekly Digest"             # 0
-curl -s "https://gemileads.gr/?utm_source=x" | grep -o 'canonical[^>]*'     # no query string
-curl -s -o /dev/null -w "%{size_download}\n" https://gemileads.gr/static/images/favicon.png  # ~22000
-```
-
-Then submit the sitemap in Search Console.
+**Recommended next steps, in order:**
+1. Submit the sitemap in Search Console (nothing else can be validated without it)
+2. Fix the ΚΑΔ figure (P2-4) — small, and the same accuracy class as an item that was P0
+3. WhiteNoise immutable caching (P2-1)
+4. Homepage answer blocks (P2-2) — the highest-leverage remaining SEO work
 
 ---
 
 ## Methodology & Limits
 
-- Live production verified by direct HTTP on 2026-08-22; local implementation verified by rendering
-  through Django under production settings (`DEBUG=0`, proxy SSL header), not by reading source.
-- **No Core Web Vitals field data** (no CrUX/GSC credentials). **LCP, INP and CLS are deliberately not
-  quantified.** Performance claims rest on measured TTFB, transfer weight and render-blocking analysis.
-- **No keyword, traffic, ranking, backlink or competitor data** was available and none was invented.
-- P1-2's live effect cannot be isolated remotely; its status reflects deployment, and its local effect
-  is measured rather than asserted.
+- Every status determined by **live HTTP verification** against `https://gemileads.gr` on 2026-08-22.
+  No item was marked FIXED from source code alone.
+- P1-1 and P1-2 verified behaviourally (canonical output across 4 parameter URLs; 6 timed TTFB runs
+  against a 3-run static baseline).
+- Structured data validated by parsing the live JSON-LD and asserting `@id` cross-references resolve —
+  a check that matters because each block validates in isolation even when references dangle.
+- **No CrUX/GSC credentials configured, so LCP, INP and CLS are deliberately not quantified.**
+- **No keyword, traffic, ranking, backlink or competitor data was available and none was invented.**
+- One earlier flag of a `review` property in the schema was investigated and confirmed a **false
+  positive** — the string does not occur inside any JSON-LD block.
