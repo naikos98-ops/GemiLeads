@@ -34,6 +34,8 @@ services:
         value: Gemi Leads <notifications@send.gemileads.gr>
       - key: EMAIL_REPLY_TO
         value: info@gemileads.gr
+      - key: GA_MEASUREMENT_ID
+        sync: false
       - key: GOOGLE_SITE_VERIFICATION
         sync: false
       - key: SENTRY_DSN

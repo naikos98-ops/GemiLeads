@@ -135,6 +135,9 @@ STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO")
 STRIPE_PRICE_BUSINESS = os.getenv("STRIPE_PRICE_BUSINESS")
 STRIPE_PRICE_ENTERPRISE = os.getenv("STRIPE_PRICE_ENTERPRISE")
 
+# Google Analytics 4 measurement id (G-XXXXXXXXXX). Unset disables analytics entirely.
+GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "")
+
 # Google Search Console site verification. Set to the token value only (not the full tag).
 # Leave unset to omit the meta tag entirely; DNS TXT verification needs nothing here.
 GOOGLE_SITE_VERIFICATION = os.getenv("GOOGLE_SITE_VERIFICATION", "")

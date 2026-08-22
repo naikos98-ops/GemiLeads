@@ -1,0 +1,71 @@
+{% comment %}
+Google Analytics 4, gated behind explicit consent.
+
+GA4 sets _ga cookies, which are non-essential under ePrivacy/GDPR, so nothing is loaded until
+the visitor accepts. Declining stores the choice and loads no third-party script at all, which
+also keeps the 486 KB gtag.js off the critical path for those users.
+
+The banner is plain HTML/CSS with a small inline script: no consent-management vendor, no extra
+dependency, and no layout shift because it is fixed to the viewport bottom.
+{% endcomment %}
+{% if ga_measurement_id %}
+<div id="cookieBanner" hidden
+     class="fixed inset-x-0 bottom-0 z-[60] border-t border-navy-900/10 bg-white/95 px-5 py-4 shadow-soft backdrop-blur">
+  <div class="mx-auto flex max-w-5xl flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <p class="text-sm leading-6 text-navy-900/75">
+      Χρησιμοποιούμε cookies στατιστικών για να καταλάβουμε πώς χρησιμοποιείται ο ιστότοπος.
+      Δεν φορτώνεται τίποτα χωρίς τη συγκατάθεσή σου.
+    </p>
+    <div class="flex shrink-0 gap-2">
+      <button type="button" data-cookie-decline
+              class="rounded-2xl border border-navy-900/15 px-5 py-2.5 text-xs font-bold text-navy-900/70 transition hover:bg-sand-50">
+        Απόρριψη
+      </button>
+      <button type="button" data-cookie-accept
+              class="rounded-2xl bg-navy-950 px-5 py-2.5 text-xs font-bold text-white transition hover:-translate-y-0.5">
+        Αποδοχή
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var KEY = 'gemi_cookie_consent';
+    var ID = '{{ ga_measurement_id|escapejs }}';
+    var banner = document.getElementById('cookieBanner');
+
+    function loadAnalytics() {
+      if (window.__gemiAnalyticsLoaded) return;
+      window.__gemiAnalyticsLoaded = true;
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(ID);
+      document.head.appendChild(s);
+      window.dataLayer = window.dataLayer || [];
+      function gtag() { window.dataLayer.push(arguments); }
+      window.gtag = gtag;
+      gtag('js', new Date());
+      gtag('config', ID);
+    }
+
+    var stored;
+    try { stored = localStorage.getItem(KEY); } catch (e) { stored = null; }
+
+    if (stored === 'granted') {
+      loadAnalytics();
+    } else if (stored !== 'denied' && banner) {
+      banner.hidden = false;
+    }
+
+    function choose(value) {
+      try { localStorage.setItem(KEY, value); } catch (e) {}
+      if (banner) banner.hidden = true;
+      if (value === 'granted') loadAnalytics();
+    }
+
+    banner?.querySelector('[data-cookie-accept]')?.addEventListener('click', function () { choose('granted'); });
+    banner?.querySelector('[data-cookie-decline]')?.addEventListener('click', function () { choose('denied'); });
+  })();
+</script>
+{% endif %}

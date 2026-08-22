@@ -14,4 +14,5 @@ def global_stats(request):
     return {
         "global_company_count": count,
         "google_site_verification": settings.GOOGLE_SITE_VERIFICATION,
+        "ga_measurement_id": settings.GA_MEASUREMENT_ID,
     }

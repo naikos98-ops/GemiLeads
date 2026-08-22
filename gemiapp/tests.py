@@ -2527,3 +2527,53 @@ class SearchConsoleVerificationTests(TestCase):
         for allowed in ("/pricing/", "/signup/", "/login/"):
             self.assertNotIn(f"Disallow: {allowed}", robots)
         self.assertIn("Sitemap:", robots)
+
+
+@override_settings(ALLOWED_HOSTS=["gemileads.gr", "testserver"], RATELIMIT_ENABLE=False)
+class AnalyticsConsentTests(TestCase):
+    """GA4 sets non-essential cookies, so under ePrivacy/GDPR nothing may load before consent."""
+
+    def _html(self, **extra):
+        return self.client.get(reverse("home"), HTTP_HOST="gemileads.gr", **extra).content.decode()
+
+    @override_settings(GA_MEASUREMENT_ID="")
+    def test_nothing_renders_when_analytics_is_disabled(self):
+        html = self._html()
+        self.assertNotIn("cookieBanner", html)
+        self.assertNotIn("googletagmanager", html)
+
+    @override_settings(GA_MEASUREMENT_ID="G-TEST123456")
+    def test_gtag_is_never_a_static_script_tag(self):
+        """The 486 KB gtag.js must only ever be injected after an explicit accept."""
+        html = self._html()
+        self.assertIsNone(
+            re.search(r'<script[^>]+src="https://www\.googletagmanager\.com', html),
+            "gtag.js must not load before consent",
+        )
+
+    @override_settings(GA_MEASUREMENT_ID="G-TEST123456")
+    def test_banner_and_both_choices_are_offered(self):
+        html = self._html()
+        self.assertIn("cookieBanner", html)
+        self.assertIn("data-cookie-accept", html)
+        self.assertIn("data-cookie-decline", html)
+
+    @override_settings(GA_MEASUREMENT_ID="G-TEST123456")
+    def test_measurement_id_reaches_the_page_safely(self):
+        """escapejs encodes the hyphen; JavaScript still resolves it to the original id."""
+        html = self._html()
+        # Django's escapejs emits a literal backslash-u escape for the hyphen; JavaScript
+        # decodes it back to the original id at runtime.
+        self.assertIn("TEST123456", html)
+        self.assertRegex(html, "var ID = 'G(" + chr(92) + chr(92) + "u002D|-)TEST123456'")
+
+    @override_settings(GA_MEASUREMENT_ID="G-TEST123456")
+    def test_analytics_appears_on_every_public_page(self):
+        for name in ("home", "pricing", "signup", "login"):
+            html = self.client.get(reverse(name), HTTP_HOST="gemileads.gr").content.decode()
+            self.assertIn("cookieBanner", html, name)
+
+    @override_settings(GA_MEASUREMENT_ID='G-X"><script>alert(1)</script>')
+    def test_measurement_id_cannot_break_out_of_the_script(self):
+        html = self._html()
+        self.assertNotIn("<script>alert(1)</script>", html)
