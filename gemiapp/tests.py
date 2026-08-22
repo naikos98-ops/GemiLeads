@@ -6,7 +6,7 @@ from django.contrib.auth.models import User
 from django.core import mail
 from django.core.cache import cache
 from django.db.utils import OperationalError
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from .models import (
@@ -2270,3 +2270,220 @@ class PurgeFailedTasksCommandTests(TestCase):
                             stopped=timezone.now(), success=True)
         self._run()
         self.assertTrue(Task.objects.filter(id="ok").exists())
+
+
+@override_settings(
+    STRIPE_PRICE_PRO="price_pro", STRIPE_PRICE_BUSINESS="price_biz",
+    STRIPE_PRICE_ENTERPRISE="price_ent", RATELIMIT_ENABLE=False,
+)
+class CheckoutAuthenticationFlowTests(TestCase):
+    """Selecting a plan while logged out used to 405.
+
+    @login_required redirected the POST to /login/?next=<POST-only URL>; after logging in the
+    browser replayed `next` as a GET and @require_POST answered 405.
+    """
+
+    def _user(self, email="buyer@example.com"):
+        return User.objects.create_user(email, email, "StrongPass123")
+
+    def _stripe(self):
+        return patch("stripe.checkout.Session.create",
+                     return_value=type("S", (), {"url": "https://stripe.test/checkout"})())
+
+    # A. logged-in user selects a plan
+    def test_authenticated_user_reaches_stripe_directly(self):
+        self.client.force_login(self._user())
+        with self._stripe() as create:
+            response = self.client.post(reverse("create_checkout_session"), {"tier": "pro"})
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(create.call_args.kwargs["line_items"], [{"price": "price_pro", "quantity": 1}])
+
+    # B. logged-out user selects a plan -> login -> resume, with no 405 anywhere
+    def test_anonymous_selection_survives_login_without_405(self):
+        self._user()
+
+        selected = self.client.post(reverse("create_checkout_session"), {"tier": "business"})
+        self.assertEqual(selected.status_code, 302)
+        self.assertEqual(selected["Location"], f"{reverse('login')}?next={reverse('resume_checkout')}")
+        self.assertEqual(self.client.session["pending_checkout_tier"], "business")
+
+        logged_in = self.client.post(
+            f"{reverse('login')}?next={reverse('resume_checkout')}",
+            {"username": "buyer@example.com", "password": "StrongPass123"},
+        )
+        self.assertEqual(logged_in["Location"], reverse("resume_checkout"))
+
+        resumed = self.client.get(reverse("resume_checkout"))
+        self.assertEqual(resumed.status_code, 200, "the resume step must never 405")
+        self.assertContains(resumed, 'value="business"')
+
+        with self._stripe() as create:
+            done = self.client.post(reverse("create_checkout_session"), {"tier": "business"})
+        self.assertEqual(done.status_code, 303)
+        self.assertEqual(create.call_args.kwargs["line_items"], [{"price": "price_biz", "quantity": 1}])
+
+    # C. the tier chosen before login is the tier that gets bought
+    def test_resumed_plan_matches_the_original_selection(self):
+        self._user()
+        self.client.post(reverse("create_checkout_session"), {"tier": "enterprise"})
+        self.client.login(username="buyer@example.com", password="StrongPass123")
+        self.assertContains(self.client.get(reverse("resume_checkout")), 'value="enterprise"')
+
+    # D. new user signs up after selecting a plan
+    def test_signup_then_verification_resumes_the_plan(self):
+        self.client.post(reverse("create_checkout_session"), {"tier": "pro"})
+        self.client.post(reverse("signup"), {
+            "first_name": "Νέος", "email": "new@example.com",
+            "password1": "StrongPass123!", "password2": "StrongPass123!",
+        })
+        user = User.objects.get(email="new@example.com")
+        link = re.search(r"/verify/[^\s\"'<]+", mail.outbox[-1].body).group(0)
+
+        response = self.client.get(link)
+        self.assertRedirects(response, reverse("resume_checkout"), fetch_redirect_response=False)
+        user.refresh_from_db()
+        self.assertTrue(user.is_active)
+
+    def test_verification_without_a_pending_plan_still_goes_to_dashboard(self):
+        self.client.post(reverse("signup"), {
+            "first_name": "Απλός", "email": "plain@example.com",
+            "password1": "StrongPass123!", "password2": "StrongPass123!",
+        })
+        link = re.search(r"/verify/[^\s\"'<]+", mail.outbox[-1].body).group(0)
+        self.assertRedirects(self.client.get(link), reverse("dashboard"), fetch_redirect_response=False)
+
+    # E. the state-changing endpoint stays POST-only
+    def test_get_on_checkout_endpoint_is_rejected(self):
+        self.client.force_login(self._user())
+        with patch("stripe.checkout.Session.create") as create:
+            response = self.client.get(reverse("create_checkout_session"))
+        self.assertEqual(response.status_code, 405)
+        create.assert_not_called()
+
+    def test_anonymous_get_creates_no_session_and_no_pending_tier(self):
+        with patch("stripe.checkout.Session.create") as create:
+            self.assertEqual(self.client.get(reverse("create_checkout_session")).status_code, 405)
+        create.assert_not_called()
+        self.assertNotIn("pending_checkout_tier", self.client.session)
+
+    # F. manipulated plan identifiers
+    def test_invalid_tier_is_rejected_without_touching_stripe(self):
+        self.client.force_login(self._user())
+        for bogus in ("bogus", "custom", "free", "", "PRO", "pro; drop"):
+            with patch("stripe.checkout.Session.create") as create:
+                response = self.client.post(reverse("create_checkout_session"), {"tier": bogus})
+            self.assertRedirects(response, reverse("pricing"))
+            create.assert_not_called()
+
+    def test_invalid_tier_is_not_parked_in_the_session_when_anonymous(self):
+        response = self.client.post(reverse("create_checkout_session"), {"tier": "bogus"})
+        self.assertRedirects(response, reverse("pricing"))
+        self.assertNotIn("pending_checkout_tier", self.client.session)
+
+    def test_a_price_id_cannot_be_injected(self):
+        """Only a validated tier name is accepted; price ids come from settings."""
+        self.client.force_login(self._user())
+        with patch("stripe.checkout.Session.create") as create:
+            self.client.post(reverse("create_checkout_session"),
+                             {"tier": "pro", "price": "price_attacker", "price_id": "price_attacker"})
+        self.assertEqual(create.call_args.kwargs["line_items"], [{"price": "price_pro", "quantity": 1}])
+
+    # G. open redirect
+    def test_external_next_cannot_redirect_off_site(self):
+        self._user()
+        response = self.client.post(
+            f"{reverse('login')}?next=https://evil.example.com/steal",
+            {"username": "buyer@example.com", "password": "StrongPass123"},
+        )
+        self.assertNotIn("evil.example.com", response["Location"])
+
+    def test_resume_route_ignores_a_supplied_next(self):
+        """The tier comes from the session, never from the query string."""
+        self.client.force_login(self._user())
+        response = self.client.get(reverse("resume_checkout") + "?tier=enterprise&next=https://evil.example.com")
+        self.assertRedirects(response, reverse("pricing"))
+
+    # H. every selectable plan uses the same corrected flow
+    def test_all_plans_resume_identically(self):
+        from gemiapp.billing import SELECTABLE_TIERS
+
+        for tier, price in zip(SELECTABLE_TIERS, ("price_pro", "price_biz", "price_ent")):
+            client = Client()
+            User.objects.create_user(f"{tier}@example.com", f"{tier}@example.com", "StrongPass123")
+
+            redirected = client.post(reverse("create_checkout_session"), {"tier": tier})
+            self.assertEqual(redirected["Location"], f"{reverse('login')}?next={reverse('resume_checkout')}")
+
+            client.login(username=f"{tier}@example.com", password="StrongPass123")
+            self.assertContains(client.get(reverse("resume_checkout")), f'value="{tier}"')
+
+            with self._stripe() as create:
+                client.post(reverse("create_checkout_session"), {"tier": tier})
+            self.assertEqual(create.call_args.kwargs["line_items"], [{"price": price, "quantity": 1}])
+
+    # I. the upgrade / manage-plan path
+    def test_customer_portal_is_not_used_as_a_login_next_target(self):
+        """customer_portal is POST-only behind auth, but is only rendered to authenticated
+        users, so it can never become a login `next` target."""
+        html = self.client.get(reverse("pricing")).content.decode()
+        self.assertNotIn(reverse("customer_portal"), html)
+
+    def test_customer_portal_rejects_get(self):
+        self.client.force_login(self._user())
+        self.assertEqual(self.client.get(reverse("customer_portal")).status_code, 405)
+
+    # J. ordinary login is untouched
+    def test_login_without_a_pending_plan_goes_to_the_dashboard(self):
+        self._user()
+        response = self.client.post(reverse("login"),
+                                    {"username": "buyer@example.com", "password": "StrongPass123"})
+        self.assertRedirects(response, reverse("dashboard"), fetch_redirect_response=False)
+
+    def test_resume_route_requires_authentication(self):
+        response = self.client.get(reverse("resume_checkout"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("login"), response["Location"])
+
+    def test_resume_without_a_pending_plan_falls_back_to_pricing(self):
+        self.client.force_login(self._user())
+        self.assertRedirects(self.client.get(reverse("resume_checkout")), reverse("pricing"))
+
+    def test_pending_tier_is_consumed_once(self):
+        """Prevents a stale plan resurfacing on a later, unrelated login."""
+        self._user()
+        self.client.post(reverse("create_checkout_session"), {"tier": "pro"})
+        self.client.login(username="buyer@example.com", password="StrongPass123")
+
+        self.assertEqual(self.client.get(reverse("resume_checkout")).status_code, 200)
+        self.assertRedirects(self.client.get(reverse("resume_checkout")), reverse("pricing"))
+
+
+class PostOnlyEndpointExposureTests(TestCase):
+    """No POST-only view behind authentication may be reachable by an anonymous visitor,
+    otherwise it becomes a login `next` target and 405s after login."""
+
+    def test_no_public_template_posts_to_a_login_required_post_only_view(self):
+        """pricing is the only public page that posts to a POST-only endpoint, and its
+        checkout view now handles anonymous callers itself."""
+        html = self.client.get(reverse("pricing")).content.decode()
+        # These are the POST-only endpoints behind authentication. None may appear on the
+        # only public page that renders POST forms.
+        for path in (reverse("customer_portal"), reverse("radar_preview"),
+                     reverse("lead_favorite", args=[1]), reverse("lead_status", args=[1]),
+                     reverse("lead_notes", args=[1]), reverse("radar_toggle", args=[1]),
+                     reverse("radar_delete", args=[1])):
+            self.assertNotIn(path, html)
+
+    def test_anonymous_post_to_gated_endpoints_never_yields_405_after_login(self):
+        """Those endpoints redirect anonymous POSTs to login, but their forms are only ever
+        rendered to authenticated users, so the GET replay cannot occur in practice."""
+        user = User.objects.create_user("g@example.com", "g@example.com", "StrongPass123")
+        company = Company.objects.create(
+            gemi_number="770000000001", name="ΤΕΣΤ ΙΚΕ",
+            incorporation_date=timezone.localdate(), prefecture="ΑΤΤΙΚΗΣ",
+        )
+        lead = UserCompanyLead.objects.create(user=user, company=company)
+
+        response = self.client.post(reverse("lead_favorite", args=[lead.pk]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("login"), response["Location"])

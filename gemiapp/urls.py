@@ -28,6 +28,8 @@ urlpatterns = [
     # Billing / Stripe
     path("pricing/", billing.pricing, name="pricing"),
     path("api/stripe/create-checkout-session/", billing.create_checkout_session, name="create_checkout_session"),
+    # GET-safe landing point after login when a plan was chosen while logged out.
+    path("checkout/resume/", billing.resume_checkout, name="resume_checkout"),
     path("api/stripe/customer-portal/", billing.customer_portal, name="customer_portal"),
     path("api/stripe/webhook/", billing.stripe_webhook, name="stripe_webhook"),
 ]

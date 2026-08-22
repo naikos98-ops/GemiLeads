@@ -34,6 +34,7 @@ from .models import (
     UserCompanyLead,
     get_user_radar_limit,
 )
+from .billing import PENDING_TIER_SESSION_KEY
 from .services import filter_companies_for_radar
 
 
@@ -167,6 +168,10 @@ def verify_email(request, uidb64, token):
         user.save()
         login(request, user)
         messages.success(request, "Το email σου επιβεβαιώθηκε! Καλώς ήρθες στο Gemi Leads.")
+        # login() cycles the session key but preserves its data, so a plan chosen before
+        # signing up survives and the checkout can pick up where the user left off.
+        if request.session.get(PENDING_TIER_SESSION_KEY):
+            return redirect("resume_checkout")
         return redirect("dashboard")
     else:
         messages.error(request, "Ο σύνδεσμος επιβεβαίωσης είναι άκυρος ή έχει λήξει.")

@@ -40,6 +40,13 @@ def tier_for_price_id(price_id):
     return mapping.get(price_id)
 
 
+# Tiers a user can buy through Stripe Checkout. "custom" is quote-based and has no price id.
+SELECTABLE_TIERS = ("pro", "business", "enterprise")
+
+# Where an anonymous visitor's plan choice is parked while they authenticate.
+PENDING_TIER_SESSION_KEY = "pending_checkout_tier"
+
+
 def price_id_for_tier(tier):
     return {
         "pro": settings.STRIPE_PRICE_PRO,
@@ -57,14 +64,25 @@ def pricing(request):
     return render(request, "pricing.html", context)
 
 
-@login_required
 @require_POST
 def create_checkout_session(request):
+    """Create a Stripe Checkout session for the posted tier.
+
+    Deliberately NOT wrapped in @login_required. That decorator redirects an unauthenticated
+    POST to /login/?next=<this URL>; after logging in the browser replays `next` as a GET, and
+    this POST-only view answers 405. Instead an anonymous request parks the chosen tier in the
+    session and sends the user to login, which resumes through the GET-safe resume_checkout view.
+    """
     tier = request.POST.get("tier")
-    price_id = price_id_for_tier(tier)
-    if tier not in ("pro", "business", "enterprise"):
+    if tier not in SELECTABLE_TIERS:
         return redirect("pricing")
 
+    if not request.user.is_authenticated:
+        # Only a validated tier is stored, never a caller-supplied URL or price id.
+        request.session[PENDING_TIER_SESSION_KEY] = tier
+        return redirect(f"{reverse('login')}?next={reverse('resume_checkout')}")
+
+    price_id = price_id_for_tier(tier)
     if not price_id:
         messages.error(request, "Το πλάνο δεν έχει ρυθμιστεί σωστά στο σύστημα.")
         return redirect("pricing")
@@ -99,6 +117,19 @@ def create_checkout_session(request):
     except Exception as e:
         logger.error(f"Stripe Checkout Error: {str(e)}")
         return render(request, "pricing.html", {"error": str(e)})
+
+
+@login_required
+def resume_checkout(request):
+    """GET-safe landing point after authenticating with a plan already selected.
+
+    Renders a page that immediately re-submits the intended tier as a real POST, so the
+    state-changing endpoint is still only ever reached by POST with a valid CSRF token.
+    """
+    tier = request.session.pop(PENDING_TIER_SESSION_KEY, None)
+    if tier not in SELECTABLE_TIERS:
+        return redirect("pricing")
+    return render(request, "billing/resume_checkout.html", {"tier": tier})
 
 
 @login_required
