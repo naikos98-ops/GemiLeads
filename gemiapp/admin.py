@@ -7,6 +7,7 @@ from .models import (
     DigestDelivery,
     DigestPreference,
     ImportRun,
+    PersonSuppression,
     RadarMatch,
     UserCompanyLead,
 )
@@ -58,3 +59,22 @@ class RadarMatchAdmin(admin.ModelAdmin):
     list_filter = ("matched_on",)
     search_fields = ("radar__name", "company__name", "company__gemi_number", "radar__user__email")
     readonly_fields = ("matched_activity_codes", "match_reason", "created_at")
+
+
+@admin.register(PersonSuppression)
+class PersonSuppressionAdmin(admin.ModelAdmin):
+    """Article 21 GDPR objections. Adding a row hides that person immediately.
+
+    Requests carry a one-month deadline, so requested_at is recorded and shown first:
+    it is the date the clock started, which is not the date the row was created.
+    """
+
+    list_display = ("full_name", "scope", "requested_at", "created_at")
+    list_filter = ("requested_at",)
+    search_fields = ("full_name", "normalized_name", "reason", "company__name")
+    autocomplete_fields = ("company",)
+    readonly_fields = ("normalized_name", "created_at")
+
+    @admin.display(description="Εμβέλεια")
+    def scope(self, obj):
+        return obj.company.name if obj.company_id else "Όλες οι επιχειρήσεις"

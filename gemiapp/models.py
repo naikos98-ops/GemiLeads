@@ -74,14 +74,24 @@ class Company(models.Model):
         and are dropped: showing someone who has left as a current manager would be worse
         than showing nobody. Sole traders legitimately have no entry here, their name is
         the company name, so an empty list is normal rather than missing data.
+
+        People who have objected under Article 21 GDPR are removed here, so no caller can
+        display them by accident. See :class:`PersonSuppression`.
         """
+        from .kad import normalize_kad_search
+
         entries = (self.raw_data or {}).get("persons") or []
+        if not entries:
+            return []
+        # Filtered here rather than at the call sites: this property is the only place
+        # people are produced, so an objection cannot be missed by a new caller.
+        suppressed = PersonSuppression.names_for(self)
         people = []
         for entry in entries:
             if not isinstance(entry, dict) or entry.get("dtTo"):
                 continue
             name = str(entry.get("personName") or entry.get("businessName") or "").strip()
-            if not name:
+            if not name or normalize_kad_search(name) in suppressed:
                 continue
             people.append({
                 "name": name,
@@ -349,6 +359,70 @@ class UserSubscription(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.get_tier_display()} ({self.status})"
+
+
+class PersonSuppression(models.Model):
+    """A person who exercised their right to object under Article 21 GDPR.
+
+    Kept in its own table rather than in Company.raw_data, because the importer
+    overwrites raw_data wholesale on every run and the suppression must outlive that.
+
+    Matching is on the accent-folded, uppercased name. ΓΕΜΗ publishes no stable
+    identifier for individuals, so the name is all there is to match on. That makes the
+    match deliberately broad: an objection is about a person, and 559 people in the
+    current data appear in more than one company (one in 22), so a per-company flag
+    would leave the other entries visible and the objection unhonoured. A company can
+    still be named to scope the suppression when the request is only about one role.
+    """
+
+    full_name = models.CharField("Ονοματεπώνυμο", max_length=300)
+    normalized_name = models.CharField(max_length=300, editable=False, db_index=True)
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, null=True, blank=True, related_name="person_suppressions",
+        verbose_name="Μόνο για την επιχείρηση", help_text="Κενό = απόκρυψη σε όλες τις επιχειρήσεις.",
+    )
+    reason = models.TextField("Σημείωση", blank=True, help_text="Εσωτερική τεκμηρίωση του αιτήματος.")
+    requested_at = models.DateTimeField("Ημερομηνία αιτήματος", default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Εναντίωση προσώπου"
+        verbose_name_plural = "Εναντιώσεις προσώπων (άρθρο 21 ΓΚΠΔ)"
+        ordering = ["-requested_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["normalized_name", "company"], name="unique_person_suppression"),
+            models.UniqueConstraint(
+                fields=["normalized_name"], condition=models.Q(company__isnull=True),
+                name="unique_global_person_suppression",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        from .kad import normalize_kad_search
+
+        normalized = normalize_kad_search(self.full_name)
+        if normalized != self.normalized_name:
+            self.normalized_name = normalized
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "normalized_name" not in update_fields:
+                kwargs["update_fields"] = list(update_fields) + ["normalized_name"]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        scope = self.company.name if self.company_id else "όλες τις επιχειρήσεις"
+        return f"{self.full_name} — {scope}"
+
+    @classmethod
+    def names_for(cls, company):
+        """Normalised names to hide for this company: global objections plus its own.
+
+        An unsaved Company cannot be the target of a scoped objection and cannot be used
+        in a related filter, so only the global rows apply to it.
+        """
+        scope = models.Q(company__isnull=True)
+        if getattr(company, "pk", None) is not None:
+            scope |= models.Q(company=company)
+        return set(cls.objects.filter(scope).values_list("normalized_name", flat=True))
 
 
 class AdminAuditLog(models.Model):

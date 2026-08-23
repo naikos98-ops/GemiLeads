@@ -18,6 +18,7 @@ from .models import (
     DigestPreference,
     ImportRun,
     RadarMatch,
+    PersonSuppression,
     UserCompanyLead,
     UserSubscription,
 )
@@ -2816,3 +2817,154 @@ class CompanyPeopleTests(TestCase):
         for phrase in ("διαχειριστές", "νόμιμους εκπροσώπους", "έννομο συμφέρον",
                        "δικαίωμα εναντίωσης", "μόνο σε συνδρομητές"):
             self.assertIn(phrase, html, phrase)
+
+
+class PersonSuppressionTests(TestCase):
+    """Article 21 GDPR: an objection must hide the person and survive re-imports."""
+
+    PERSONS = [
+        {"personName": "ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", "role": "Διαχειριστής & Εκπρόσωπος",
+         "category": "Εταίροι", "percentage": "90%", "dtTo": None, "isRepresentativeAlone": True},
+        {"personName": "ΠΑΠΑΔΟΠΟΥΛΟΥ ΒΑΣΙΛΙΚΗ", "role": "Ετερόρρυθμο Μέλος",
+         "category": "Εταίροι", "percentage": "10%", "dtTo": None, "isRepresentativeAlone": None},
+    ]
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            gemi_number="770000000100", name="ΠΡΩΤΗ Ε.Ε.", legal_type="ΕΕ",
+            incorporation_date=timezone.localdate(), prefecture="ΑΤΤΙΚΗΣ",
+            raw_data={"persons": self.PERSONS},
+        )
+        self.other = Company.objects.create(
+            gemi_number="770000000200", name="ΔΕΥΤΕΡΗ Ε.Ε.", legal_type="ΕΕ",
+            incorporation_date=timezone.localdate(), prefecture="ΑΤΤΙΚΗΣ",
+            raw_data={"persons": self.PERSONS},
+        )
+
+    def _names(self, company):
+        return [p["name"] for p in company.people]
+
+    def test_a_global_objection_hides_the_person_everywhere(self):
+        """559 people in the live data appear in more than one company."""
+        PersonSuppression.objects.create(full_name="ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ")
+        self.assertNotIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", self._names(self.company))
+        self.assertNotIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", self._names(self.other))
+
+    def test_other_people_are_unaffected(self):
+        PersonSuppression.objects.create(full_name="ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ")
+        self.assertIn("ΠΑΠΑΔΟΠΟΥΛΟΥ ΒΑΣΙΛΙΚΗ", self._names(self.company))
+
+    def test_an_objection_can_be_scoped_to_one_company(self):
+        PersonSuppression.objects.create(full_name="ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", company=self.company)
+        self.assertNotIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", self._names(self.company))
+        self.assertIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", self._names(self.other))
+
+    def test_matching_ignores_accents_case_and_spacing(self):
+        PersonSuppression.objects.create(full_name="  γεωργίου   νικόλαος ")
+        self.assertNotIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", self._names(self.company))
+
+    def test_the_objection_survives_a_reimport(self):
+        """The importer overwrites raw_data wholesale; the suppression must outlive it."""
+        PersonSuppression.objects.create(full_name="ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ")
+        Company.objects.update_or_create(
+            gemi_number=self.company.gemi_number,
+            defaults={"name": "ΠΡΩΤΗ Ε.Ε.", "incorporation_date": timezone.localdate(),
+                      "raw_data": {"persons": self.PERSONS}},
+        )
+        self.assertNotIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ",
+                         self._names(Company.objects.get(gemi_number=self.company.gemi_number)))
+
+    def test_deleting_the_objection_restores_the_person(self):
+        row = PersonSuppression.objects.create(full_name="ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ")
+        row.delete()
+        self.assertIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", self._names(self.company))
+
+    def test_a_suppressed_name_never_reaches_the_page(self):
+        PersonSuppression.objects.create(full_name="ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ")
+        user = User.objects.create_user("s@example.com", "s@example.com", "StrongPass123")
+        sub = UserSubscription.objects.get(user=user)
+        sub.complimentary_tier = "enterprise"
+        sub.save()
+        self.client.force_login(user)
+        html = self.client.get(reverse("company_detail", args=[self.company.gemi_number])).content.decode()
+        self.assertNotIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", html)
+        self.assertIn("ΠΑΠΑΔΟΠΟΥΛΟΥ ΒΑΣΙΛΙΚΗ", html)
+
+    def test_a_staff_user_does_not_bypass_an_objection(self):
+        """Gating is commercial; an objection is legal and binds every viewer."""
+        PersonSuppression.objects.create(full_name="ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ")
+        staff = User.objects.create_user("st@example.com", "st@example.com", "StrongPass123")
+        staff.is_staff = True
+        staff.save()
+        self.client.force_login(staff)
+        html = self.client.get(reverse("company_detail", args=[self.company.gemi_number])).content.decode()
+        self.assertNotIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", html)
+
+    def test_the_same_scope_cannot_be_recorded_twice(self):
+        from django.db import IntegrityError, transaction
+
+        PersonSuppression.objects.create(full_name="ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            PersonSuppression.objects.create(full_name="γεωργιου νικολαος")
+
+    def test_normalized_name_is_maintained_on_save(self):
+        row = PersonSuppression.objects.create(full_name="Γεωργίου Νικόλαος")
+        self.assertEqual(row.normalized_name, "ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ")
+        row.full_name = "Παπαδοπούλου Βασιλική"
+        row.save()
+        self.assertEqual(row.normalized_name, "ΠΑΠΑΔΟΠΟΥΛΟΥ ΒΑΣΙΛΙΚΗ")
+
+    # Management command
+    def test_the_command_suppresses_and_reports_the_blast_radius(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("suppress_person", "ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", stdout=out)
+        self.assertIn("2 επιχειρήσεις", out.getvalue())
+        self.assertNotIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", self._names(self.company))
+
+    def test_the_command_dry_run_changes_nothing(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        call_command("suppress_person", "ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", "--dry-run", stdout=StringIO())
+        self.assertFalse(PersonSuppression.objects.exists())
+        self.assertIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", self._names(self.company))
+
+    def test_the_command_can_scope_and_undo(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        call_command("suppress_person", "ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ",
+                     "--gemi", self.company.gemi_number, stdout=StringIO())
+        self.assertIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", self._names(self.other))
+
+        call_command("suppress_person", "ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ",
+                     "--gemi", self.company.gemi_number, "--undo", stdout=StringIO())
+        self.assertIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", self._names(self.company))
+
+    def test_the_command_warns_when_a_name_matches_nobody(self):
+        from io import StringIO
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("suppress_person", "ΑΓΝΩΣΤΟΣ ΤΙΣ", stdout=out)
+        self.assertIn("Καμία αντιστοίχιση", out.getvalue())
+
+    def test_the_command_rejects_an_unknown_company(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("suppress_person", "ΚΑΠΟΙΟΣ", "--gemi", "000000000000", stdout=StringIO())
+
+    def test_an_unsaved_company_does_not_crash_the_lookup(self):
+        """A related filter against an unsaved instance raises; only global rows apply."""
+        PersonSuppression.objects.create(full_name="ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ")
+        draft = Company(gemi_number="770000000999", name="ΠΡΟΧΕΙΡΗ",
+                        incorporation_date=timezone.localdate(),
+                        raw_data={"persons": self.PERSONS})
+        self.assertNotIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", [p["name"] for p in draft.people])
+        self.assertIn("ΠΑΠΑΔΟΠΟΥΛΟΥ ΒΑΣΙΛΙΚΗ", [p["name"] for p in draft.people])
