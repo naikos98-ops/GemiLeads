@@ -202,6 +202,13 @@ class Command(BaseCommand):
 
     def _deliveries(self, target):
         self._section(f"4. ΚΑΤΑΓΡΑΦΗ ΑΠΟΣΤΟΛΩΝ ΓΙΑ {target}")
+        self._hint(
+            "ΠΡΟΣΟΧΗ ΣΤΗΝ ΑΝΑΓΝΩΣΗ: το unique constraint είναι (user, digest_date, frequency), "
+            "άρα το intraday έχει ΜΙΑ γραμμή για όλη την ημέρα, που ενημερώνεται σε κάθε αποστολή. "
+            "Το πεδίο sent_at είναι auto_now_add, οπότε δείχνει μόνιμα την ΠΡΩΤΗ αποστολή της "
+            "ημέρας — μια γραμμή με ώρα 08:00 μπορεί κάλλιστα να έχει ενημερωθεί στις 20:00. "
+            "Για το τι έγινε σε συγκεκριμένο slot, δες την ενότητα 2."
+        )
         deliveries = DigestDelivery.objects.filter(digest_date=target).select_related("user").order_by("sent_at")
         if not deliveries:
             self._line("(καμία εγγραφή DigestDelivery)", "")
@@ -212,7 +219,7 @@ class Command(BaseCommand):
             return
         for delivery in deliveries:
             self._line(
-                f"{self._when(delivery.sent_at)} {delivery.frequency}",
+                f"1η αποστολή {self._when(delivery.sent_at)} · {delivery.frequency}",
                 f"{delivery.user.email or delivery.user.username} status={delivery.status} "
                 f"count={delivery.company_count} {delivery.error_message[:160]}",
             )

@@ -3597,3 +3597,40 @@ class DiagnoseIntradaySlotTests(TestCase):
         unsent intraday traffic."""
         self._company("444000", day=self.today - timedelta(days=1))
         self.assertIn("εκκρεμείς νέες εγγραφές τώρα=0", self._run())
+
+
+class DigestDeliveryIsNotPerSlotTests(TestCase):
+    """`sent_at` is auto_now_add, so update_or_create never moves it.
+
+    The intraday row is therefore stamped with the first send of the day and keeps that timestamp
+    through every later send. Reading it as a per-slot log says "only 08:00 went out" about a day
+    that in fact delivered five times, so the diagnostic has to say so out loud.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user("ent@example.com", "ent@example.com", "StrongPass123")
+        sub = self.user.subscription
+        sub.complimentary_tier = "enterprise"
+        sub.save()
+        self.today = timezone.localdate()
+
+    def test_a_later_send_does_not_move_the_timestamp(self):
+        first = DigestDelivery.objects.create(
+            user=self.user, digest_date=self.today, frequency="intraday", status="sent", company_count=2,
+        )
+        original = first.sent_at
+        DigestDelivery.objects.update_or_create(
+            user=self.user, digest_date=self.today, frequency="intraday",
+            defaults={"status": "sent", "company_count": 4},
+        )
+        first.refresh_from_db()
+        self.assertEqual(first.sent_at, original, "sent_at must stay at the first send of the day")
+        self.assertEqual(first.company_count, 4, "the row itself is updated in place")
+        self.assertEqual(DigestDelivery.objects.filter(frequency="intraday").count(), 1)
+
+    def test_the_diagnostic_warns_against_reading_it_per_slot(self):
+        out = StringIO()
+        call_command("diagnose_intraday", stdout=out)
+        output = out.getvalue()
+        self.assertIn("ΜΙΑ γραμμή για όλη την ημέρα", output)
+        self.assertIn("ΠΡΩΤΗ αποστολή", output)
