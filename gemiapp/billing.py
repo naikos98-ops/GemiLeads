@@ -73,6 +73,17 @@ def create_checkout_session(request):
     this POST-only view answers 405. Instead an anonymous request parks the chosen tier in the
     session and sends the user to login, which resumes through the GET-safe resume_checkout view.
     """
+    # Beta: no charge may be initiated while billing is off. Checked here rather than only in the
+    # template, so a direct POST (or a stale page left open when the flag is flipped) cannot reach
+    # Stripe. Everything below stays intact and starts working again the moment the flag is on.
+    if not settings.LEGAL_BILLING_ACTIVE:
+        messages.info(
+            request,
+            "Η εφαρμογή είναι σε beta και οι πληρωμές δεν έχουν ενεργοποιηθεί ακόμη. "
+            "Επικοινώνησε μαζί μας για πρόσβαση.",
+        )
+        return redirect("pricing")
+
     tier = request.POST.get("tier")
     if tier not in SELECTABLE_TIERS:
         return redirect("pricing")
@@ -127,7 +138,7 @@ def resume_checkout(request):
     state-changing endpoint is still only ever reached by POST with a valid CSRF token.
     """
     tier = request.session.pop(PENDING_TIER_SESSION_KEY, None)
-    if tier not in SELECTABLE_TIERS:
+    if tier not in SELECTABLE_TIERS or not settings.LEGAL_BILLING_ACTIVE:
         return redirect("pricing")
     return render(request, "billing/resume_checkout.html", {"tier": tier})
 

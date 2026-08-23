@@ -1,5 +1,7 @@
 # Gemi Leads
 
+> **Beta — οι πληρωμές δεν είναι ενεργές.** Η εφαρμογή, το pipeline και τα email λειτουργούν κανονικά, αλλά δεν γίνεται καμία χρέωση: το `create_checkout_session` αρνείται όσο `LEGAL_BILLING_ACTIVE=0` και τα κουμπιά checkout δεν εμφανίζονται. Η πρόσβαση δίνεται με complimentary access από το Superadmin (`/superadmin/users/<id>/`). Δες [Beta και billing](#beta-και-billing).
+
 Ένα Django SaaS για καθημερινή εισαγωγή νέων επιχειρήσεων από το επίσημο Open Data API ΓΕΜΗ, ιστορική αναζήτηση, CSV exports και προσωποποιημένα email digests.
 
 Τα digests είναι δύο ειδών: το **ημερήσιο** (09:00, για κάθε συνδρομητή) και το **3ωρο real-time** (08:00–23:00, μόνο για Enterprise/Custom). Το εβδομαδιαίο digest έχει καταργηθεί.
@@ -82,11 +84,35 @@ $env:GEMI_API_KEY = [Environment]::GetEnvironmentVariable("GEMI_API_KEY", "User"
 
 Τα όρια ορίζονται στο `RADAR_LIMITS` (`gemiapp/models.py`) και είναι η μοναδική πηγή αλήθειας. Ανά λογαριασμό μπορούν να παρακαμφθούν από το Superadmin μέσω `custom_radar_limit`.
 
-Για να λειτουργήσει το Stripe checkout χρειάζονται και τα τρία price ids: `STRIPE_PRICE_PRO`, `STRIPE_PRICE_BUSINESS`, `STRIPE_PRICE_ENTERPRISE`.
+**Οι τιμές του πίνακα είναι ενδεικτικές όσο η εφαρμογή είναι σε beta.** Κανένα από τα πλάνα δεν πωλείται αυτή τη στιγμή.
+
+## Beta και billing
+
+Δύο ανεξάρτητες μεταβλητές περιβάλλοντος:
+
+| Μεταβλητή | Προεπιλογή | Τι κάνει |
+|---|---|---|
+| `BETA_MODE` | `1` | Εμφανίζει την ένδειξη «Beta» στο navigation και στο footer. Καθαρά ετικέτα — δεν αλλάζει συμπεριφορά. |
+| `LEGAL_BILLING_ACTIVE` | `0` | Όσο είναι `0`: το `create_checkout_session` και το `resume_checkout` κάνουν redirect στο pricing, τα κουμπιά checkout δεν αποδίδονται καθόλου, το JSON-LD δηλώνει `PreOrder` αντί για `InStock`, και οι Όροι Χρήσης εμφανίζουν το κείμενο «οι πληρωμές δεν είναι ακόμη ενεργές». |
+
+Ο κώδικας του Stripe παραμένει ολόκληρος στη θέση του. Το άνοιγμα των πληρωμών είναι αλλαγή μεταβλητής, όχι νέα υλοποίηση — αρκεί να έχουν οριστεί και τα τρία price ids (`STRIPE_PRICE_PRO`, `STRIPE_PRICE_BUSINESS`, `STRIPE_PRICE_ENTERPRISE`) και το `STRIPE_WEBHOOK_SECRET`.
+
+Ο έλεγχος γίνεται **και** server-side, όχι μόνο στο template: ένα απευθείας POST στο checkout endpoint απορρίπτεται χωρίς να γίνει καμία κλήση στο Stripe.
 
 ## Email
 
-Σε development τα email τυπώνονται στο terminal. Για πραγματική αποστολή, όρισε τις SMTP μεταβλητές του `.env.example` στο environment του server.
+Το `EMAIL_BACKEND` είναι SMTP **και σε development**. Αν έχεις πραγματικά SMTP credentials στο `.env`, μια τοπική εκτέλεση του pipeline θα στείλει **αληθινά email**. Για δοκιμές χωρίς αποστολή, τρέξε με `--skip-email` ή άσε κενά τα `EMAIL_HOST_USER`/`EMAIL_HOST_PASSWORD`.
+
+## Διάγνωση email
+
+Όταν κάποιος δεν λαμβάνει digest, μία εντολή δίνει όλη την εικόνα (scheduler, import runs, δικαιούχοι, καταγραφή αποστολών) χωρίς να στείλει ή να αλλάξει τίποτα:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py diagnose_intraday
+.\.venv\Scripts\python.exe manage.py diagnose_intraday --date 2026-08-23
+```
+
+Η πιο συχνή αιτία: **το 3ωρο email απαιτεί `effective_tier` σε `enterprise` ή `custom`.** Complimentary πρόσβαση σε Pro ή Business δίνει μόνο το ημερήσιο digest.
 
 ## Καθημερινός προγραμματισμός
 

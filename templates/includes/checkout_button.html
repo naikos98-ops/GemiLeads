@@ -1,0 +1,22 @@
+{% comment %}
+Call-to-action for one paid tier. Expects `tier` (the Stripe-selectable slug) and `label`.
+
+While billing is off the form is not rendered at all, rather than rendered and disabled: a disabled
+button still ships a working POST target that a stale page or a devtools click can submit. The
+server refuses it too (create_checkout_session), so this is the outer of two gates, not the only one.
+{% endcomment %}
+{% if billing_active %}
+<form action="{% url 'create_checkout_session' %}" method="post">
+  {% csrf_token %}
+  <input type="hidden" name="tier" value="{{ tier }}">
+  <button class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">{{ label }}</button>
+</form>
+{% else %}
+<div class="w-full rounded-xl border border-dashed border-navy-900/20 bg-sand-50 py-3 text-center text-xs font-bold text-navy-700/60">
+  Σύντομα διαθέσιμο
+</div>
+<p class="mt-2 text-center text-[11px] leading-4 text-navy-700/50">
+  Οι πληρωμές δεν είναι ενεργές στο beta.
+  <a href="mailto:{{ legal_contact_email|default:'info@gemileads.gr' }}" class="font-semibold text-blue-700 hover:underline">Ζήτησε πρόσβαση</a>.
+</p>
+{% endif %}

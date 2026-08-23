@@ -86,6 +86,7 @@
           <span class="absolute -right-0.5 -top-0.5 h-2 w-2 animate-ping rounded-full bg-blue-400"></span>
         </div>
         <span class="text-xl font-extrabold tracking-tight text-white">Gemi <span class="text-blue-400">Leads</span></span>
+        {% if beta_mode %}<span class="rounded-full border border-blue-400/40 bg-blue-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-300">Beta</span>{% endif %}
       </a>
       <div class="hidden items-center gap-7 text-sm font-medium md:flex">
         {% if user.is_authenticated %}
@@ -122,7 +123,11 @@
         <a href="{% url 'privacy' %}" class="font-bold text-navy-900/70 transition hover:text-blue-700">Πολιτική Απορρήτου</a>
         <a href="{% url 'terms' %}" class="font-bold text-navy-900/70 transition hover:text-blue-700">Όροι Χρήσης</a>
       </p>
-      <p class="text-xs text-navy-700/50">Το Gemi Leads είναι ανεξάρτητη υπηρεσία και δεν αποτελεί υπηρεσία του ΓΕΜΗ.</p>
+      <p class="text-xs text-navy-700/50">
+        Το Gemi Leads είναι ανεξάρτητη υπηρεσία και δεν αποτελεί υπηρεσία του ΓΕΜΗ.
+        {% if beta_mode %}<br>Η εφαρμογή βρίσκεται σε <b>beta</b>.{% endif %}
+        {% if not billing_active %}<br>Οι πληρωμές δεν είναι ενεργές — καμία χρέωση δεν πραγματοποιείται.{% endif %}
+      </p>
     </div>
   </footer>
   <script src="{% static 'js/app.js' %}"></script>

@@ -15,4 +15,9 @@ def global_stats(request):
         "global_company_count": count,
         "google_site_verification": settings.GOOGLE_SITE_VERIFICATION,
         "ga_measurement_id": settings.GA_MEASUREMENT_ID,
+        # Site-wide because both facts have to be visible on every page, including the ones a
+        # visitor lands on directly. Read from settings on each request so flipping the env var
+        # takes effect on redeploy without touching a template.
+        "beta_mode": settings.BETA_MODE,
+        "billing_active": settings.LEGAL_BILLING_ACTIVE,
     }

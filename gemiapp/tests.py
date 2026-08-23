@@ -1049,9 +1049,11 @@ class SubscriptionQueryHelperTests(TestCase):
         )
 
 
+# LEGAL_BILLING_ACTIVE: these assert the checkout mechanics, which only exist once payments are
+# open. Beta keeps the flag off in every other context; see BetaAndBillingDisabledTests.
 @override_settings(
     STRIPE_PRICE_PRO="price_pro", STRIPE_PRICE_BUSINESS="price_biz",
-    STRIPE_PRICE_ENTERPRISE="price_ent",
+    STRIPE_PRICE_ENTERPRISE="price_ent", LEGAL_BILLING_ACTIVE=True,
 )
 class StripeTierMappingTests(TestCase):
     def test_price_ids_map_to_tiers_in_both_directions(self):
@@ -2298,6 +2300,7 @@ class PurgeFailedTasksCommandTests(TestCase):
 @override_settings(
     STRIPE_PRICE_PRO="price_pro", STRIPE_PRICE_BUSINESS="price_biz",
     STRIPE_PRICE_ENTERPRISE="price_ent", RATELIMIT_ENABLE=False,
+    LEGAL_BILLING_ACTIVE=True,
 )
 class CheckoutAuthenticationFlowTests(TestCase):
     """Selecting a plan while logged out used to 405.
@@ -3395,3 +3398,135 @@ class EnsureSuperadminCommandTests(TestCase):
 
         with self.assertRaises(CommandError):
             call_command("ensure_superadmin", "boss@gemileads.gr", stdout=StringIO())
+
+
+@override_settings(ALLOWED_HOSTS=["gemileads.gr", "testserver"], RATELIMIT_ENABLE=False)
+class BetaAndBillingDisabledTests(TestCase):
+    """The product is in beta and cannot charge anyone.
+
+    Hiding the buttons is not enough on its own: the POST endpoint stays routable, and a page left
+    open across a deploy still holds a valid CSRF token. Both layers are asserted here, plus the
+    reverse direction: flipping the flag must restore checkout without a code change.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user("beta@example.com", "beta@example.com", "StrongPass123")
+
+    def _html(self, name):
+        return self.client.get(reverse(name), HTTP_HOST="gemileads.gr").content.decode()
+
+    @override_settings(LEGAL_BILLING_ACTIVE=False)
+    def test_no_checkout_form_is_rendered_while_billing_is_off(self):
+        html = self._html("pricing")
+        self.assertNotIn(reverse("create_checkout_session"), html)
+        self.assertIn("Σύντομα διαθέσιμο", html)
+
+    @override_settings(LEGAL_BILLING_ACTIVE=False)
+    def test_a_direct_post_cannot_reach_stripe(self):
+        """The gate that matters: the endpoint itself refuses, with no Stripe call attempted."""
+        self.client.login(username="beta@example.com", password="StrongPass123")
+        with patch("stripe.checkout.Session.create") as create:
+            response = self.client.post(reverse("create_checkout_session"), {"tier": "pro"})
+        self.assertFalse(create.called, "Stripe must not be contacted while billing is off")
+        self.assertRedirects(response, reverse("pricing"))
+
+    @override_settings(LEGAL_BILLING_ACTIVE=False)
+    def test_a_parked_plan_choice_does_not_resume_into_checkout(self):
+        self.client.login(username="beta@example.com", password="StrongPass123")
+        session = self.client.session
+        session["pending_checkout_tier"] = "pro"
+        session.save()
+        self.assertRedirects(self.client.get(reverse("resume_checkout")), reverse("pricing"))
+
+    @override_settings(LEGAL_BILLING_ACTIVE=False)
+    def test_the_pricing_page_says_payments_are_not_live(self):
+        html = self._html("pricing")
+        self.assertIn("Οι πληρωμές δεν είναι ακόμη ενεργές", html)
+
+    @override_settings(LEGAL_BILLING_ACTIVE=False)
+    def test_offers_are_not_advertised_as_purchasable(self):
+        """An InStock offer on a product that cannot be bought is a false claim to search engines."""
+        html = self._html("pricing")
+        blocks = [json.loads(b) for b in re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)]
+        software = [b for b in blocks if b.get("@type") == "SoftwareApplication"][0]
+        for offer in software["offers"]:
+            self.assertEqual(offer["availability"], "https://schema.org/PreOrder")
+
+    @override_settings(LEGAL_BILLING_ACTIVE=True, STRIPE_PRICE_PRO="price_test_pro")
+    def test_turning_the_flag_on_restores_checkout(self):
+        html = self._html("pricing")
+        self.assertIn(reverse("create_checkout_session"), html)
+        self.assertNotIn("Οι πληρωμές δεν είναι ακόμη ενεργές", html)
+
+        self.client.login(username="beta@example.com", password="StrongPass123")
+        with patch("stripe.checkout.Session.create") as create:
+            create.return_value = type("S", (), {"url": "https://stripe.test/session"})()
+            response = self.client.post(reverse("create_checkout_session"), {"tier": "pro"})
+        self.assertTrue(create.called)
+        self.assertEqual(response.status_code, 303)
+
+    @override_settings(BETA_MODE=True)
+    def test_the_beta_label_is_visible_site_wide(self):
+        for name in ("home", "pricing", "login"):
+            self.assertIn("Beta", self._html(name), name)
+
+    @override_settings(BETA_MODE=False, LEGAL_BILLING_ACTIVE=True)
+    def test_the_labels_disappear_when_both_flags_are_cleared(self):
+        html = self._html("home")
+        self.assertNotIn("βρίσκεται σε <b>beta</b>", html)
+        self.assertNotIn("Οι πληρωμές δεν είναι ενεργές", html)
+
+
+class DiagnoseIntradayCommandTests(TestCase):
+    """The command exists to answer one question without a shell session, so the assertions are
+    about whether its verdict is correct, not about its wording."""
+
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.user = User.objects.create_user("ent@example.com", "ent@example.com", "StrongPass123")
+
+    def _run(self):
+        out = StringIO()
+        call_command("diagnose_intraday", stdout=out)
+        return out.getvalue()
+
+    def test_it_reports_when_nobody_is_eligible_for_intraday(self):
+        output = self._run()
+        self.assertIn("Δικαιούνται 3ωρο email: 0", output)
+        self.assertIn("Κανένας λογαριασμός δεν δικαιούται", output)
+
+    def test_a_pro_complimentary_account_is_reported_as_daily_only(self):
+        """The exact trap: access was granted, but not at a tier that receives 3-hour alerts."""
+        sub = self.user.subscription
+        sub.complimentary_tier = "pro"
+        sub.save()
+        output = self._run()
+        self.assertIn("Μόνο ημερήσιο (όχι 3ωρο): 1", output)
+        self.assertIn("ent@example.com", output)
+        self.assertIn("intraday απαιτεί enterprise/custom", output)
+
+    def test_an_enterprise_account_is_reported_as_eligible(self):
+        sub = self.user.subscription
+        sub.complimentary_tier = "enterprise"
+        sub.save()
+        output = self._run()
+        self.assertIn("Δικαιούνται 3ωρο email: 1", output)
+
+    def test_missing_import_runs_are_flagged(self):
+        self.assertIn("Κανένα ImportRun", self._run())
+
+    def test_a_completed_run_is_listed(self):
+        ImportRun.objects.create(
+            target_date=self.today, status="success", fetched_count=3, created_count=2,
+            finished_at=timezone.now(),
+        )
+        self.assertIn("status=success", self._run())
+
+    def test_it_accepts_an_explicit_date(self):
+        out = StringIO()
+        call_command("diagnose_intraday", "--date", "2026-01-15", stdout=out)
+        self.assertIn("2026-01-15", out.getvalue())
+
+    def test_it_sends_nothing(self):
+        self._run()
+        self.assertEqual(len(mail.outbox), 0)

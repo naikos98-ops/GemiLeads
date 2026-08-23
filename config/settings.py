@@ -179,7 +179,15 @@ LEGAL_REFUND_POLICY = os.getenv(
     "Δεν προβλέπεται επιστροφή για το τρέχον διάστημα συνδρομής, εκτός αν ορίζει διαφορετικά ο νόμος.",
 )
 # Flip to "1" once real payments go live so the billing clauses replace the pre-launch notice.
+# This is the single switch that governs whether the product can charge anyone: while it is off,
+# checkout is refused server-side, not merely hidden. Keep it independent of BETA_MODE, because
+# payments may go live before the beta label comes off, or the reverse.
 LEGAL_BILLING_ACTIVE = os.getenv("LEGAL_BILLING_ACTIVE", "0") == "1"
+
+# The product is in beta: the pipeline, the app and the emails are real, but the service is still
+# being shaped and access is granted by hand. Shown as a badge in the navigation and a line in the
+# footer so nobody mistakes it for a finished commercial launch. Set to "0" to drop the label.
+BETA_MODE = os.getenv("BETA_MODE", "1") == "1"
 
 # Google Analytics 4 measurement id (G-XXXXXXXXXX). Unset disables analytics entirely.
 GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "")
