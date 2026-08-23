@@ -65,6 +65,35 @@ class Company(models.Model):
     def source_url(self):
         return f"https://publicity.businessportal.gr/company/{self.gemi_number}"
 
+    @property
+    def people(self):
+        """Partners, managers and legal representatives, as published by ΓΕΜΗ.
+
+        The API returns these under ``persons`` and the importer already stores the whole
+        payload, so nothing extra is fetched. Historical entries carry a ``dtTo`` end date
+        and are dropped: showing someone who has left as a current manager would be worse
+        than showing nobody. Sole traders legitimately have no entry here, their name is
+        the company name, so an empty list is normal rather than missing data.
+        """
+        entries = (self.raw_data or {}).get("persons") or []
+        people = []
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("dtTo"):
+                continue
+            name = str(entry.get("personName") or entry.get("businessName") or "").strip()
+            if not name:
+                continue
+            people.append({
+                "name": name,
+                "role": str(entry.get("role") or "").strip(),
+                "category": str(entry.get("category") or "").strip(),
+                "percentage": str(entry.get("percentage") or "").strip(),
+                "represents_alone": bool(entry.get("isRepresentativeAlone")),
+            })
+        # Representatives first, then by stake, so the person worth contacting leads.
+        people.sort(key=lambda p: (not p["represents_alone"], "Διαχειριστ" not in p["role"], p["name"]))
+        return people
+
 
 class CompanyActivity(models.Model):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="activity_records")

@@ -19,6 +19,7 @@ from .models import (
     ImportRun,
     RadarMatch,
     UserCompanyLead,
+    UserSubscription,
 )
 from .services import import_for_date, match_imported_companies, send_digests
 
@@ -2691,3 +2692,127 @@ class TemplateTagIntegrityTests(TestCase):
                 html = self.client.get(reverse(name)).content.decode()
                 self.assertNotIn("{#", html)
                 self.assertNotIn("{{", html)
+
+
+class CompanyPeopleTests(TestCase):
+    """Managers and partners come from the ΓΕΜΗ payload the importer already stores."""
+
+    PERSONS = [
+        {"personName": "ΠΑΠΑΔΟΠΟΥΛΟΥ ΒΑΣΙΛΙΚΗ", "businessName": None,
+         "role": "Ετερόρρυθμο Μέλος", "category": "Εταίροι", "percentage": "10%",
+         "dtFrom": "2026-08-19", "dtTo": None,
+         "isRepresentativeAlone": None, "isRepresentativeInCommon": None},
+        {"personName": "ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", "businessName": None,
+         "role": "Ομόρρυθμο Μέλος, Διαχειριστής & Εκπρόσωπος", "category": "Εταίροι",
+         "percentage": "90%", "dtFrom": "2026-08-19", "dtTo": None,
+         "isRepresentativeAlone": True, "isRepresentativeInCommon": None},
+        {"personName": "ΠΑΛΑΙΟΣ ΔΙΑΧΕΙΡΙΣΤΗΣ", "businessName": None,
+         "role": "Διαχειριστής", "category": "Εταίροι", "percentage": "0%",
+         "dtFrom": "2020-01-01", "dtTo": "2024-06-30",
+         "isRepresentativeAlone": True, "isRepresentativeInCommon": None},
+    ]
+
+    def _company(self, persons=None, gemi="880000000001"):
+        return Company.objects.create(
+            gemi_number=gemi, name="ΔΟΚΙΜΗ Ε.Ε.", legal_type="ΕΕ",
+            incorporation_date=timezone.localdate(), prefecture="ΡΟΔΟΣ",
+            raw_data={"persons": self.PERSONS if persons is None else persons},
+        )
+
+    def _user(self, email, tier=None):
+        user = User.objects.create_user(email, email, "StrongPass123")
+        if tier:
+            sub = UserSubscription.objects.get(user=user)
+            sub.complimentary_tier = tier
+            sub.save()
+        return user
+
+    def test_current_people_are_parsed_from_the_stored_payload(self):
+        names = [p["name"] for p in self._company().people]
+        self.assertIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", names)
+        self.assertIn("ΠΑΠΑΔΟΠΟΥΛΟΥ ΒΑΣΙΛΙΚΗ", names)
+
+    def test_people_whose_term_has_ended_are_excluded(self):
+        """Showing someone who has left as a current manager is worse than showing nobody."""
+        self.assertNotIn("ΠΑΛΑΙΟΣ ΔΙΑΧΕΙΡΙΣΤΗΣ", [p["name"] for p in self._company().people])
+
+    def test_the_representative_is_listed_first(self):
+        self.assertEqual(self._company().people[0]["name"], "ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ")
+
+    def test_role_and_stake_are_carried_through(self):
+        person = self._company().people[0]
+        self.assertEqual(person["percentage"], "90%")
+        self.assertTrue(person["represents_alone"])
+        self.assertIn("Διαχειριστής", person["role"])
+
+    def test_malformed_entries_do_not_raise(self):
+        for payload in ({}, {"persons": None}, {"persons": []}, {"persons": ["x", None]},
+                        {"persons": [{"personName": "   ", "dtTo": None}]}):
+            company = Company(gemi_number="0", name="X", raw_data=payload)
+            self.assertEqual(company.people, [], payload)
+
+    def test_a_business_entity_partner_falls_back_to_its_name(self):
+        people = self._company([{"personName": None, "businessName": "ΑΛΦΑ Α.Ε.",
+                                 "role": "Εταίρος", "dtTo": None}]).people
+        self.assertEqual(people[0]["name"], "ΑΛΦΑ Α.Ε.")
+
+    # Gating: everything except free.
+    def test_a_subscriber_sees_the_names(self):
+        company = self._company()
+        self.client.force_login(self._user("paid@example.com", "pro"))
+        html = self.client.get(reverse("company_detail", args=[company.gemi_number])).content.decode()
+        self.assertIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", html)
+        self.assertIn("Εκπροσωπεί μόνος", html)
+
+    def test_every_paid_tier_sees_the_names(self):
+        for tier in ("pro", "business", "enterprise", "custom"):
+            with self.subTest(tier=tier):
+                company = self._company(gemi=f"88000000{hash(tier) % 10000:04d}")
+                client = Client()
+                client.force_login(self._user(f"{tier}-p@example.com", tier))
+                html = client.get(reverse("company_detail", args=[company.gemi_number])).content.decode()
+                self.assertIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", html)
+
+    def test_a_free_user_gets_the_upsell_and_never_the_names(self):
+        company = self._company()
+        self.client.force_login(self._user("free@example.com"))
+        html = self.client.get(reverse("company_detail", args=[company.gemi_number])).content.decode()
+        self.assertNotIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", html)
+        self.assertNotIn("ΠΑΠΑΔΟΠΟΥΛΟΥ ΒΑΣΙΛΙΚΗ", html)
+        self.assertIn("Απαιτείται συνδρομή", html)
+        self.assertIn(reverse("pricing"), html)
+
+    def test_staff_see_the_names_without_a_subscription(self):
+        company = self._company()
+        staff = self._user("staff@example.com")
+        staff.is_staff = True
+        staff.save()
+        self.client.force_login(staff)
+        html = self.client.get(reverse("company_detail", args=[company.gemi_number])).content.decode()
+        self.assertIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", html)
+
+    def test_the_page_is_not_public(self):
+        """Names are personal data: they must never be reachable without logging in."""
+        company = self._company()
+        response = self.client.get(reverse("company_detail", args=[company.gemi_number]))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("login"), response["Location"])
+
+    def test_company_pages_stay_out_of_robots(self):
+        self.assertIn("Disallow: /companies/", self.client.get("/robots.txt").content.decode())
+
+    def test_a_sole_trader_page_renders_without_an_empty_card(self):
+        company = Company.objects.create(
+            gemi_number="880000000777", name="ΑΤΟΜΙΚΗ", legal_type="ΑΤΟΜΙΚΗ",
+            incorporation_date=timezone.localdate(), prefecture="ΑΤΤΙΚΗΣ", raw_data={},
+        )
+        self.client.force_login(self._user("solo@example.com", "pro"))
+        html = self.client.get(reverse("company_detail", args=[company.gemi_number])).content.decode()
+        self.assertNotIn("Διαχειριστές &amp; Εταίροι", html)
+
+    def test_the_privacy_policy_discloses_this_processing(self):
+        """The disclosure and the feature must not ship apart."""
+        html = self.client.get(reverse("privacy")).content.decode()
+        for phrase in ("διαχειριστές", "νόμιμους εκπροσώπους", "έννομο συμφέρον",
+                       "δικαίωμα εναντίωσης", "μόνο σε συνδρομητές"):
+            self.assertIn(phrase, html, phrase)
