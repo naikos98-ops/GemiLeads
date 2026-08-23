@@ -413,7 +413,7 @@ class AppTests(TestCase):
 
         # Upgrade to Pro
         from .models import UserSubscription
-        sub = UserSubscription.objects.create(user=self.user, tier="pro")
+        sub, _ = UserSubscription.objects.update_or_create(user=self.user, defaults={"tier": "pro"})
         
         response3 = self.client.post(reverse("radar_create"), {"name": "Second Radar", "is_active": True, "frequency": "daily"})
         self.assertEqual(response3.status_code, 302)

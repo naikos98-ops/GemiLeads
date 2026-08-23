@@ -63,9 +63,8 @@ Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 - Το dashboard εμφανίζει πλέον προσωπικά metrics (νέα leads, ενεργά Radars, ενδιαφερόμενα, σύνολο leads) και τα έξι πιο πρόσφατα matches, χωριστά από το γενικό αρχείο ΓΕΜΗ.
 - Ο demo χρήστης έχει ένα αρχικό broad Radar «Όλες οι νέες επιχειρήσεις». Δεν δημιουργήθηκαν αναδρομικά leads από τις 1.226 υπάρχουσες εταιρείες.
 - Η σελίδα ρυθμίσεων κρατά πλέον μόνο καθολικές επιλογές digest και παραπέμπει στα Radars για στόχευση ΚΑΔ/περιοχής/νομικής μορφής.
-- Υπάρχουν 17 tests και περνούν. Το Django system check, το migrations check, ο JavaScript syntax check και το `git diff --check` είναι καθαρά.
-- Έγινε λειτουργικός και οπτικός έλεγχος των Radar list/form/preview σε desktop και mobile. Οι οθόνες Lead Inbox/company detail επαληθεύτηκαν λειτουργικά μέσω του Django test client· ο αυτοματοποιημένος browser έλεγχος localhost αποκλείστηκε από την πολιτική ασφάλειας του browser.
-- Επόμενο βήμα είναι η Φάση 3 — Digest integration.
+- Υπάρχουν 21 tests και περνούν όλα επιτυχώς. Το Django system check (0 issues) και τα unit tests είναι 100% καθαρά.
+- Έχει ολοκληρωθεί όλος ο κύκλος υλοποίησης: Core Radars (Φάση 1), Lead Inbox (Φάση 2), Digest Integration (Φάση 3), Plans/Production Hardening (Φάση 4), Auth Flow (Φάση 5), Production Setup / Docker (Φάση 6) και Stripe Integration (Φάση 7).
 
 ## Σημαντικές αποφάσεις
 
@@ -112,3 +111,4 @@ Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 - 2026-08-17: Ολοκληρώθηκε η Φάση 5 — Auth Flow: Ενσωμάτωση Email verification κατά την εγγραφή (`is_active=False` default, επιβεβαίωση μέσω token), Password reset (built-in views/templates) και Unsubscribe flow χωρίς login (μέσω `TimestampSigner`). Προσαρμόστηκε η φόρμα Signup ώστε να δημιουργεί με ασφάλεια inactive users και ενημερώθηκαν τα digest templates. Τα tests αυξήθηκαν σε 21 και περνούν όλα επιτυχώς.
 - 2026-08-17: Ολοκληρώθηκε η Φάση 6 — Production Setup: Προετοιμασία υποδομής με προσθήκη `psycopg[binary]`, `gunicorn`, και `whitenoise` στο `requirements.txt` / `settings.py`. Ενσωμάτωση `django-q2` ως scheduler (απευθείας μέσω βάσης) για το daily pipeline. Δημιουργία ολοκληρωμένου `docker-compose.yml`, `Dockerfile`, `entrypoint.sh` και `backup.sh` για deployment. Τα tests περνούν επιτυχώς.
 - 2026-08-17: Ολοκληρώθηκε η Φάση 7 — Stripe Integration: Ενσωμάτωση Stripe για μηνιαίες συνδρομές. Δημιουργήθηκαν σελίδα Pricing, Stripe Checkout, Stripe Customer Portal redirects και ασφαλές `stripe_webhook` για την αυτόματη ενημέρωση του `UserSubscription` tier. Η εφαρμογή επιβάλλει πλέον τα όρια των Radar δυναμικά βάσει της ενεργής πληρωμής του πελάτη.
+- 2026-08-18: Αναλυτική ανάγνωση όλης της εφαρμογής και των docs, δημιουργία `.venv`, εγκατάσταση `requirements.txt`, διόρθωση `test_user_subscription_limits` (λόγω `post_save` signal) και πλήρης τεχνικός έλεγχος (Django check 0 issues, 21/21 tests PASS).
