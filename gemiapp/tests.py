@@ -2019,8 +2019,24 @@ class CachedAggregateTests(TestCase):
             self.client.get(reverse("home"))
 
         self.assertGreater(len(cold), len(warm), "caching did not reduce queries")
-        counts = [q for q in warm.captured_queries if "COUNT" in q["sql"].upper()]
+        # Match the aggregate itself, not the substring "count", which also appears inside
+        # cache key names such as home_today_count once the cache lives in the database.
+        counts = [q for q in warm.captured_queries if "COUNT(" in q["sql"].upper().replace(" ", "")]
         self.assertEqual(counts, [], "a COUNT query still runs on a warm request")
+
+    def test_a_warm_request_replaces_scans_with_key_lookups(self):
+        """The database cache turns each hit into a query of its own. That is the trade:
+        three indexed single-key reads instead of three COUNT(*) over every company."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self.client.get(reverse("home"))
+        with CaptureQueriesContext(connection) as warm:
+            self.client.get(reverse("home"))
+
+        sql = [q["sql"] for q in warm.captured_queries]
+        self.assertTrue(any("gemi_cache" in q for q in sql), "cache was not consulted")
+        self.assertFalse([q for q in sql if "COUNT(" in q.upper().replace(" ", "")])
 
     def test_values_are_still_correct(self):
         response = self.client.get(reverse("home"))
@@ -2968,3 +2984,72 @@ class PersonSuppressionTests(TestCase):
                         raw_data={"persons": self.PERSONS})
         self.assertNotIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", [p["name"] for p in draft.people])
         self.assertIn("ΠΑΠΑΔΟΠΟΥΛΟΥ ΒΑΣΙΛΙΚΗ", [p["name"] for p in draft.people])
+
+
+@override_settings(RATELIMIT_ENABLE=True)
+class RateLimitTests(TestCase):
+    """The limiter counts in the cache, so these also prove the cache is wired up."""
+
+    def setUp(self):
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+
+    def _post(self, url, data, times):
+        return [self.client.post(url, data).status_code for _ in range(times)]
+
+    def test_password_reset_is_rate_limited(self):
+        """An open email-sending endpoint: unlimited, it burns the sending quota."""
+        codes = self._post(reverse("password_reset"), {"email": "victim@example.com"}, 7)
+        self.assertIn(403, codes, f"password reset was never blocked: {codes}")
+
+    def test_password_reset_sends_a_bounded_number_of_emails(self):
+        self._post(reverse("password_reset"), {"email": "victim@example.com"}, 12)
+        self.assertLessEqual(len(mail.outbox), 5)
+
+    def test_login_is_rate_limited(self):
+        codes = self._post(reverse("login"), {"username": "a@b.com", "password": "wrong"}, 7)
+        self.assertIn(403, codes)
+
+    def test_signup_is_rate_limited(self):
+        codes = self._post(reverse("signup"), {
+            "first_name": "X", "email": "a@b.com",
+            "password1": "StrongPass123!", "password2": "StrongPass123!",
+        }, 7)
+        self.assertIn(403, codes)
+
+    def test_a_normal_visitor_is_not_blocked(self):
+        """A limit that blocks real users is worse than no limit."""
+        self.assertNotEqual(self.client.get(reverse("login")).status_code, 403)
+        self.assertEqual(self.client.post(
+            reverse("password_reset"), {"email": "someone@example.com"}).status_code, 302)
+
+
+class CacheBackendTests(TestCase):
+    """The default LocMemCache is per-process, which silently multiplies every rate
+    limit by the gunicorn worker count."""
+
+    def test_the_cache_is_not_per_process(self):
+        from django.conf import settings
+
+        self.assertNotIn("locmem", settings.CACHES["default"]["BACKEND"].lower())
+
+    def test_the_limiter_fails_closed(self):
+        """If the cache is unreachable the limiter must refuse, not wave traffic through."""
+        from django.conf import settings
+
+        self.assertFalse(getattr(settings, "RATELIMIT_FAIL_OPEN", False))
+        self.assertEqual(getattr(settings, "RATELIMIT_USE_CACHE", None), "default")
+
+    def test_the_cache_round_trips(self):
+        cache.set("probe", {"a": 1}, 30)
+        self.assertEqual(cache.get("probe"), {"a": 1})
+        cache.delete("probe")
+        self.assertIsNone(cache.get("probe"))
+
+    def test_the_cache_table_exists(self):
+        """Without the table every cached view raises and the limiter locks everyone out."""
+        from django.db import connection
+
+        self.assertIn("gemi_cache", connection.introspection.table_names())

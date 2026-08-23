@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
-from django.contrib.auth.views import LoginView
+from django.contrib.auth.views import LoginView, PasswordResetView
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
@@ -101,6 +101,16 @@ def home(request):
 
 @method_decorator(ratelimit(key="ip", rate="5/m", block=True), name="dispatch")
 class RateLimitedLoginView(LoginView):
+    pass
+
+
+# Password reset sends an email to any address supplied, with no login and no CAPTCHA in
+# front of it. Left open it is a way to burn the Brevo sending quota or to use this domain
+# to bother a third party, so it is limited like the other credential endpoints. The hourly
+# limit is the one that matters; the per-minute limit only blunts a burst.
+@method_decorator(ratelimit(key="ip", rate="5/m", block=True), name="dispatch")
+@method_decorator(ratelimit(key="ip", rate="15/h", block=True), name="dispatch")
+class RateLimitedPasswordResetView(PasswordResetView):
     pass
 
 

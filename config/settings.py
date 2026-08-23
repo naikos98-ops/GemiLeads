@@ -89,6 +89,25 @@ DATABASES = {
     )
 }
 
+# The default LocMemCache is per-process. Under gunicorn that silently multiplies every
+# rate limit by the worker count, because django-ratelimit counts attempts in the cache:
+# with N workers an attacker gets N times the allowance. The database cache is consistent
+# across workers, needs no extra service, and the volume here is a handful of counters and
+# three cached aggregates. Swap in Redis if write contention ever shows up; it will not at
+# this scale. Requires: python manage.py createcachetable (run by the deploy).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "gemi_cache",
+        "TIMEOUT": 300,
+        "OPTIONS": {"MAX_ENTRIES": 5000, "CULL_FREQUENCY": 3},
+    }
+}
+
+# Fail closed: if the cache is unreachable the limiter must refuse, never wave traffic through.
+RATELIMIT_USE_CACHE = "default"
+RATELIMIT_FAIL_OPEN = False
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
