@@ -44,6 +44,8 @@ services:
         sync: false
       - key: LEGAL_CONTACT_EMAIL
         sync: false
+      - key: SUPERADMIN_EMAILS
+        value: info@gemileads.gr,naikos98@gmail.com,iotellis@taxville.gr
       - key: LEGAL_BILLING_ACTIVE
         value: "0"
       - key: GA_MEASUREMENT_ID

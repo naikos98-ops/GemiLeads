@@ -21,6 +21,9 @@ urlpatterns = [
     path("digests/<int:delivery_id>/retry/", views.digest_retry, name="digest_retry"),
     path("health/", views.health_overview, name="health_overview"),
     path("audit/", views.audit_list, name="audit_list"),
+    path("accounts/", views.account_list, name="account_list"),
+    path("accounts/create/", views.account_create, name="account_create"),
+    path("backup/", views.backup_download, name="backup_download"),
     path("impersonate/<int:user_id>/", views.impersonate_start, name="impersonate_start"),
     path("impersonate/stop/", views.impersonate_stop, name="impersonate_stop"),
 ]

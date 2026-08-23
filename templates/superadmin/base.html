@@ -103,6 +103,20 @@
               <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
               Audit Log
             </a>
+            <a href="{% url 'superadmin:account_list' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
+              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
+              Λογαριασμοί
+            </a>
+            <form method="post" action="{% url 'superadmin:backup_download' %}"
+                  onsubmit="return confirm('Να δημιουργηθεί και να κατέβει backup;
+
+Περιέχει προσωπικά δεδομένα χρηστών. Αποθήκευσέ το σε ιδιωτικό χώρο.');">
+              {% csrf_token %}
+              <button type="submit" class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-white/10 text-white/80 hover:text-white">
+                <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12v9m0 0l-4-4m4 4l4-4M12 3v6"/></svg>
+                Λήψη Backup
+              </button>
+            </form>
           </div>
         </div>
       </nav>

@@ -104,6 +104,18 @@ CACHES = {
     }
 }
 
+# The only accounts allowed to hold superuser rights. Enforced on every superadmin
+# request, so a row edited directly in the database does not grant access, and kept in
+# settings rather than the database so it cannot be changed through the web interface.
+SUPERADMIN_EMAILS = [
+    email.strip().lower()
+    for email in os.environ.get(
+        "SUPERADMIN_EMAILS",
+        "info@gemileads.gr,naikos98@gmail.com,iotellis@taxville.gr",
+    ).split(",")
+    if email.strip()
+]
+
 # Fail closed: if the cache is unreachable the limiter must refuse, never wave traffic through.
 RATELIMIT_USE_CACHE = "default"
 RATELIMIT_FAIL_OPEN = False

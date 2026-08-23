@@ -660,6 +660,7 @@ class AuthFlowTests(TestCase):
         self.assertEqual(self.user.digest_preference.frequency, "off")
 
 
+@override_settings(SUPERADMIN_EMAILS=["admin@gemileads.gr"])
 class SuperadminTests(TestCase):
     def setUp(self):
         self.superuser = User.objects.create_superuser(username="admin@gemileads.gr", email="admin@gemileads.gr", password="SuperPassword123")
@@ -3192,3 +3193,205 @@ class BackupCriticalTests(TestCase):
         self.assertEqual(lead.notes, "κλείστηκε")
         # The point of exporting the hash: the old password still works.
         self.assertTrue(self.client.login(username="owner@example.com", password="StrongPass123"))
+
+
+@override_settings(SUPERADMIN_EMAILS=["boss@gemileads.gr", "second@gemileads.gr"])
+class SuperadminAccessTests(TestCase):
+    """Superuser rights alone are not enough: the address must also be on the list."""
+
+    def _user(self, email, superuser=False, staff=False):
+        user = User.objects.create_user(email, email, "StrongPass123")
+        user.is_superuser = superuser
+        user.is_staff = staff
+        user.save()
+        return user
+
+    def test_a_listed_superuser_gets_in(self):
+        self.client.force_login(self._user("boss@gemileads.gr", superuser=True))
+        self.assertEqual(self.client.get(reverse("superadmin:account_list")).status_code, 200)
+
+    def test_a_superuser_not_on_the_list_is_refused(self):
+        """Flipping is_superuser directly in the database must grant nothing."""
+        self.client.force_login(self._user("rogue@example.com", superuser=True))
+        self.assertEqual(self.client.get(reverse("superadmin:account_list")).status_code, 403)
+
+    def test_a_listed_address_without_superuser_rights_is_refused(self):
+        """Both conditions are required, not either."""
+        self.client.force_login(self._user("boss@gemileads.gr"))
+        self.assertEqual(self.client.get(reverse("superadmin:account_list")).status_code, 403)
+
+    def test_staff_alone_is_not_superadmin(self):
+        self.client.force_login(self._user("staff@example.com", staff=True))
+        self.assertEqual(self.client.get(reverse("superadmin:account_list")).status_code, 403)
+
+    def test_an_anonymous_visitor_is_sent_to_login(self):
+        response = self.client.get(reverse("superadmin:account_list"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("login"), response["Location"])
+
+    def test_matching_ignores_case(self):
+        self.client.force_login(self._user("BOSS@GemiLeads.GR", superuser=True))
+        self.assertEqual(self.client.get(reverse("superadmin:account_list")).status_code, 200)
+
+    def test_every_superadmin_route_is_guarded(self):
+        """A new view added without the decorator would be publicly reachable."""
+        from gemiapp.superadmin import urls as superadmin_urls
+
+        self.client.force_login(self._user("rogue@example.com", superuser=True))
+        for pattern in superadmin_urls.urlpatterns:
+            name = pattern.name
+            if name == "impersonate_stop":
+                # Intentionally unguarded: while impersonating, request.user is the target
+                # account, so the decorator would trap the operator. Gated by the session.
+                continue
+            try:
+                url = reverse(f"superadmin:{name}")
+            except Exception:
+                continue  # needs arguments; covered by its own tests
+            with self.subTest(view=name):
+                get = self.client.get(url).status_code
+                post = self.client.post(url).status_code
+                self.assertIn(403, (get, post), f"{name} did not refuse a non-superadmin")
+
+
+@override_settings(SUPERADMIN_EMAILS=["boss@gemileads.gr"])
+class SuperadminBackupButtonTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("boss@gemileads.gr", "boss@gemileads.gr", "StrongPass123")
+        self.admin.is_superuser = True
+        self.admin.is_staff = True
+        self.admin.save()
+        self.client.force_login(self.admin)
+
+    def test_the_button_downloads_a_json_file(self):
+        response = self.client.post(reverse("superadmin:backup_download"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertIn(".json", response["Content-Disposition"])
+        self.assertEqual(json.loads(response.content.decode())["format_version"], 1)
+
+    def test_the_download_contains_the_critical_tables(self):
+        payload = json.loads(self.client.post(reverse("superadmin:backup_download")).content.decode())
+        for key in ("users", "subscriptions", "radars", "leads", "person_suppressions"):
+            self.assertIn(key, payload)
+        self.assertEqual(payload["users"][0]["username"], "boss@gemileads.gr")
+
+    def test_the_download_is_not_cached(self):
+        """It carries personal data; no proxy or browser should keep a copy."""
+        response = self.client.post(reverse("superadmin:backup_download"))
+        self.assertEqual(response["Cache-Control"], "no-store")
+
+    def test_a_get_cannot_export_personal_data(self):
+        self.assertEqual(self.client.get(reverse("superadmin:backup_download")).status_code, 405)
+
+    def test_a_non_superadmin_cannot_download(self):
+        self.client.force_login(User.objects.create_user("x@example.com", "x@example.com", "StrongPass123"))
+        self.assertEqual(self.client.post(reverse("superadmin:backup_download")).status_code, 403)
+
+    def test_the_download_is_audited(self):
+        from gemiapp.models import AdminAuditLog
+
+        self.client.post(reverse("superadmin:backup_download"))
+        self.assertTrue(AdminAuditLog.objects.filter(action="backup_download", admin_user=self.admin).exists())
+
+
+@override_settings(SUPERADMIN_EMAILS=["boss@gemileads.gr", "reserved@gemileads.gr"])
+class SuperadminAccountCreationTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user("boss@gemileads.gr", "boss@gemileads.gr", "StrongPass123")
+        self.admin.is_superuser = True
+        self.admin.is_staff = True
+        self.admin.save()
+        self.client.force_login(self.admin)
+
+    def _create(self, **overrides):
+        data = {"email": "new@example.com", "first_name": "Nikos", "role": "user",
+                "password": "StrongPass123!", "is_active": "on"}
+        data.update(overrides)
+        return self.client.post(reverse("superadmin:account_create"), data)
+
+    def test_a_plain_user_can_be_created(self):
+        self._create()
+        user = User.objects.get(email="new@example.com")
+        self.assertFalse(user.is_staff)
+        self.assertFalse(user.is_superuser)
+        self.assertTrue(user.is_active)
+        self.assertTrue(user.check_password("StrongPass123!"))
+
+    def test_an_admin_can_be_created(self):
+        self._create(email="admin@example.com", role="admin")
+        user = User.objects.get(email="admin@example.com")
+        self.assertTrue(user.is_staff)
+        self.assertFalse(user.is_superuser, "the panel must never mint a superuser")
+
+    def test_no_role_can_produce_a_superuser(self):
+        """The decisive guard: the interface cannot escalate to superadmin."""
+        for role in ("user", "admin", "superadmin", "superuser", "", "admin OR 1=1"):
+            with self.subTest(role=role):
+                self._create(email="r-%d@example.com" % abs(hash(role)), role=role)
+        self.assertEqual(User.objects.filter(is_superuser=True).count(), 1)
+
+    def test_a_reserved_address_cannot_be_created_here(self):
+        """Otherwise someone with a session could take over a superadmin identity."""
+        self._create(email="reserved@gemileads.gr", role="admin")
+        self.assertFalse(User.objects.filter(email="reserved@gemileads.gr").exists())
+
+    def test_a_duplicate_email_is_refused(self):
+        self._create()
+        self._create(first_name="Diplos")
+        self.assertEqual(User.objects.filter(email="new@example.com").count(), 1)
+
+    def test_a_weak_password_is_refused(self):
+        self._create(email="weak@example.com", password="12345678")
+        self.assertFalse(User.objects.filter(email="weak@example.com").exists())
+
+    def test_an_account_can_be_created_inactive(self):
+        response = self.client.post(reverse("superadmin:account_create"), {
+            "email": "pending@example.com", "role": "user", "password": "StrongPass123!",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(User.objects.get(email="pending@example.com").is_active)
+
+    def test_creation_is_audited(self):
+        from gemiapp.models import AdminAuditLog
+
+        self._create()
+        self.assertTrue(AdminAuditLog.objects.filter(action="account_create").exists())
+
+    def test_a_non_superadmin_cannot_create_accounts(self):
+        self.client.force_login(User.objects.create_user("x@example.com", "x@example.com", "StrongPass123"))
+        self.assertEqual(self._create(email="sneaky@example.com").status_code, 403)
+        self.assertFalse(User.objects.filter(email="sneaky@example.com").exists())
+
+    def test_the_creation_endpoint_rejects_get(self):
+        self.assertEqual(self.client.get(reverse("superadmin:account_create")).status_code, 405)
+
+
+@override_settings(SUPERADMIN_EMAILS=["boss@gemileads.gr"])
+class EnsureSuperadminCommandTests(TestCase):
+    """Reserved addresses cannot be created from the panel, so they need this route."""
+
+    def test_it_creates_a_reserved_account(self):
+        call_command("ensure_superadmin", "boss@gemileads.gr", "--password", "StrongPass123!", stdout=StringIO())
+        user = User.objects.get(username="boss@gemileads.gr")
+        self.assertTrue(user.is_superuser)
+        self.assertTrue(user.is_staff)
+        self.assertTrue(user.check_password("StrongPass123!"))
+
+    def test_it_promotes_an_existing_account(self):
+        User.objects.create_user("boss@gemileads.gr", "boss@gemileads.gr", "StrongPass123")
+        call_command("ensure_superadmin", "boss@gemileads.gr", stdout=StringIO())
+        self.assertTrue(User.objects.get(username="boss@gemileads.gr").is_superuser)
+
+    def test_it_refuses_an_address_not_on_the_list(self):
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("ensure_superadmin", "rogue@example.com", "--password", "StrongPass123!", stdout=StringIO())
+        self.assertFalse(User.objects.filter(username="rogue@example.com").exists())
+
+    def test_a_new_account_requires_a_password(self):
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("ensure_superadmin", "boss@gemileads.gr", stdout=StringIO())

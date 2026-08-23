@@ -1,14 +1,20 @@
 from datetime import date, datetime, timedelta
+
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator
+from django.http import HttpResponse
 from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .decorators import superadmin_required
+from gemiapp.backups import backup_filename, backup_json
+
+from .decorators import is_superadmin, superadmin_required
+from .forms import AdminUserCreateForm
 from .services import (
     get_chart_data_last_30_days,
     get_saas_overview_metrics,
@@ -439,6 +445,9 @@ def impersonate_start(request, user_id):
     return redirect("dashboard")
 
 
+# Deliberately not @superadmin_required: while impersonating, request.user IS the target
+# account, so the decorator would trap the operator inside the session with no way out.
+# The gate is session["impersonator_id"], which only impersonate_start can set.
 @require_POST
 def impersonate_stop(request):
     impersonator_id = request.session.get("impersonator_id")
@@ -447,6 +456,12 @@ def impersonate_stop(request):
 
     try:
         admin_user = User.objects.get(pk=impersonator_id, is_superuser=True)
+        # Re-check the allowlist: an operator removed from SUPERADMIN_EMAILS mid-session
+        # must not be restored into superuser rights by this route.
+        if not is_superadmin(admin_user):
+            request.session.pop("impersonator_id", None)
+            messages.error(request, "Ο λογαριασμός δεν έχει πλέον δικαιώματα Superadmin.")
+            return redirect("dashboard")
         target_email = request.user.email
         log_admin_action(
             admin_user=admin_user,
@@ -463,3 +478,66 @@ def impersonate_stop(request):
     except User.DoesNotExist:
         messages.error(request, "Αδυναμία επαναφοράς Superadmin identity.")
         return redirect("login")
+
+
+@superadmin_required
+@require_POST
+def backup_download(request):
+    """Hand the operator the non-recoverable data as a file download.
+
+    Served straight from memory rather than written to disk first: the Render filesystem
+    is ephemeral, so a file saved there is lost on the next deploy and cannot be fetched.
+    POST-only because it exports personal data, which is not a GET side effect.
+    """
+    try:
+        payload = backup_json()
+    except Exception as exc:
+        messages.error(request, f"Αποτυχία δημιουργίας backup: {exc}")
+        return redirect("superadmin:overview")
+
+    log_admin_action(
+        admin_user=request.user,
+        action="backup_download",
+        target_type="Backup",
+        target_id=timezone.localdate().isoformat(),
+        target_repr=backup_filename(),
+        metadata={"bytes": len(payload.encode("utf-8"))},
+    )
+    response = HttpResponse(payload, content_type="application/json; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{backup_filename()}"'
+    # Personal data: never let a proxy or the browser keep a copy.
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@superadmin_required
+def account_list(request):
+    accounts = User.objects.select_related("subscription").order_by("-date_joined")
+    return render(request, "superadmin/accounts/list.html", {
+        "accounts": accounts,
+        "form": AdminUserCreateForm(),
+        "reserved_emails": settings.SUPERADMIN_EMAILS,
+    })
+
+
+@superadmin_required
+@require_POST
+def account_create(request):
+    form = AdminUserCreateForm(request.POST)
+    if not form.is_valid():
+        for field, errors in form.errors.items():
+            for error in errors:
+                messages.error(request, error)
+        return redirect("superadmin:account_list")
+
+    user = form.save()
+    log_admin_action(
+        admin_user=request.user,
+        action="account_create",
+        target_type="User",
+        target_id=user.id,
+        target_repr=user.email,
+        metadata={"role": form.cleaned_data["role"]},
+    )
+    messages.success(request, f"Ο λογαριασμός {user.email} δημιουργήθηκε.")
+    return redirect("superadmin:account_list")
