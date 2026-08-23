@@ -9,8 +9,8 @@
       Σε μεταφέρουμε στη σελίδα ασφαλούς πληρωμής για το πλάνο που επέλεξες.
     </p>
 
-    {# A real POST keeps the state-changing endpoint POST-only and CSRF-protected. It is
-       submitted automatically, with a button as the no-JavaScript fallback. #}
+    {# A real POST keeps the endpoint POST-only and CSRF-protected. It is submitted #}
+    {# automatically, with a button as the no-JavaScript fallback. #}
     <form id="resumeCheckout" action="{% url 'create_checkout_session' %}" method="post" class="mt-6">
       {% csrf_token %}
       <input type="hidden" name="tier" value="{{ tier }}">

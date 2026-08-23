@@ -7,16 +7,16 @@
   <meta name="theme-color" content="#081a2c">
   <link rel="icon" type="image/png" href="{% static 'images/favicon.png' %}">
   <title>{% block title %}Gemi Leads{% endblock %}</title>
-  {# Compiled by the Tailwind CLI (npm run build:css). The CDN build shipped a 120 KB JIT
-     compiler that ran on every visitor's device and blocked the first paint. #}
+  {# Compiled by the Tailwind CLI (npm run build:css). #}
+  {# The CDN build shipped a 120 KB JIT compiler that blocked the first paint. #}
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
   <meta name="description" content="{% block meta_description %}Παρακολούθησε καθημερινά τις νέες επιχειρήσεις που εγγράφονται στο ΓΕΜΗ. Φίλτρα ΚΑΔ και περιοχής, Ραντάρ Πελατών, CSV export και email ειδοποιήσεις.{% endblock %}">
-  {# Parameter-free: build_absolute_uri echoes the query string, which would make every
-     ?utm_source=... URL self-canonicalise instead of consolidating to the clean path. #}
+  {# Parameter-free: build_absolute_uri echoes the query string, which would make #}
+  {# every ?utm_source=... URL self-canonicalise instead of the clean path. #}
   <link rel="canonical" href="{% block canonical %}{{ request.scheme }}://{{ request.get_host }}{{ request.path }}{% endblock %}">
   <meta name="robots" content="{% block robots %}index, follow{% endblock %}">
   {% if google_site_verification %}<meta name="google-site-verification" content="{{ google_site_verification }}">{% endif %}
@@ -31,8 +31,8 @@
   <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'images/logo.png' %}">
   <meta name="twitter:card" content="summary_large_image">
 
-  {# Entity definition for search and AI engines. Encode only verifiable facts here:
-     no address, VAT id, ratings or reviews exist publicly, so those properties stay out. #}
+  {# Entity definition for search and AI engines. Only verifiable facts here: #}
+  {# no address, VAT id, ratings or reviews exist publicly, so they stay out. #}
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",

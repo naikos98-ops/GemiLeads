@@ -2643,3 +2643,51 @@ class LegalPagesTests(TestCase):
             self.assertEqual(
                 self.client.get(reverse(name), HTTP_HOST="gemileads.gr").status_code, 200, name
             )
+
+
+class TemplateTagIntegrityTests(TestCase):
+    """Django parses {{ }}, {% %} and {# #} with single-line regexes.
+
+    A tag broken across a newline (usually by an HTML formatter reflowing a long line) is
+    not parsed at all: it is emitted verbatim to the visitor. This shipped to production
+    once, printing SEO comments at the top of every page and a literal "{{ field.label }}"
+    on the password-reset form, so it is guarded rather than merely fixed.
+    """
+
+    CLOSERS = {"#": "#}", "{": "}}", "%": "%}"}
+
+    def _offenders(self):
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent / "templates"
+        found = []
+        for path in sorted(root.rglob("*.html")):
+            source = path.read_text(encoding="utf-8")
+            for match in re.finditer(r"\{([#{%])", source):
+                closer = self.CLOSERS[match.group(1)]
+                end = source.find(closer, match.end())
+                if end != -1 and "\n" in source[match.start():end + len(closer)]:
+                    line = source[:match.start()].count("\n") + 1
+                    found.append(f"{path.relative_to(root)}:{line}")
+        return found
+
+    def test_no_template_tag_spans_a_newline(self):
+        self.assertEqual(
+            self._offenders(), [],
+            "these tags span a newline and will render as literal text to visitors",
+        )
+
+    def test_the_detector_actually_catches_a_broken_tag(self):
+        """Guards the guard: a silently-passing detector would be worse than none."""
+        from django.template import engines
+
+        rendered = engines["django"].from_string("A{{ v\n }}B").render({"v": "x"})
+        self.assertIn("{{ v", rendered, "Django would have to change for the check to be moot")
+
+    def test_pages_do_not_leak_template_source_to_visitors(self):
+        for name in ("home", "pricing", "login", "password_reset", "privacy", "terms"):
+            with self.subTest(page=name):
+                html = self.client.get(reverse(name)).content.decode()
+                self.assertNotIn("{#", html)
+                self.assertNotIn("{{", html)
