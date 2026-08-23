@@ -58,6 +58,16 @@ class Command(BaseCommand):
             "χωρίς schedule δεν τρέχει τίποτα· χωρίς ImportRun δεν μπήκαν εγγραφές· "
             "χωρίς παραλήπτη enterprise/custom δεν στέλνεται 3ωρο email σε κανέναν."
         ))
+        self.stdout.write("")
+        self.stdout.write(self.style.MIGRATE_HEADING(
+            "ΓΙΑ ΕΝΑ ΜΕΜΟΝΩΜΕΝΟ SLOT ΠΟΥ ΔΕΝ ΕΣΤΕΙΛΕ, δες τη γραμμή του στην ενότητα 2:\n"
+            "  · λείπει η γραμμή          -> το task δεν έτρεξε (scheduler/worker)\n"
+            "  · status=failed            -> έσκασε το import, το μήνυμα είναι δίπλα\n"
+            "  · status=running & παλιά   -> σκοτώθηκε στο timeout, δεν έφτασε ποτέ στην αποστολή\n"
+            "  · status=success & new=0   -> το ΓΕΜΗ δεν είχε νέα εγγραφή. Η σιωπή είναι σωστή.\n"
+            "Το intraday ΔΕΝ γράφει γραμμή DigestDelivery όταν δεν έχει τι να στείλει, οπότε η "
+            "ενότητα 2 —όχι η 4— είναι η πηγή αλήθειας για ένα συγκεκριμένο slot."
+        ))
 
     # ------------------------------------------------------------------ sections
 
@@ -161,7 +171,13 @@ class Command(BaseCommand):
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS(f"  Δικαιούνται 3ωρο email: {len(eligible_intraday)}"))
         for label, tier, pointer in eligible_intraday:
-            self._line(f"  [OK] {label}", f"tier={tier} last_sent_company_id={pointer}")
+            # What a send right now would actually carry. An entitled recipient with 0 pending is
+            # the signature of a correct silent slot: the pipeline ran and had nothing to report.
+            pending = Company.objects.filter(incorporation_date=target, id__gt=pointer).count()
+            self._line(
+                f"  [OK] {label}",
+                f"tier={tier} last_sent_company_id={pointer} εκκρεμείς νέες εγγραφές τώρα={pending}",
+            )
 
         self.stdout.write("")
         self.stdout.write(self.style.WARNING(f"  Μόνο ημερήσιο (όχι 3ωρο): {len(eligible_daily)}"))

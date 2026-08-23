@@ -3530,3 +3530,70 @@ class DiagnoseIntradayCommandTests(TestCase):
     def test_it_sends_nothing(self):
         self._run()
         self.assertEqual(len(mail.outbox), 0)
+
+
+class DiagnoseIntradaySlotTests(TestCase):
+    """A slot that stayed silent has four possible causes and they need telling apart.
+
+    The intraday path writes no DigestDelivery row when it has nothing to send, so a per-slot
+    verdict can only be reconstructed from ImportRun plus the per-user pointer.
+    """
+
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.user = User.objects.create_user("ent@example.com", "ent@example.com", "StrongPass123")
+        sub = self.user.subscription
+        sub.complimentary_tier = "enterprise"
+        sub.save()
+
+    def _run(self):
+        out = StringIO()
+        call_command("diagnose_intraday", stdout=out)
+        return out.getvalue()
+
+    def _company(self, gemi, day=None):
+        return Company.objects.create(
+            gemi_number=gemi, name=f"ΕΤΑΙΡΕΙΑ {gemi}", incorporation_date=day or self.today,
+        )
+
+    def test_a_successful_run_that_imported_nothing_is_distinguishable(self):
+        ImportRun.objects.create(
+            target_date=self.today, status="success", fetched_count=0, created_count=0,
+            finished_at=timezone.now(),
+        )
+        output = self._run()
+        self.assertIn("status=success", output)
+        self.assertIn("new=0", output)
+
+    def test_a_failed_run_shows_its_error(self):
+        ImportRun.objects.create(
+            target_date=self.today, status="failed", error_message="GEMI API HTTP 503",
+            finished_at=timezone.now(),
+        )
+        self.assertIn("GEMI API HTTP 503", self._run())
+
+    def test_a_run_left_running_is_visible_as_such(self):
+        ImportRun.objects.create(target_date=self.today, status="running")
+        self.assertIn("status=running", self._run())
+
+    def test_pending_records_are_reported_against_the_pointer(self):
+        """Distinguishes "nothing arrived" from "something arrived and was not sent"."""
+        first = self._company("111000")
+        self._company("222000")
+        sub = self.user.subscription
+        sub.last_sent_company_id = first.id
+        sub.save()
+        self.assertIn("εκκρεμείς νέες εγγραφές τώρα=1", self._run())
+
+    def test_nothing_pending_once_the_pointer_has_caught_up(self):
+        last = self._company("333000")
+        sub = self.user.subscription
+        sub.last_sent_company_id = last.id
+        sub.save()
+        self.assertIn("εκκρεμείς νέες εγγραφές τώρα=0", self._run())
+
+    def test_yesterdays_companies_never_count_as_pending_today(self):
+        """The pointer is a global id, so a daily import of older records must not look like
+        unsent intraday traffic."""
+        self._company("444000", day=self.today - timedelta(days=1))
+        self.assertIn("εκκρεμείς νέες εγγραφές τώρα=0", self._run())
