@@ -600,13 +600,14 @@ def import_companies_since_date(start_date: date = date(2026, 1, 1)) -> tuple[in
                         break
 
                     defaults = company_defaults(item)
-                    activities = defaults.pop("activities")
                     gemi_number = str(item.get("arGemi"))
                     company, created = Company.objects.update_or_create(
                         gemi_number=gemi_number,
                         defaults=defaults,
                     )
-                    sync_company_activities(company, activities)
+                    # Keep Company.activities in the same state as import_for_date: both paths
+                    # write the identical company_defaults() shape rather than diverging on it.
+                    sync_company_activities(company, defaults["activities"])
 
                     if created:
                         created_count += 1

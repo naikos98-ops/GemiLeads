@@ -3634,3 +3634,78 @@ class DigestDeliveryIsNotPerSlotTests(TestCase):
         output = out.getvalue()
         self.assertIn("ΜΙΑ γραμμή για όλη την ημέρα", output)
         self.assertIn("ΠΡΩΤΗ αποστολή", output)
+
+
+class EmailBackendDefaultTests(TestCase):
+    """A local run or a stray script must never send real mail just because valid SMTP
+    credentials sit in .env: non-production has to default to a non-SMTP backend without
+    anyone having to remember to set one, while production keeps using the real relay."""
+
+    def test_development_defaults_to_console_not_smtp(self):
+        from config.settings import resolve_email_backend
+
+        self.assertEqual(
+            resolve_email_backend(debug=True, override=None),
+            "django.core.mail.backends.console.EmailBackend",
+        )
+
+    def test_production_defaults_to_smtp(self):
+        from config.settings import resolve_email_backend
+
+        self.assertEqual(
+            resolve_email_backend(debug=False, override=None),
+            "django.core.mail.backends.smtp.EmailBackend",
+        )
+
+    def test_explicit_override_wins_even_in_development(self):
+        """Opting into a real backend locally (e.g. to test the Brevo relay itself) must still
+        be possible — the safe default must not become a hard lock."""
+        from config.settings import resolve_email_backend
+
+        self.assertEqual(
+            resolve_email_backend(debug=True, override="django.core.mail.backends.smtp.EmailBackend"),
+            "django.core.mail.backends.smtp.EmailBackend",
+        )
+
+
+class CompanyActivitiesImportConsistencyTests(TestCase):
+    """Company.activities (JSONField) is written by both import paths but never read by live
+    code — the only reader is the historical data migration 0002, which ran once, backfilling
+    CompanyActivity/ActivityCode from whatever Company rows existed at that time. CompanyActivity
+    and raw_data are the real, queried source of truth for activities today. The field is kept
+    (not dead-code-deleted per instructions) but the two import paths used to disagree on it:
+    import_for_date wrote company_defaults()'s activities list onto Company.activities, while
+    import_companies_since_date popped it out of defaults before update_or_create, leaving the
+    field at its `[]` default (or stale, for an existing row) regardless of what GEMI returned.
+    The canonical representation is company_defaults()'s own shape — the list of
+    {"code", "description", "type"} dicts — applied identically by both paths."""
+
+    def _fake_get(self, path, params):
+        if params.get("isActive") == "true":
+            return {"searchResults": [SAMPLE], "searchMetadata": {"totalCount": 1}}
+        return {"searchResults": []}
+
+    @patch("gemiapp.services.fetch_companies", return_value=[SAMPLE])
+    def test_import_for_date_writes_the_canonical_shape(self, _fetch):
+        import_for_date(date(2026, 8, 1))
+        company = Company.objects.get(gemi_number=str(SAMPLE["arGemi"]))
+        self.assertEqual(
+            company.activities,
+            [{"code": "62010000", "description": "ΔΡΑΣΤΗΡΙΟΤΗΤΕΣ ΠΡΟΓΡΑΜΜΑΤΙΣΜΟΥ", "type": "Κύρια"}],
+        )
+
+    def test_bulk_import_now_matches_daily_import_on_activities(self):
+        from .services import import_companies_since_date
+
+        with patch("gemiapp.services._get", side_effect=self._fake_get):
+            import_companies_since_date(date(2026, 8, 1))
+        via_bulk_import = Company.objects.get(gemi_number=str(SAMPLE["arGemi"])).activities
+
+        Company.objects.all().delete()
+
+        with patch("gemiapp.services.fetch_companies", return_value=[SAMPLE]):
+            import_for_date(date(2026, 8, 1))
+        via_daily_import = Company.objects.get(gemi_number=str(SAMPLE["arGemi"])).activities
+
+        self.assertEqual(via_bulk_import, via_daily_import)
+        self.assertTrue(via_bulk_import, "activities must not silently end up empty for either path")

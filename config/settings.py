@@ -148,8 +148,17 @@ LOGIN_REDIRECT_URL = "dashboard"
 LOGOUT_REDIRECT_URL = "home"
 LOGIN_URL = "login"
 
-# Email settings
-EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+# Email settings. Production (DJANGO_DEBUG=0) sends real mail through the configured SMTP
+# relay (Brevo). Non-production defaults to the console backend so a local run or a stray
+# script can never send real mail just because valid SMTP credentials sit in .env; set
+# EMAIL_BACKEND explicitly to opt back into a real backend (e.g. to test SMTP locally).
+def resolve_email_backend(debug: bool, override: str | None) -> str:
+    if override:
+        return override
+    return "django.core.mail.backends.console.EmailBackend" if debug else "django.core.mail.backends.smtp.EmailBackend"
+
+
+EMAIL_BACKEND = resolve_email_backend(DEBUG, os.getenv("EMAIL_BACKEND"))
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
