@@ -1,0 +1,80 @@
+{% extends "superadmin/base.html" %}
+{% block title %}Λογαριασμοί · Superadmin{% endblock %}
+
+{% block content %}
+<div class="mb-8">
+  <h1 class="text-2xl font-extrabold text-navy-950">Λογαριασμοί</h1>
+  <p class="mt-1 text-sm text-navy-700/60">Δημιουργία απλών χρηστών και διαχειριστών.</p>
+</div>
+
+<div class="grid gap-8 lg:grid-cols-[380px_1fr]">
+
+  <section class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <h2 class="text-lg font-extrabold text-navy-950">Νέος λογαριασμός</h2>
+
+    <form method="post" action="{% url 'superadmin:account_create' %}" class="mt-5 space-y-4">
+      {% csrf_token %}
+      {% for field in form %}
+      <div>
+        {% if field.name == 'is_active' %}
+        <label class="flex items-center gap-2 text-sm font-bold text-navy-950">
+          {{ field }}
+          <span>{{ field.label }}</span>
+        </label>
+        {% else %}
+        <label for="{{ field.id_for_label }}" class="mb-2 block text-sm font-bold text-navy-950">{{ field.label }}</label>
+        {{ field }}
+        {% endif %}
+        {% if field.help_text %}<p class="mt-1 text-xs text-navy-700/50">{{ field.help_text }}</p>{% endif %}
+        {% for error in field.errors %}<p class="mt-1 text-xs font-bold text-red-600">{{ error }}</p>{% endfor %}
+      </div>
+      {% endfor %}
+      <button type="submit" class="w-full rounded-2xl bg-navy-950 px-5 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5">Δημιουργία</button>
+    </form>
+
+    <div class="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <p class="text-xs font-bold text-amber-900">Superadmin δεν δημιουργείται από εδώ</p>
+      <p class="mt-1 text-xs leading-5 text-amber-900/80">Ο ρόλος είναι καθορισμένος στις ρυθμίσεις του διακομιστή και δεν αλλάζει μέσα από την εφαρμογή:</p>
+      <ul class="mt-2 space-y-0.5">
+        {% for email in reserved_emails %}<li class="text-xs font-bold text-amber-900">· {{ email }}</li>{% endfor %}
+      </ul>
+    </div>
+  </section>
+
+  <section class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <h2 class="text-lg font-extrabold text-navy-950">Υπάρχοντες λογαριασμοί</h2>
+    <div class="mt-5 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-navy-900/10 text-xs uppercase tracking-wider text-navy-700/45">
+            <th class="pb-3 pr-4 font-bold">Email</th>
+            <th class="pb-3 pr-4 font-bold">Ρόλος</th>
+            <th class="pb-3 pr-4 font-bold">Κατάσταση</th>
+            <th class="pb-3 font-bold">Εγγραφή</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-navy-900/5">
+          {% for account in accounts %}
+          <tr>
+            <td class="py-3 pr-4 font-semibold text-navy-950">{{ account.email|default:account.username }}</td>
+            <td class="py-3 pr-4">
+              {% if account.is_superuser %}<span class="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">Superadmin</span>
+              {% elif account.is_staff %}<span class="rounded-full bg-sand-100 px-2.5 py-1 text-xs font-bold text-navy-900/70">Διαχειριστής</span>
+              {% else %}<span class="text-xs text-navy-700/55">Χρήστης</span>{% endif %}
+            </td>
+            <td class="py-3 pr-4">
+              {% if account.is_active %}<span class="text-xs font-bold text-emerald-700">Ενεργός</span>
+              {% else %}<span class="text-xs font-bold text-red-600">Ανενεργός</span>{% endif %}
+            </td>
+            <td class="py-3 text-xs text-navy-700/55">{{ account.date_joined|date:'d/m/Y' }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="4" class="py-6 text-sm text-navy-700/45">Δεν υπάρχουν λογαριασμοί.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+{% endblock %}

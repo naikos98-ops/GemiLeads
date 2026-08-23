@@ -1,0 +1,66 @@
+{% extends 'superadmin/base.html' %}
+
+{% block title %}Audit Logs · Superadmin Control Center{% endblock %}
+{% block page_title %}Administrative Audit Logs{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Search Bar -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <form method="get" class="flex gap-4">
+      <input type="text" name="q" value="{{ search }}" placeholder="Search action, admin email, target..." class="flex-1 rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+      <button class="rounded-xl bg-navy-950 px-6 py-2.5 font-bold text-white text-sm hover:bg-navy-800 transition">Αναζήτηση</button>
+      <a href="{% url 'superadmin:audit_list' %}" class="rounded-xl border border-navy-900/10 px-4 py-2.5 font-bold text-sm hover:bg-sand-100 transition flex items-center">Καθαρισμός</a>
+    </form>
+  </div>
+
+  <!-- Audit Table -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+          <tr>
+            <th class="p-3">Timestamp</th>
+            <th class="p-3">Admin User</th>
+            <th class="p-3">Action</th>
+            <th class="p-3">Target Type / ID</th>
+            <th class="p-3">Target Representation</th>
+            <th class="p-3">Metadata JSON</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-navy-900/5">
+          {% for a in page_obj %}
+          <tr class="hover:bg-sand-50/50 transition">
+            <td class="p-3 text-xs font-mono font-bold text-navy-950">{{ a.timestamp|date:"d/m/Y H:i:s" }}</td>
+            <td class="p-3 font-bold text-navy-950">{{ a.admin_user.email|default:"System" }}</td>
+            <td class="p-3">
+              <span class="inline-block rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700">{{ a.action }}</span>
+            </td>
+            <td class="p-3 text-xs text-navy-700/70">{{ a.target_type }} #{{ a.target_id }}</td>
+            <td class="p-3 font-bold text-navy-950 text-xs">{{ a.target_repr }}</td>
+            <td class="p-3 text-[11px] font-mono text-navy-700/60 max-w-xs truncate">{{ a.metadata }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6" class="p-8 text-center text-navy-700/50">Δεν υπάρχουν εγγραφές audit log.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="mt-6 flex items-center justify-between border-t border-navy-900/5 pt-4 text-xs font-bold text-navy-700/60">
+      <span>Σελίδα {{ page_obj.number }} από {{ page_obj.paginator.num_pages }}</span>
+      <div class="flex gap-2">
+        {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
+        {% endif %}
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ search }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

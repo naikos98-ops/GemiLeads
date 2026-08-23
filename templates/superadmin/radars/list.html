@@ -1,0 +1,102 @@
+{% extends 'superadmin/base.html' %}
+
+{% block title %}Global Radars · Superadmin Control Center{% endblock %}
+{% block page_title %}Global Customer Radars{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Filters Bar -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <form method="get" class="grid gap-4 md:grid-cols-3">
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Search Radar / Owner</label>
+        <input type="text" name="q" value="{{ search }}" placeholder="Radar name, user email..." class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Active Status</label>
+        <select name="active" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+          <option value="">Όλα</option>
+          <option value="1" {% if active_filter == '1' %}selected{% endif %}>Active</option>
+          <option value="0" {% if active_filter == '0' %}selected{% endif %}>Paused</option>
+        </select>
+      </div>
+
+      <div class="flex items-end gap-2">
+        <button class="flex-1 rounded-xl bg-navy-950 px-4 py-2.5 font-bold text-white text-sm hover:bg-navy-800 transition">Φιλτράρισμα</button>
+        <a href="{% url 'superadmin:radar_list' %}" class="rounded-xl border border-navy-900/10 px-4 py-2.5 font-bold text-sm hover:bg-sand-100 transition">Καθαρισμός</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- Radars Table -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+          <tr>
+            <th class="p-3">Radar Name</th>
+            <th class="p-3">Owner User</th>
+            <th class="p-3">Radar Config State</th>
+            <th class="p-3">Owner Entitlement</th>
+            <th class="p-3">Effective Matching</th>
+            <th class="p-3 text-center">Matches</th>
+            <th class="p-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-navy-900/5">
+          {% for r in page_obj %}
+          <tr class="hover:bg-sand-50/50 transition">
+            <td class="p-3">
+              <span class="block font-bold text-navy-950">{{ r.name }}</span>
+              <span class="text-xs text-navy-700/50">Frequency: {{ r.get_frequency_display }}</span>
+            </td>
+            <td class="p-3 text-xs text-navy-700/80 font-medium">{{ r.user.email }}</td>
+            <td class="p-3">
+              <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-bold {% if r.is_active %}bg-emerald-50 text-emerald-700{% else %}bg-sand-100 text-navy-700/50{% endif %}">
+                {% if r.is_active %}Active{% else %}Paused{% endif %}
+              </span>
+            </td>
+            <td class="p-3">
+              {% if r.user.subscription.has_entitlement %}
+              <span class="inline-block rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700">Entitled ({{ r.user.subscription.effective_tier|upper }})</span>
+              {% else %}
+              <span class="inline-block rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-bold text-red-700">Unpaid / No Access</span>
+              {% endif %}
+            </td>
+            <td class="p-3">
+              {% if r.is_active and r.user.subscription.has_entitlement %}
+              <span class="inline-block rounded-full bg-signal px-2.5 py-0.5 text-xs font-bold text-white shadow-glow">ENABLED (Live Matching)</span>
+              {% else %}
+              <span class="inline-block rounded-full bg-sand-200 px-2.5 py-0.5 text-xs font-bold text-navy-700/60">DISABLED</span>
+              {% endif %}
+            </td>
+            <td class="p-3 text-center font-bold text-navy-950">{{ r.match_count }}</td>
+            <td class="p-3 text-right">
+              <a href="{% url 'superadmin:radar_detail' r.id %}" class="rounded-lg bg-navy-950 px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-800 transition">Προβολή →</a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7" class="p-8 text-center text-navy-700/50">Δεν βρέθηκαν Ραντάρ.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="mt-6 flex items-center justify-between border-t border-navy-900/5 pt-4 text-xs font-bold text-navy-700/60">
+      <span>Σελίδα {{ page_obj.number }} από {{ page_obj.paginator.num_pages }}</span>
+      <div class="flex gap-2">
+        {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&active={{ active_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
+        {% endif %}
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&active={{ active_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

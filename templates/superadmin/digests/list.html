@@ -1,0 +1,97 @@
+{% extends 'superadmin/base.html' %}
+
+{% block title %}Email Digest Logs · Superadmin Control Center{% endblock %}
+{% block page_title %}Email Digest Deliveries{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <!-- Filters Bar -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <form method="get" class="grid gap-4 md:grid-cols-3">
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Search User Email</label>
+        <input type="text" name="q" value="{{ search }}" placeholder="Email..." class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Delivery Status</label>
+        <select name="status" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+          <option value="">Όλα τα Statuses</option>
+          <option value="sent" {% if status_filter == 'sent' %}selected{% endif %}>Sent (Εστάλη)</option>
+          <option value="skipped" {% if status_filter == 'skipped' %}selected{% endif %}>Skipped (Προσπεράστηκε)</option>
+          <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed (Απέτυχε)</option>
+        </select>
+      </div>
+
+      <div class="flex items-end gap-2">
+        <button class="flex-1 rounded-xl bg-navy-950 px-4 py-2.5 font-bold text-white text-sm hover:bg-navy-800 transition">Φιλτράρισμα</button>
+        <a href="{% url 'superadmin:digest_list' %}" class="rounded-xl border border-navy-900/10 px-4 py-2.5 font-bold text-sm hover:bg-sand-100 transition">Καθαρισμός</a>
+      </div>
+    </form>
+  </div>
+
+  <!-- Deliveries Table -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+          <tr>
+            <th class="p-3">Recipient User</th>
+            <th class="p-3">Digest Date</th>
+            <th class="p-3">Frequency</th>
+            <th class="p-3">Status</th>
+            <th class="p-3 text-center">Company Count</th>
+            <th class="p-3">Sent At</th>
+            <th class="p-3">Details / Error</th>
+            <th class="p-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-navy-900/5">
+          {% for d in page_obj %}
+          <tr class="hover:bg-sand-50/50 transition">
+            <td class="p-3 font-bold text-navy-950">{{ d.user.email }}</td>
+            <td class="p-3 font-bold text-navy-950">{{ d.digest_date }}</td>
+            <td class="p-3 text-xs font-bold uppercase text-navy-700/70">{{ d.frequency }}</td>
+            <td class="p-3">
+              <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-bold {% if d.status == 'sent' %}bg-emerald-50 text-emerald-700{% elif d.status == 'failed' %}bg-red-50 text-red-700{% else %}bg-sand-100 text-navy-700/60{% endif %}">
+                {{ d.status }}
+              </span>
+            </td>
+            <td class="p-3 text-center font-bold">{{ d.company_count }}</td>
+            <td class="p-3 text-xs text-navy-700/70">{{ d.sent_at|date:"d/m/Y H:i:s" }}</td>
+            <td class="p-3 text-xs text-navy-700/60 font-mono">{{ d.error_message|default:"—" }}</td>
+            <td class="p-3 text-right">
+              {% if d.status == 'failed' %}
+              <form action="{% url 'superadmin:digest_retry' d.id %}" method="post" class="inline">
+                {% csrf_token %}
+                <button class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 transition">Retry Digest</button>
+              </form>
+              {% else %}
+              <span class="text-xs text-navy-700/30">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="p-8 text-center text-navy-700/50">Δεν βρέθηκαν εγγραφές αποστολής digest.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="mt-6 flex items-center justify-between border-t border-navy-900/5 pt-4 text-xs font-bold text-navy-700/60">
+      <span>Σελίδα {{ page_obj.number }} από {{ page_obj.paginator.num_pages }}</span>
+      <div class="flex gap-2">
+        {% if page_obj.has_previous %}
+        <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&status={{ status_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
+        {% endif %}
+        {% if page_obj.has_next %}
+        <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&status={{ status_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -9,11 +9,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
-from django.contrib.auth.views import LoginView
+from django.contrib.auth.views import LoginView, PasswordResetView
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import default_token_generator
 from django.core.mail import send_mail
-from django.core.signing import TimestampSigner, BadSignature
+from django.core.paginator import Paginator
+from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -30,14 +31,16 @@ from .models import (
     DigestPreference,
     DigestDelivery,
     ImportRun,
-    RadarMatch,
     UserCompanyLead,
     get_user_radar_limit,
 )
+from .billing import PENDING_TIER_SESSION_KEY
 from .services import filter_companies_for_radar
 
 
 MAX_SELECTED_KADS = 25
+# An unfiltered export would otherwise buffer every company in the database into one response.
+MAX_EXPORT_ROWS = 5000
 LEAD_STATUSES = dict(UserCompanyLead.STATUSES)
 
 
@@ -75,17 +78,39 @@ def _radar_companies(form, activity_codes):
 
 
 def home(request):
+    from django.core.cache import cache
+
     today = timezone.localdate()
+    # Public landing page: these aggregates change at most once per daily import, so a short
+    # cache keeps three COUNT queries off the critical path without affecting correctness.
     context = {
-        "today_count": Company.objects.filter(incorporation_date=today).count(),
+        "today_count": cache.get_or_set(
+            f"home_today_count_{today}",
+            lambda: Company.objects.filter(incorporation_date=today).count(),
+            600,
+        ),
         "latest_companies": Company.objects.all()[:6],
-        "recent_count": Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).count(),
+        "recent_count": cache.get_or_set(
+            f"home_recent_count_{today}",
+            lambda: Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).count(),
+            600,
+        ),
     }
     return render(request, "home.html", context)
 
 
 @method_decorator(ratelimit(key="ip", rate="5/m", block=True), name="dispatch")
 class RateLimitedLoginView(LoginView):
+    pass
+
+
+# Password reset sends an email to any address supplied, with no login and no CAPTCHA in
+# front of it. Left open it is a way to burn the Brevo sending quota or to use this domain
+# to bother a third party, so it is limited like the other credential endpoints. The hourly
+# limit is the one that matters; the per-minute limit only blunts a burst.
+@method_decorator(ratelimit(key="ip", rate="5/m", block=True), name="dispatch")
+@method_decorator(ratelimit(key="ip", rate="15/h", block=True), name="dispatch")
+class RateLimitedPasswordResetView(PasswordResetView):
     pass
 
 
@@ -96,21 +121,50 @@ def signup(request):
     form = SignupForm(request.POST or None)
     if request.method == "POST" and form.is_valid():
         user = form.save()
-        
-        domain = request.get_host()
-        protocol = "https" if request.is_secure() else "http"
-        uid = urlsafe_base64_encode(force_bytes(user.pk))
-        token = default_token_generator.make_token(user)
-        verify_url = f"{protocol}://{domain}{reverse('verify_email', kwargs={'uidb64': uid, 'token': token})}"
-        
-        subject = "Επιβεβαίωση email στο Gemi Leads"
-        message = render_to_string("emails/verification.txt", {"verify_url": verify_url, "user": user})
-        html_message = render_to_string("emails/verification.html", {"verify_url": verify_url, "user": user})
-        
-        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email], html_message=html_message)
-        
+        send_verification_email(request, user)
         return render(request, "registration/verify_pending.html", {"email": user.email})
     return render(request, "registration/signup.html", {"form": form})
+
+
+def send_verification_email(request, user):
+    """Build and send the account verification link for ``user``."""
+    domain = request.get_host()
+    protocol = "https" if request.is_secure() else "http"
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    verify_url = f"{protocol}://{domain}{reverse('verify_email', kwargs={'uidb64': uid, 'token': token})}"
+
+    context = {"verify_url": verify_url, "user": user}
+    send_mail(
+        "Επιβεβαίωση email στο Gemi Leads",
+        render_to_string("emails/verification.txt", context),
+        settings.DEFAULT_FROM_EMAIL,
+        [user.email],
+        html_message=render_to_string("emails/verification.html", context),
+    )
+
+
+@ratelimit(key="ip", rate="5/h", block=True)
+def resend_verification(request):
+    """Self-service escape hatch for an account stuck unverified.
+
+    Without this the user is in a dead end: signing up again is refused because the email exists,
+    Django's password reset silently ignores inactive users, and the login error says nothing about
+    verification. Always renders the same confirmation so the page cannot be used to discover which
+    email addresses have accounts.
+    """
+    if request.user.is_authenticated:
+        return redirect("dashboard")
+
+    if request.method == "POST":
+        email = (request.POST.get("email") or "").strip()
+        if email:
+            user = User.objects.filter(email__iexact=email, is_active=False).first()
+            if user is not None:
+                send_verification_email(request, user)
+        return render(request, "registration/verify_pending.html", {"email": email, "resent": True})
+
+    return render(request, "registration/resend_verification.html")
 
 def verify_email(request, uidb64, token):
     try:
@@ -124,6 +178,10 @@ def verify_email(request, uidb64, token):
         user.save()
         login(request, user)
         messages.success(request, "Το email σου επιβεβαιώθηκε! Καλώς ήρθες στο Gemi Leads.")
+        # login() cycles the session key but preserves its data, so a plan chosen before
+        # signing up survives and the checkout can pick up where the user left off.
+        if request.session.get(PENDING_TIER_SESSION_KEY):
+            return redirect("resume_checkout")
         return redirect("dashboard")
     else:
         messages.error(request, "Ο σύνδεσμος επιβεβαίωσης είναι άκυρος ή έχει λήξει.")
@@ -134,16 +192,49 @@ def unsubscribe(request, token):
     try:
         user_id = signer.unsign(token, max_age=timedelta(days=30))
         user = User.objects.get(pk=user_id)
-        pref = user.digest_preference
-        pref.frequency = "off"
-        pref.save()
-        return render(request, "unsubscribed.html")
-    except (BadSignature, User.DoesNotExist):
+    except (BadSignature, SignatureExpired, User.DoesNotExist):
         return render(request, "unsubscribed.html", {"error": "Ο σύνδεσμος είναι άκυρος ή έχει λήξει."})
+
+    # get_or_create, not user.digest_preference: a legacy account without the row used to raise
+    # RelatedObjectDoesNotExist here, turning an unsubscribe link into a 500.
+    preference, _ = DigestPreference.objects.get_or_create(user=user)
+    preference.frequency = "off"
+    preference.save(update_fields=["frequency", "updated_at"])
+    return render(request, "unsubscribed.html")
+
+
+def _legal_context():
+    """Shared context for the privacy policy and terms.
+
+    A page is a draft until the controller is identified. Publishing a policy with invented
+    company details would be worse than having none, so the pages stay noindex and carry a
+    visible warning until LEGAL_CONTROLLER_NAME is set.
+    """
+    controller = settings.LEGAL_CONTROLLER_NAME.strip()
+    return {
+        "legal_controller_name": controller or "— δεν έχει οριστεί ακόμη —",
+        "legal_vat": settings.LEGAL_VAT.strip(),
+        "legal_gemi": settings.LEGAL_GEMI.strip(),
+        "legal_address": settings.LEGAL_ADDRESS.strip(),
+        "legal_contact_email": settings.LEGAL_CONTACT_EMAIL,
+        "legal_last_updated": settings.LEGAL_LAST_UPDATED,
+        "legal_refund_policy": settings.LEGAL_REFUND_POLICY,
+        "legal_billing_active": settings.LEGAL_BILLING_ACTIVE,
+        "legal_is_draft": not controller,
+    }
+
+
+def privacy(request):
+    return render(request, "legal/privacy.html", _legal_context())
+
+
+def terms(request):
+    return render(request, "legal/terms.html", _legal_context())
 
 
 def _filtered_companies(request):
-    qs = Company.objects.all()
+    today = timezone.localdate()
+    qs = Company.objects.filter(incorporation_date__lte=today)
     query = request.GET.get("q", "").strip()
     prefecture = request.GET.get("prefecture", "").strip()
     legal_type = request.GET.get("legal_type", "").strip()
@@ -159,7 +250,7 @@ def _filtered_companies(request):
     if date_from:
         qs = qs.filter(incorporation_date__gte=date_from)
     if date_to:
-        qs = qs.filter(incorporation_date__lte=date_to)
+        qs = qs.filter(incorporation_date__lte=min(date_to, today))
     if activity_codes:
         qs = qs.filter(activity_records__code__in=activity_codes).distinct()
     return qs
@@ -169,22 +260,58 @@ def _filtered_companies(request):
 def dashboard(request):
     today = timezone.localdate()
     companies = _filtered_companies(request)
+    paginator = Paginator(companies, 20)
+    page_num = request.GET.get("page", 1)
+    page_obj = paginator.get_page(page_num)
+
+    if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.GET.get("format") == "json" or (request.GET.get("page") and str(request.GET.get("page")).isdigit() and int(request.GET.get("page")) > 1):
+        html = render_to_string("includes/dashboard_rows.html", {"companies": page_obj, "request": request, "is_ajax": True, "today": today})
+        return JsonResponse({
+            "html": html,
+            "has_next": page_obj.has_next(),
+            "next_page": page_obj.next_page_number() if page_obj.has_next() else None,
+            "total_count": paginator.count,
+        })
+
+    from django.core.cache import cache
+    prefectures = cache.get_or_set(
+        "dashboard_prefectures",
+        lambda: list(Company.objects.filter(incorporation_date__lte=today).exclude(prefecture="").values_list("prefecture", flat=True).distinct().order_by("prefecture")),
+        3600,
+    )
+    legal_types = cache.get_or_set(
+        "dashboard_legal_types",
+        lambda: list(Company.objects.filter(incorporation_date__lte=today).exclude(legal_type="").values_list("legal_type", flat=True).distinct().order_by("legal_type")),
+        3600,
+    )
+
     preference, _ = DigestPreference.objects.get_or_create(user=request.user)
     selected_codes = _requested_kad_codes(request)
     date_from = parse_date(request.GET.get("date_from", "").strip())
     date_to = parse_date(request.GET.get("date_to", "").strip())
     user_leads = UserCompanyLead.objects.filter(user=request.user)
+    subscription = getattr(request.user, "subscription", None)
+    has_paid = subscription is not None and subscription.has_entitlement
+    # Enterprise / Custom are the tiers fed by the 3-hour GEMI pipeline, so they get a live panel
+    # showing what today's intraday runs have already brought in.
+    is_realtime_tier = has_paid and subscription.effective_tier in ("enterprise", "custom")
+    last_intraday_run = (
+        ImportRun.objects.filter(target_date=today, status="success").order_by("-finished_at").first()
+        if is_realtime_tier else None
+    )
     context = {
-        "companies": companies,
-        "result_count": companies.count(),
+        "companies": page_obj,
+        "page_obj": page_obj,
+        "has_next_page": page_obj.has_next(),
+        "result_count": paginator.count,
         "today_count": Company.objects.filter(incorporation_date=today).count(),
-        "week_count": Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).count(),
-        "prefectures": Company.objects.exclude(prefecture="").values_list("prefecture", flat=True).distinct().order_by("prefecture"),
-        "legal_types": Company.objects.exclude(legal_type="").values_list("legal_type", flat=True).distinct().order_by("legal_type"),
+        "week_count": Company.objects.filter(incorporation_date__gte=today - timedelta(days=6), incorporation_date__lte=today).count(),
+        "prefectures": prefectures,
+        "legal_types": legal_types,
         "preference": preference,
         "latest_run": ImportRun.objects.first(),
         "latest_delivery": DigestDelivery.objects.filter(user=request.user).first(),
-        "chart_data": list(Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).values("incorporation_date").annotate(total=Count("id")).order_by("incorporation_date")),
+        "chart_data": list(Company.objects.filter(incorporation_date__gte=today - timedelta(days=6), incorporation_date__lte=today).values("incorporation_date").annotate(total=Count("id")).order_by("incorporation_date")),
         "selected_kads": _catalog_entries(selected_codes),
         "date_range_error": bool(date_from and date_to and date_from > date_to),
         "lead_count": user_leads.count(),
@@ -192,8 +319,12 @@ def dashboard(request):
         "interested_lead_count": user_leads.filter(status="interested").count(),
         "active_radar_count": CustomerRadar.objects.filter(
             user=request.user, is_active=True, deleted_at__isnull=True
-        ).count(),
+        ).count() if has_paid else 0,
         "recent_leads": user_leads.select_related("company").prefetch_related("radar_matches__radar")[:6],
+        "has_active_paid_subscription": has_paid,
+        "today": today,
+        "is_realtime_tier": is_realtime_tier,
+        "last_intraday_run": last_intraday_run,
     }
     return render(request, "dashboard.html", context)
 
@@ -218,10 +349,17 @@ def radar_list(request):
     )
     limit = get_user_radar_limit(request.user)
     count = radars.count()
-    return render(request, "radars/list.html", {"radars": radars, "radar_limit": limit, "radar_count": count})
+    has_paid = hasattr(request.user, "subscription") and request.user.subscription.has_entitlement
+    return render(request, "radars/list.html", {
+        "radars": radars,
+        "radar_limit": limit,
+        "radar_count": count,
+        "has_active_paid_subscription": has_paid,
+    })
 
 
 def _save_radar(request, radar=None):
+    limit = get_user_radar_limit(request.user)
     form = CustomerRadarForm(request.POST or None, instance=radar, user=request.user)
     selected_codes = (
         _requested_kad_codes(request, "activity_codes")
@@ -230,16 +368,17 @@ def _save_radar(request, radar=None):
     )
     selected_kads = _catalog_entries(selected_codes)
     if request.method == "POST":
-        if _too_many_requested_kads(request):
+        if limit == 0:
+            form.add_error(None, "Απαιτείται ενεργή συνδρομή (Pro ή Business) για τη δημιουργία ή επεξεργασία Ραντάρ.")
+        elif _too_many_requested_kads(request):
             form.add_error(None, f"Μπορείς να επιλέξεις έως {MAX_SELECTED_KADS} ΚΑΔ.")
             
-        if not radar:
+        if not radar and limit > 0:
             current_count = CustomerRadar.objects.filter(user=request.user, deleted_at__isnull=True).count()
-            limit = get_user_radar_limit(request.user)
             if current_count >= limit:
                 form.add_error(None, f"Έχεις φτάσει το όριο των {limit} Ραντάρ του πλάνου σου. Διέγραψε κάποιο για να προσθέσεις νέο.")
 
-        if form.is_valid():
+        if form.is_valid() and limit > 0:
             saved_radar = form.save(commit=False)
             saved_radar.user = request.user
             if not saved_radar.pk:
@@ -252,6 +391,7 @@ def _save_radar(request, radar=None):
         "form": form,
         "radar": radar,
         "selected_kads": selected_kads,
+        "radar_limit": limit,
     })
 
 
@@ -349,18 +489,26 @@ def lead_list(request):
 
 @login_required
 def company_detail(request, gemi_number):
-    lead = get_object_or_404(
-        _lead_queryset(request.user).prefetch_related("company__activity_records"),
-        company__gemi_number=gemi_number,
-    )
-    if lead.status == "new":
+    company = get_object_or_404(Company.objects.prefetch_related("activity_records"), gemi_number=gemi_number)
+
+    # A lead is a radar outcome, not a side effect of browsing. Creating one for a user without an
+    # entitlement polluted their Lead Inbox and the Superadmin lead metrics with rows that have no
+    # RadarMatch behind them. Existing leads stay visible either way.
+    subscription = getattr(request.user, "subscription", None)
+    if subscription is not None and subscription.has_entitlement:
+        lead, _ = UserCompanyLead.objects.get_or_create(user=request.user, company=company)
+    else:
+        lead = UserCompanyLead.objects.filter(user=request.user, company=company).first()
+
+    if lead is not None and lead.status == "new":
         lead.status = "viewed"
         lead.save(update_fields=["status", "updated_at"])
+
     return render(request, "companies/detail.html", {
         "lead": lead,
-        "company": lead.company,
-        "status_form": LeadStatusForm(instance=lead),
-        "notes_form": LeadNotesForm(instance=lead),
+        "company": company,
+        "status_form": LeadStatusForm(instance=lead) if lead is not None else None,
+        "notes_form": LeadNotesForm(instance=lead) if lead is not None else None,
     })
 
 
@@ -403,6 +551,9 @@ def lead_notes(request, pk):
 @login_required
 def radar_export_csv(request, pk):
     radar = get_object_or_404(CustomerRadar, pk=pk, user=request.user, deleted_at__isnull=True)
+    if get_user_radar_limit(request.user) == 0:
+        messages.error(request, "Απαιτείται ενεργή συνδρομή για την εξαγωγή CSV.")
+        return redirect("pricing")
     matches = radar.matches.select_related("company", "lead")
     selected_status = request.GET.get("status", "").strip()
     if selected_status in LEAD_STATUSES:
@@ -441,9 +592,17 @@ def radar_export_csv(request, pk):
 @require_POST
 def radar_toggle(request, pk):
     radar = get_object_or_404(CustomerRadar, pk=pk, user=request.user, deleted_at__isnull=True)
-    radar.is_active = not radar.is_active
-    if radar.is_active:
+    limit = get_user_radar_limit(request.user)
+    if limit == 0:
+        messages.error(request, "Απαιτείται ενεργή συνδρομή για την ενεργοποίηση Ραντάρ.")
+        return redirect("pricing")
+    if not radar.is_active:
+        active_count = CustomerRadar.objects.filter(user=request.user, is_active=True, deleted_at__isnull=True).exclude(pk=pk).count()
+        if active_count >= limit:
+            messages.error(request, f"Έχεις φτάσει το όριο των {limit} ενεργών Ραντάρ του πλάνου σου.")
+            return redirect("radar_list")
         radar.monitor_from = timezone.now()
+    radar.is_active = not radar.is_active
     radar.save(update_fields=["is_active", "monitor_from", "updated_at"])
     messages.success(request, "Το Radar ενεργοποιήθηκε." if radar.is_active else "Το Radar τέθηκε σε παύση.")
     return redirect("radar_list")
@@ -463,6 +622,8 @@ def radar_delete(request, pk):
 @login_required
 @require_POST
 def radar_preview(request):
+    if get_user_radar_limit(request.user) == 0:
+        return JsonResponse({"ok": False, "error": "Απαιτείται ενεργή συνδρομή για την προεπισκόπηση Ραντάρ."}, status=403)
     radar = None
     if request.POST.get("radar_id"):
         radar = get_object_or_404(
@@ -506,11 +667,18 @@ def kad_search(request):
 
 @login_required
 def export_csv(request):
+    if get_user_radar_limit(request.user) == 0:
+        messages.error(request, "Απαιτείται ενεργή συνδρομή για την εξαγωγή CSV.")
+        return redirect("pricing")
     response = HttpResponse(content_type="text/csv; charset=utf-8")
     response["Content-Disposition"] = 'attachment; filename="gemi-leads-export.csv"'
     response.write("\ufeff")
     writer = csv.writer(response)
     writer.writerow(["Ημερομηνία", "Αρ. ΓΕΜΗ", "ΑΦΜ", "Επωνυμία", "Νομική μορφή", "Νομός", "Πόλη", "Email", "Website"])
-    for company in _filtered_companies(request):
+    companies = _filtered_companies(request).only(
+        "incorporation_date", "gemi_number", "vat_number", "name",
+        "legal_type", "prefecture", "city", "email", "website",
+    )
+    for company in companies[:MAX_EXPORT_ROWS].iterator(chunk_size=1000):
         writer.writerow([company.incorporation_date, company.gemi_number, company.vat_number, company.name, company.legal_type, company.prefecture, company.city, company.email, company.website])
     return response

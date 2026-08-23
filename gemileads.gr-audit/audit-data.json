@@ -1,0 +1,246 @@
+{
+  "summary": {
+    "health_score": 41,
+    "business_type": "SaaS (B2B, Greek market, subscription)",
+    "top_findings": [
+      "Tailwind Play CDN in production: 120 KB render-blocking JIT compiler executing on every visitor device (fixed in unpushed commit 446a28f)",
+      "/pricing/ is an orphan page with zero internal links from any public page",
+      "No contact details, Terms or Privacy Policy on a site that takes payments (QRG trust + GDPR + Stripe)",
+      "No robots.txt and no sitemap.xml (fixed in unpushed commit 446a28f)",
+      "Zero Schema.org markup: no entity definition for search or AI engines"
+    ],
+    "quick_wins": [
+      "Deploy commit 446a28f - closes 8 findings at once, score 41 to about 68",
+      "Link /pricing/ from the public nav and footer",
+      "Cache the site-wide Company count that runs on every request",
+      "Set WhiteNoise CompressedManifestStaticFilesStorage with 1-year immutable caching",
+      "Demote the four H4 preview labels on the homepage to fix the H1 to H4 outline break"
+    ]
+  },
+  "categories": [
+    {
+      "name": "Technical SEO",
+      "score": 45,
+      "what_works": [
+        "HTTPS with HSTS preload",
+        "www and http both 301 to apex in one hop",
+        "Genuine 404s, no soft-404s",
+        "Gated pages correctly 302 to login",
+        "Full server-side rendering",
+        "Security headers confirm DEBUG=0"
+      ],
+      "findings": [
+        {
+          "title": "No robots.txt",
+          "severity": "High",
+          "description": "GET /robots.txt returns 404. The site has a large authenticated area consuming crawl budget via repeated 302s.",
+          "recommendation": "Deploy 446a28f which adds gemiapp/seo.py robots_txt."
+        },
+        {
+          "title": "No sitemap.xml",
+          "severity": "High",
+          "description": "GET /sitemap.xml returns 404.",
+          "recommendation": "Deploy 446a28f which adds django.contrib.sitemaps."
+        },
+        {
+          "title": "/pricing/ is an orphan page",
+          "severity": "Critical",
+          "description": "The string href=/pricing/ appears 0 times across all 4 public pages. The repo confirms every pricing URL reference sits inside a login-gated template.",
+          "recommendation": "Add a pricing link to the public nav and footer in templates/base.html plus a pricing CTA on the homepage."
+        },
+        {
+          "title": "Static assets cached for only 60 seconds",
+          "severity": "Medium",
+          "description": "Cache-Control: max-age=60, public. No STORAGES configured, so WhiteNoise runs without manifest hashing or pre-compression.",
+          "recommendation": "Set CompressedManifestStaticFilesStorage and WHITENOISE_MAX_AGE=31536000."
+        }
+      ]
+    },
+    {
+      "name": "Content Quality",
+      "score": 35,
+      "what_works": [
+        "Clear product positioning",
+        "Unique non-duplicate copy per page",
+        "Correct Greek-language targeting"
+      ],
+      "findings": [
+        {
+          "title": "No contact details, Terms or Privacy Policy",
+          "severity": "Critical",
+          "description": "Homepage scan found the legal name GEMILEADS IKE but no VAT, address, phone, email, Terms or Privacy link. The footer contains 0 links. The site charges 19 to 99 EUR per month.",
+          "recommendation": "Add /terms/, /privacy/, /contact/ and a real footer with company identity. Required for QRG trust, GDPR compliance, and Stripe."
+        },
+        {
+          "title": "Thin content on primary pages",
+          "severity": "High",
+          "description": "Homepage 321 words, pricing page 205 words.",
+          "recommendation": "Expand the homepage to 800-1200 words explaining GEMI data, KAD filtering and update frequency."
+        },
+        {
+          "title": "No informational content layer",
+          "severity": "High",
+          "description": "Only 4 public pages, no blog or guides. Zero topical authority around GEMI and KAD queries.",
+          "recommendation": "Validate demand first, then build an informational cluster. Enforce 60 percent unique content if generating per-KAD pages."
+        }
+      ]
+    },
+    {
+      "name": "On-Page SEO",
+      "score": 40,
+      "what_works": [
+        "Unique descriptive titles within display limits",
+        "Exactly one H1 per page",
+        "Correct html lang and viewport"
+      ],
+      "findings": [
+        {
+          "title": "No meta descriptions",
+          "severity": "High",
+          "description": "Absent on all 4 public pages. Google will synthesise snippets from a 321-word page.",
+          "recommendation": "Deploy 446a28f."
+        },
+        {
+          "title": "No canonical tags",
+          "severity": "Medium",
+          "description": "Absent site-wide. Lower risk given correct host redirects and no URL parameters in use.",
+          "recommendation": "Deploy 446a28f."
+        },
+        {
+          "title": "Heading hierarchy skips H1 to H4",
+          "severity": "Medium",
+          "description": "Homepage order is H1, H4, H4, H4, H4, H2. The four H4s are decorative preview-card labels appearing above the first H2.",
+          "recommendation": "Demote the card labels to non-heading elements in templates/home.html."
+        }
+      ]
+    },
+    {
+      "name": "Schema / Structured Data",
+      "score": 0,
+      "what_works": [],
+      "findings": [
+        {
+          "title": "No Schema.org markup of any kind",
+          "severity": "High",
+          "description": "JSON-LD occurrences across all public pages: 0. No entity definition exists for search or AI engines.",
+          "recommendation": "Add Organization and WebSite site-wide, plus SoftwareApplication with offers on /pricing/. Blocked by the missing contact data. Do not add FAQPage (retired 2026-05-07) or HowTo (deprecated 2023)."
+        }
+      ]
+    },
+    {
+      "name": "Performance (CWV)",
+      "score": 40,
+      "what_works": [
+        "HTML and JS gzip-compressed",
+        "preconnect present for font origins",
+        "font-display swap already set"
+      ],
+      "findings": [
+        {
+          "title": "Tailwind Play CDN in production",
+          "severity": "Critical",
+          "description": "120.4 KB render-blocking JavaScript JIT compiler that generates CSS on the visitor device. Tailwind documents it as development-only.",
+          "recommendation": "Deploy 446a28f, which replaces it with a 7.7 KB gzipped compiled stylesheet. Verify the npm build step succeeds or the site ships unstyled."
+        },
+        {
+          "title": "TTFB 0.8 to 1.3 seconds",
+          "severity": "High",
+          "description": "Measured across 3 runs. DNS and connect are under 30 ms, so the latency is server-side. An uncached Company count query runs in a context processor on every request.",
+          "recommendation": "Cache the global count for 3600 seconds, then investigate Render instance cold start for the remainder."
+        },
+        {
+          "title": "Render-blocking Google Fonts",
+          "severity": "Medium",
+          "description": "Blocking third-party stylesheet requesting 5 font weights.",
+          "recommendation": "Self-host Inter as woff2 or reduce to the 2-3 weights actually used."
+        }
+      ]
+    },
+    {
+      "name": "AI Search Readiness",
+      "score": 55,
+      "what_works": [
+        "GPTBot, OAI-SearchBot, ClaudeBot and PerplexityBot all receive 200",
+        "Server-side rendering means no JS barrier for AI crawlers"
+      ],
+      "findings": [
+        {
+          "title": "Low passage-level citability",
+          "severity": "High",
+          "description": "321-word homepage, no definitional statements, no entity schema, and an H1 to H4 outline break degrading passage segmentation.",
+          "recommendation": "Write standalone definitional paragraphs under descriptive headings. This is a content problem, not a markup problem."
+        }
+      ]
+    },
+    {
+      "name": "Images",
+      "score": 55,
+      "what_works": [
+        "Zero img elements on public pages - all iconography is inline SVG, so no alt text, dimension or lazy-loading gaps exist"
+      ],
+      "findings": [
+        {
+          "title": "favicon.png is 129 KB",
+          "severity": "Medium",
+          "description": "132331 bytes at 353x353, rendered at 48x48. It is the largest single asset on the homepage critical path.",
+          "recommendation": "Deploy 446a28f, which resizes it to 128x128 at 22 KB."
+        },
+        {
+          "title": "logo.png is 382 KB but currently unused",
+          "severity": "Low",
+          "description": "391443 bytes at 1255x347, referenced 0 times on the live homepage. It becomes relevant once used as og:image.",
+          "recommendation": "Deploy 446a28f, which reduces it to 105 KB."
+        }
+      ]
+    }
+  ],
+  "action_plan": {
+    "phases": [
+      {
+        "name": "Phase 1: Critical Fixes",
+        "timeframe": "Day 1 to Week 1",
+        "items": [
+          "Push and deploy commit 446a28f - closes 8 findings at once",
+          "Verify robots.txt 200, sitemap.xml 200, zero cdn.tailwindcss.com references, meta description present",
+          "Confirm the Render build log shows the Tailwind stylesheet step, or roll back",
+          "Link /pricing/ from the public nav and footer plus a homepage CTA",
+          "Add /terms/, /privacy/, /contact/ and a real footer with company identity"
+        ]
+      },
+      {
+        "name": "Phase 2: High-Impact Improvements",
+        "timeframe": "Weeks 2-3",
+        "items": [
+          "Cache the site-wide company count in the context processor",
+          "Configure WhiteNoise manifest storage with 1-year immutable caching",
+          "Add Organization, WebSite and SoftwareApplication JSON-LD",
+          "Fix the H1 to H4 outline break on the homepage",
+          "Expand homepage and pricing copy to 800-1200 words"
+        ]
+      },
+      {
+        "name": "Phase 3: Content & Authority",
+        "timeframe": "Month 2 onwards",
+        "items": [
+          "Validate keyword demand in Search Console before writing anything",
+          "Build an informational cluster only if demand is confirmed",
+          "Enforce 60 percent unique content on any programmatic KAD pages"
+        ]
+      },
+      {
+        "name": "Phase 4: Monitoring & Iteration",
+        "timeframe": "Ongoing",
+        "items": [
+          "Verify Search Console and submit the sitemap",
+          "Track indexed pages, pricing page impressions and CWV field data",
+          "Self-host Inter and trim unused font weights",
+          "Re-audit after Phase 2 completes"
+        ]
+      }
+    ]
+  },
+  "artifacts": {
+    "findings_dir": "findings/",
+    "screenshots_dir": "screenshots/"
+  }
+}

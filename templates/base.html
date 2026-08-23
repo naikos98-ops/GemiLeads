@@ -1,56 +1,131 @@
 {% load static %}
 <!doctype html>
-<html lang="el" class="scroll-smooth">
+<html lang="el" class="scroll-smooth overflow-x-hidden">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#081a2c">
   <link rel="icon" type="image/png" href="{% static 'images/favicon.png' %}">
   <title>{% block title %}Gemi Leads{% endblock %}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config={theme:{extend:{colors:{navy:{950:'#071725',900:'#0b2239',800:'#123453',700:'#1b496c'},sand:{50:'#fbf8f1',100:'#f3ecdf',200:'#e6d8c3',300:'#d8c2a2'},signal:'#2878ff'},fontFamily:{sans:['Inter','ui-sans-serif','system-ui']},boxShadow:{soft:'0 24px 80px rgba(7,23,37,.12)',glow:'0 0 40px rgba(40,120,255,.22)'},keyframes:{float:{'0%,100%':{transform:'translateY(0)'},'50%':{transform:'translateY(-12px)'}},shine:{'0%':{transform:'translateX(-150%) skewX(-18deg)'},'100%':{transform:'translateX(250%) skewX(-18deg)'}}},animation:{float:'float 6s ease-in-out infinite',shine:'shine 2.8s ease-in-out infinite'}}}};
-  </script>
+  {# Compiled by the Tailwind CLI (npm run build:css). #}
+  {# The CDN build shipped a 120 KB JIT compiler that blocked the first paint. #}
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    [data-reveal]{opacity:0;transform:translateY(24px);transition:opacity .75s cubic-bezier(.2,.8,.2,1),transform .75s cubic-bezier(.2,.8,.2,1)}
-    [data-reveal].visible{opacity:1;transform:none}.noise{background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E")}.glass{backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-    @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;scroll-behavior:auto!important;transition-duration:.01ms!important}[data-reveal]{opacity:1;transform:none}}
-  </style>
+
+  <meta name="description" content="{% block meta_description %}Παρακολούθησε καθημερινά τις νέες επιχειρήσεις που εγγράφονται στο ΓΕΜΗ. Φίλτρα ΚΑΔ και περιοχής, Ραντάρ Πελατών, CSV export και email ειδοποιήσεις.{% endblock %}">
+  {# Parameter-free: build_absolute_uri echoes the query string, which would make #}
+  {# every ?utm_source=... URL self-canonicalise instead of the clean path. #}
+  <link rel="canonical" href="{% block canonical %}{{ request.scheme }}://{{ request.get_host }}{{ request.path }}{% endblock %}">
+  <meta name="robots" content="{% block robots %}index, follow{% endblock %}">
+  {% if google_site_verification %}<meta name="google-site-verification" content="{{ google_site_verification }}">{% endif %}
+
+  <meta property="og:site_name" content="Gemi Leads">
+  <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+  <meta property="og:locale" content="el_GR">
+  {# Overridden per page; page_title is not a context variable, so no default lookup here. #}
+  <meta property="og:title" content="{% block og_title %}Gemi Leads{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Παρακολούθησε καθημερινά τις νέες επιχειρήσεις που εγγράφονται στο ΓΕΜΗ.{% endblock %}">
+  <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
+  <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'images/logo.png' %}">
+  <meta name="twitter:card" content="summary_large_image">
+
+  {# Entity definition for search and AI engines. Only verifiable facts here: #}
+  {# no address, VAT id, ratings or reviews exist publicly, so they stay out. #}
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "{{ request.scheme }}://{{ request.get_host }}/#organization",
+        "name": "Gemi Leads",
+        "url": "{{ request.scheme }}://{{ request.get_host }}/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "{{ request.scheme }}://{{ request.get_host }}{% static 'images/logo.png' %}"
+        },
+        "email": "info@gemileads.gr",
+        "description": "Καθημερινή παρακολούθηση νέων επιχειρήσεων από το επίσημο Open Data API του ΓΕΜΗ, με φίλτρα ΚΑΔ και περιοχής."
+      },
+      {
+        "@type": "WebSite",
+        "@id": "{{ request.scheme }}://{{ request.get_host }}/#website",
+        "url": "{{ request.scheme }}://{{ request.get_host }}/",
+        "name": "Gemi Leads",
+        "inLanguage": "el",
+        "publisher": { "@id": "{{ request.scheme }}://{{ request.get_host }}/#organization" }
+      }
+    ]
+  }
+  </script>
+
   {% block head %}{% endblock %}
 </head>
 <body class="noise min-h-screen bg-sand-50 font-sans text-navy-950 antialiased selection:bg-signal selection:text-white">
+  {% if request.session.impersonator_id %}
+  <div class="bg-amber-500 text-navy-950 px-4 py-2.5 text-center text-sm font-bold flex items-center justify-center gap-4 z-[100] relative shadow-md">
+    <span>SUPERADMIN IMPERSONATION — Προβολή ως <strong>{{ user.email }}</strong></span>
+    <form action="{% url 'superadmin:impersonate_stop' %}" method="post" class="inline">
+      {% csrf_token %}
+      <button class="rounded-full bg-navy-950 px-4 py-2 text-xs text-white hover:bg-navy-800 transition font-bold">Έξοδος Impersonation</button>
+    </form>
+  </div>
+  {% endif %}
   <nav class="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-navy-950/90 text-white glass">
     <div class="mx-auto flex h-18 max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
-      <a href="{% url 'home' %}" class="group flex items-center">
-        <img src="{% static 'images/logo.png' %}" alt="Gemi Leads Logo" class="h-10 w-auto object-contain transition duration-300 group-hover:scale-105">
+      <a href="{% url 'home' %}" class="group flex items-center gap-3">
+        <div class="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-navy-900 p-2 shadow-glow transition duration-300 group-hover:scale-105">
+          <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" class="opacity-30" />
+            <circle cx="12" cy="12" r="5" class="opacity-60" />
+            <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+            <path d="M12 3a9 9 0 0 1 9 9" class="text-blue-400 stroke-blue-400" />
+          </svg>
+          <span class="absolute -right-0.5 -top-0.5 h-2 w-2 animate-ping rounded-full bg-blue-400"></span>
+        </div>
+        <span class="text-xl font-extrabold tracking-tight text-white">Gemi <span class="text-blue-400">Leads</span></span>
       </a>
       <div class="hidden items-center gap-7 text-sm font-medium md:flex">
         {% if user.is_authenticated %}
+          {% if user.is_staff or user.is_superuser %}
+            <a href="{% url 'superadmin:overview' %}" class="flex items-center gap-1.5 rounded-full bg-purple-600 px-4 py-1.5 text-xs font-bold text-white shadow-glow transition hover:bg-purple-500 hover:scale-105">
+              👑 Superadmin
+            </a>
+          {% endif %}
           <a href="{% url 'dashboard' %}" class="text-white/70 transition hover:text-white">Dashboard</a>
           <a href="{% url 'lead_list' %}" class="text-white/70 transition hover:text-white">Leads</a>
           <a href="{% url 'radar_list' %}" class="text-white/70 transition hover:text-white">Radars</a>
           <a href="{% url 'settings' %}" class="text-white/70 transition hover:text-white">Ρυθμίσεις</a>
           <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="rounded-full border border-white/15 px-5 py-2 transition hover:bg-white/10">Έξοδος</button></form>
         {% else %}
+          <a href="#how-it-works" class="text-white/70 transition hover:text-white">Πώς λειτουργεί</a>
           <a href="#features" class="text-white/70 transition hover:text-white">Δυνατότητες</a>
-          <a href="{% url 'login' %}" class="text-white/70 transition hover:text-white">Σύνδεση</a>
-          <a href="{% url 'signup' %}" class="rounded-full bg-sand-100 px-5 py-2 font-semibold text-navy-950 transition hover:-translate-y-0.5 hover:bg-white">Δωρεάν έναρξη</a>
+          <a href="{% url 'pricing' %}" class="text-white/70 transition hover:text-white">Τιμές</a><a href="{% url 'login' %}" class="text-white/70 transition hover:text-white">Σύνδεση</a>
+          <a href="{% url 'signup' %}" class="rounded-full bg-sand-100 px-5 py-2 font-bold text-navy-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-white">Ξεκίνα τώρα</a>
         {% endif %}
       </div>
-      <button id="menuButton" class="rounded-xl border border-white/15 p-2 md:hidden" aria-label="Μενού"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <button id="menuButton" class="rounded-xl border border-white/15 p-2 md:hidden" aria-label="Μενού"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
     <div id="mobileMenu" class="hidden border-t border-white/10 px-5 py-4 md:hidden">
-      <div class="flex flex-col gap-4 text-sm">{% if user.is_authenticated %}<a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'lead_list' %}">Leads</a><a href="{% url 'radar_list' %}">Radars</a><a href="{% url 'settings' %}">Ρυθμίσεις</a>{% else %}<a href="{% url 'login' %}">Σύνδεση</a><a href="{% url 'signup' %}">Δωρεάν έναρξη</a>{% endif %}</div>
+      <div class="flex flex-col gap-4 text-sm">{% if user.is_authenticated %}{% if user.is_staff or user.is_superuser %}<a href="{% url 'superadmin:overview' %}" class="font-extrabold text-purple-400">👑 Superadmin Control Center</a>{% endif %}<a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'lead_list' %}">Leads</a><a href="{% url 'radar_list' %}">Radars</a><a href="{% url 'settings' %}">Ρυθμίσεις</a>{% else %}<a href="#how-it-works">Πώς λειτουργεί</a><a href="#features">Δυνατότητες</a><a href="{% url 'pricing' %}">Τιμές</a><a href="{% url 'login' %}">Σύνδεση</a><a href="{% url 'signup' %}" class="font-bold text-blue-400">Ξεκίνα τώρα →</a>{% endif %}</div>
     </div>
   </nav>
   {% if messages %}<div class="fixed right-5 top-24 z-50 space-y-2">{% for message in messages %}<div data-toast class="rounded-2xl bg-navy-900 px-5 py-4 text-sm text-white shadow-soft">{{ message }}</div>{% endfor %}</div>{% endif %}
-  <main class="pt-[72px]">{% block content %}{% endblock %}</main>
+  <main class="pt-18">{% block content %}{% endblock %}</main>
   <footer class="border-t border-navy-900/10 bg-sand-100 px-5 py-10">
-    <div class="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-sm text-navy-900/60 sm:flex-row"><p>© 2026 Gemi Leads · Δεδομένα από το επίσημο Open Data API ΓΕΜΗ.</p><p>Καθαρά δεδομένα. Καθημερινά.</p></div>
+    <div class="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-sm text-navy-900/60 sm:flex-row">
+      <p>© 2026 Gemi Leads · Δεδομένα από το επίσημο Open Data API ΓΕΜΗ.</p>
+      <p class="flex flex-wrap gap-x-4 gap-y-2">
+        <a href="{% url 'pricing' %}" class="font-bold text-navy-900/70 transition hover:text-blue-700">Συνδρομές &amp; Πλάνα</a>
+        <a href="{% url 'privacy' %}" class="font-bold text-navy-900/70 transition hover:text-blue-700">Πολιτική Απορρήτου</a>
+        <a href="{% url 'terms' %}" class="font-bold text-navy-900/70 transition hover:text-blue-700">Όροι Χρήσης</a>
+      </p>
+      <p class="text-xs text-navy-700/50">Το Gemi Leads είναι ανεξάρτητη υπηρεσία και δεν αποτελεί υπηρεσία του ΓΕΜΗ.</p>
+    </div>
   </footer>
   <script src="{% static 'js/app.js' %}"></script>
+  {% include "includes/analytics.html" %}
   {% block scripts %}{% endblock %}
 </body></html>

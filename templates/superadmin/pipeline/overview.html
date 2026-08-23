@@ -1,0 +1,90 @@
+{% extends 'superadmin/base.html' %}
+
+{% block title %}GEMI Pipeline Operations · Superadmin Control Center{% endblock %}
+{% block page_title %}GEMI Pipeline Operations{% endblock %}
+
+{% block content %}
+<div class="space-y-8">
+  <!-- Top Operational Banner & Trigger Action -->
+  <div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-center rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <div>
+      <h3 class="text-xl font-extrabold text-navy-950">Daily Import & Matching Pipeline</h3>
+      <p class="mt-1 text-sm text-navy-700/60 font-medium">Παρακολούθηση εκτελέσεων εισαγωγής εταιρειών από το Open Data API του ΓΕΜΗ &matching.</p>
+    </div>
+    <!-- Manual Trigger Modal Button -->
+    <button onclick="document.getElementById('runPipelineModal').classList.remove('hidden')" class="rounded-full bg-navy-950 px-6 py-3 text-xs font-bold text-white shadow-glow hover:bg-navy-800 transition whitespace-nowrap">⚡ Χειροκίνητη Εκτέλεση Pipeline</button>
+  </div>
+
+  <!-- Pipeline History Table -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft space-y-4">
+    <h3 class="font-extrabold text-navy-950 text-lg">Ιστορικό Εκτελέσεων Pipeline (Τελευταίες 30)</h3>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+          <tr>
+            <th class="p-3">Run ID</th>
+            <th class="p-3">Target Date</th>
+            <th class="p-3">Status</th>
+            <th class="p-3 text-center">Fetched</th>
+            <th class="p-3 text-center">Created</th>
+            <th class="p-3 text-center">Updated</th>
+            <th class="p-3">Execution Time</th>
+            <th class="p-3">Error Message</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-navy-900/5">
+          {% for r in runs %}
+          <tr class="hover:bg-sand-50/50 transition">
+            <td class="p-3 font-mono font-bold text-navy-950">#{{ r.id }}</td>
+            <td class="p-3 font-bold text-navy-950">{{ r.target_date }}</td>
+            <td class="p-3">
+              <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-bold {% if r.status == 'success' %}bg-emerald-50 text-emerald-700{% elif r.status == 'failed' %}bg-red-50 text-red-700{% else %}bg-amber-50 text-amber-700{% endif %}">
+                {{ r.status }}
+              </span>
+            </td>
+            <td class="p-3 text-center font-bold">{{ r.fetched_count }}</td>
+            <td class="p-3 text-center font-bold text-emerald-700">{{ r.created_count }}</td>
+            <td class="p-3 text-center font-bold text-blue-700">{{ r.updated_count }}</td>
+            <td class="p-3 text-xs text-navy-700/70">{{ r.finished_at|date:"d/m/Y H:i:s"|default:"Running..." }}</td>
+            <td class="p-3 text-xs text-red-600 font-mono">{{ r.error_message|default:"—" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="p-8 text-center text-navy-700/50">Δεν υπάρχουν εκτελέσεις pipeline.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Manual Run Confirmation Modal -->
+<div id="runPipelineModal" class="fixed inset-0 z-50 hidden bg-navy-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+  <div class="w-full max-w-lg rounded-[2rem] border border-navy-900/10 bg-white p-8 shadow-2xl space-y-6">
+    <div>
+      <h3 class="text-xl font-extrabold text-navy-950">⚡ Χειροκίνητη Εκτέλεση GEMI Pipeline</h3>
+      <p class="mt-2 text-sm text-navy-700/60">
+        Η ενέργεια αυτή θα καλέσει το επίσημο Open Data API του ΓΕΜΗ για την επιλεγμένη ημερομηνία, θα ενημερώσει τις εταιρείες στη βάση δεδομένων και θα εκτελέσει το matching με τα ενεργά Ραντάρ.
+      </p>
+    </div>
+
+    <div class="rounded-xl bg-amber-50 p-4 border border-amber-200 text-xs text-amber-900 space-y-1">
+      <strong>⚠️ Ασφάλεια & Idempotency:</strong>
+      <p>Η εκτέλεση είναι ασφαλής και δεν δημιουργεί διπλότυπες εγγραφές εταιρειών ή διπλότυπα leads. Ωστόσο, προτείνεται να εκτελείται εκτός ωρών αιχμής.</p>
+    </div>
+
+    <form action="{% url 'superadmin:pipeline_run_now' %}" method="post" class="space-y-4">
+      {% csrf_token %}
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Target Date</label>
+        <input type="date" name="target_date" value="{{ today_str }}" required class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+      </div>
+
+      <div class="flex items-center justify-end gap-3 pt-2">
+        <button type="button" onclick="document.getElementById('runPipelineModal').classList.add('hidden')" class="rounded-xl border border-navy-900/10 px-5 py-2.5 text-xs font-bold text-navy-950 hover:bg-sand-100 transition">Ακύρωση</button>
+        <button type="submit" class="rounded-xl bg-navy-950 px-6 py-2.5 text-xs font-bold text-white shadow-glow hover:bg-navy-800 transition">Επιβεβαίωση & Εκτέλεση</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

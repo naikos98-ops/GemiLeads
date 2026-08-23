@@ -1,0 +1,84 @@
+{
+  "organization_website_sitewide": {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": "https://gemileads.gr/#organization",
+        "name": "Gemi Leads",
+        "url": "https://gemileads.gr/",
+        "logo": {
+          "@type": "ImageObject",
+          "url": "https://gemileads.gr/static/images/logo.png",
+          "width": 628,
+          "height": 174
+        },
+        "email": "info@gemileads.gr",
+        "description": "Καθημερινή παρακολούθηση νέων επιχειρήσεων από το επίσημο Open Data API του ΓΕΜΗ, με φίλτρα ΚΑΔ και περιοχής."
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://gemileads.gr/#website",
+        "url": "https://gemileads.gr/",
+        "name": "Gemi Leads",
+        "inLanguage": "el",
+        "publisher": {
+          "@id": "https://gemileads.gr/#organization"
+        }
+      }
+    ]
+  },
+  "softwareapplication_pricing": {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "@id": "https://gemileads.gr/#software",
+    "name": "Gemi Leads",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "url": "https://gemileads.gr/",
+    "inLanguage": "el",
+    "provider": {
+      "@id": "https://gemileads.gr/#organization"
+    },
+    "offers": [
+      {
+        "@type": "Offer",
+        "name": "Pro",
+        "price": "19",
+        "priceCurrency": "EUR",
+        "url": "https://gemileads.gr/pricing/",
+        "availability": "https://schema.org/InStock"
+      },
+      {
+        "@type": "Offer",
+        "name": "Business",
+        "price": "49",
+        "priceCurrency": "EUR",
+        "url": "https://gemileads.gr/pricing/",
+        "availability": "https://schema.org/InStock"
+      },
+      {
+        "@type": "Offer",
+        "name": "Enterprise / Real-Time",
+        "price": "99",
+        "priceCurrency": "EUR",
+        "url": "https://gemileads.gr/pricing/",
+        "availability": "https://schema.org/InStock"
+      }
+    ]
+  },
+  "webpage_pricing": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "@id": "https://gemileads.gr/pricing/#webpage",
+    "url": "https://gemileads.gr/pricing/",
+    "name": "Συνδρομές & Πλάνα | Gemi Leads",
+    "inLanguage": "el",
+    "isPartOf": {
+      "@id": "https://gemileads.gr/#website"
+    },
+    "about": {
+      "@id": "https://gemileads.gr/#software"
+    }
+  }
+}

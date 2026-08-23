@@ -12,6 +12,8 @@ services:
         value: 3.12.0
       - key: DJANGO_SECRET_KEY
         generateValue: true
+      - key: DJANGO_DEBUG
+        value: "0"
       - key: DJANGO_ALLOWED_HOSTS
         value: gemileads.gr,www.gemileads.gr,gemileads-web.onrender.com
       - key: BASE_URL
@@ -29,4 +31,38 @@ services:
       - key: EMAIL_USE_TLS
         value: "1"
       - key: DEFAULT_FROM_EMAIL
-        value: Gemi Leads <notifications@gemileads.gr>
+        value: Gemi Leads <notifications@send.gemileads.gr>
+      - key: EMAIL_REPLY_TO
+        value: info@gemileads.gr
+      - key: LEGAL_CONTROLLER_NAME
+        sync: false
+      - key: LEGAL_VAT
+        sync: false
+      - key: LEGAL_GEMI
+        sync: false
+      - key: LEGAL_ADDRESS
+        sync: false
+      - key: LEGAL_CONTACT_EMAIL
+        sync: false
+      - key: SUPERADMIN_EMAILS
+        value: info@gemileads.gr,naikos98@gmail.com,iotellis@taxville.gr
+      - key: LEGAL_BILLING_ACTIVE
+        value: "0"
+      - key: GA_MEASUREMENT_ID
+        sync: false
+      - key: GOOGLE_SITE_VERIFICATION
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: STRIPE_PUBLIC_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_PRO
+        sync: false
+      - key: STRIPE_PRICE_BUSINESS
+        sync: false
+      - key: STRIPE_PRICE_ENTERPRISE
+        sync: false

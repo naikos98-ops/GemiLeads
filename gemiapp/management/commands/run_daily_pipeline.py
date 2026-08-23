@@ -4,7 +4,7 @@ from gemiapp.services import import_for_date, send_digests
 
 
 class Command(BaseCommand):
-    help = "Εισάγει τις νέες επιχειρήσεις ΓΕΜΗ και στέλνει τα ημερήσια/εβδομαδιαία email digests."
+    help = "Εισάγει τις νέες επιχειρήσεις ΓΕΜΗ και στέλνει τα ημερήσια email digests."
 
     def add_arguments(self, parser):
         parser.add_argument("--date", help="YYYY-MM-DD, προεπιλογή: χθες")
@@ -18,9 +18,6 @@ class Command(BaseCommand):
             if not options["skip_email"]:
                 sent, skipped = send_digests(target, frequency="daily")
                 self.stdout.write(self.style.SUCCESS(f"Daily Email: {sent} εστάλησαν, {skipped} παραλείφθηκαν"))
-                
-                if target.weekday() == 6:  # Sunday
-                    w_sent, w_skipped = send_digests(target, frequency="weekly")
-                    self.stdout.write(self.style.SUCCESS(f"Weekly Email: {w_sent} εστάλησαν, {w_skipped} παραλείφθηκαν"))
+
         except Exception as exc:
             raise CommandError(str(exc)) from exc

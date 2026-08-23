@@ -24,6 +24,7 @@ class Company(models.Model):
     gemi_number = models.CharField("Αριθμός ΓΕΜΗ", max_length=24, unique=True, db_index=True)
     vat_number = models.CharField("ΑΦΜ", max_length=12, blank=True, db_index=True)
     name = models.CharField("Επωνυμία", max_length=500, db_index=True)
+    search_name = models.CharField(max_length=500, blank=True, editable=False, db_index=True)
     trade_names = models.TextField("Διακριτικοί τίτλοι", blank=True)
     legal_type = models.CharField("Νομική μορφή", max_length=200, blank=True, db_index=True)
     status = models.CharField("Κατάσταση", max_length=120, blank=True)
@@ -46,12 +47,62 @@ class Company(models.Model):
         ordering = ["-incorporation_date", "-gemi_number"]
         verbose_name_plural = "Επιχειρήσεις"
 
+    def save(self, *args, **kwargs):
+        from .kad import normalize_kad_search
+
+        search_name = normalize_kad_search(self.name)
+        if search_name != self.search_name:
+            self.search_name = search_name
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "search_name" not in update_fields:
+                kwargs["update_fields"] = list(update_fields) + ["search_name"]
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 
     @property
     def source_url(self):
         return f"https://publicity.businessportal.gr/company/{self.gemi_number}"
+
+    @property
+    def people(self):
+        """Partners, managers and legal representatives, as published by ΓΕΜΗ.
+
+        The API returns these under ``persons`` and the importer already stores the whole
+        payload, so nothing extra is fetched. Historical entries carry a ``dtTo`` end date
+        and are dropped: showing someone who has left as a current manager would be worse
+        than showing nobody. Sole traders legitimately have no entry here, their name is
+        the company name, so an empty list is normal rather than missing data.
+
+        People who have objected under Article 21 GDPR are removed here, so no caller can
+        display them by accident. See :class:`PersonSuppression`.
+        """
+        from .kad import normalize_kad_search
+
+        entries = (self.raw_data or {}).get("persons") or []
+        if not entries:
+            return []
+        # Filtered here rather than at the call sites: this property is the only place
+        # people are produced, so an objection cannot be missed by a new caller.
+        suppressed = PersonSuppression.names_for(self)
+        people = []
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("dtTo"):
+                continue
+            name = str(entry.get("personName") or entry.get("businessName") or "").strip()
+            if not name or normalize_kad_search(name) in suppressed:
+                continue
+            people.append({
+                "name": name,
+                "role": str(entry.get("role") or "").strip(),
+                "category": str(entry.get("category") or "").strip(),
+                "percentage": str(entry.get("percentage") or "").strip(),
+                "represents_alone": bool(entry.get("isRepresentativeAlone")),
+            })
+        # Representatives first, then by stake, so the person worth contacting leads.
+        people.sort(key=lambda p: (not p["represents_alone"], "Διαχειριστ" not in p["role"], p["name"]))
+        return people
 
 
 class CompanyActivity(models.Model):
@@ -71,7 +122,7 @@ class CompanyActivity(models.Model):
 
 
 class DigestPreference(models.Model):
-    FREQUENCIES = [("daily", "Καθημερινά"), ("weekly", "Εβδομαδιαία"), ("off", "Ανενεργό")]
+    FREQUENCIES = [("daily", "Καθημερινά"), ("off", "Ανενεργό")]
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="digest_preference")
     frequency = models.CharField(max_length=10, choices=FREQUENCIES, default="daily")
     legal_types = models.JSONField(default=list, blank=True)
@@ -86,7 +137,7 @@ class DigestPreference(models.Model):
 
 
 class CustomerRadar(models.Model):
-    FREQUENCIES = [("daily", "Καθημερινά"), ("weekly", "Εβδομαδιαία"), ("off", "Χωρίς email")]
+    FREQUENCIES = [("daily", "Καθημερινά"), ("off", "Χωρίς email")]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="customer_radars")
     name = models.CharField("Όνομα Radar", max_length=80)
@@ -191,9 +242,9 @@ class RadarMatch(models.Model):
 
 class DigestDelivery(models.Model):
     STATUSES = [("sent", "Εστάλη"), ("skipped", "Παραλείφθηκε"), ("failed", "Απέτυχε")]
-    FREQUENCIES = [("daily", "Καθημερινά"), ("weekly", "Εβδομαδιαία")]
+    FREQUENCIES = [("daily", "Καθημερινά"), ("intraday", "3-ωρο / Real-Time"), ("manual_yesterday", "Χειροκίνητο (Χθες)"), ("weekly", "Εβδομαδιαία (καταργήθηκε)")]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="digest_deliveries")
-    frequency = models.CharField(max_length=10, choices=FREQUENCIES, default="daily")
+    frequency = models.CharField(max_length=30, choices=FREQUENCIES, default="daily")
     digest_date = models.DateField(db_index=True)
     company_count = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=10, choices=STATUSES)
@@ -205,22 +256,66 @@ class DigestDelivery(models.Model):
         ordering = ["-sent_at"]
 
 
+# Single source of truth for how many radars each tier may keep active.
+# Keep in sync with templates/pricing.html and README.md.
 RADAR_LIMITS = {
-    "free": 1,
+    "free": 0,
     "pro": 5,
-    "business": 25,
+    "business": 10,
+    "enterprise": 15,
+    "custom": 15,
 }
+
+
+PAID_TIERS = ("pro", "business", "enterprise", "custom")
+
+
+def paid_subscription_q(prefix="subscription__"):
+    """Database equivalent of ``UserSubscription.has_active_paid_subscription``."""
+    return models.Q(**{f"{prefix}tier__in": PAID_TIERS, f"{prefix}status__in": UserSubscription.ALLOWED_PAID_STATUSES})
+
+
+def complimentary_q(prefix="subscription__", now=None):
+    """Database equivalent of ``UserSubscription.has_valid_complimentary_access``."""
+    now = now or timezone.now()
+    return models.Q(**{f"{prefix}complimentary_tier__in": PAID_TIERS}) & (
+        models.Q(**{f"{prefix}complimentary_until__isnull": True})
+        | models.Q(**{f"{prefix}complimentary_until__gte": now})
+    )
+
+
+def entitlement_q(prefix="subscription__", now=None):
+    """Database equivalent of ``UserSubscription.has_entitlement``."""
+    return paid_subscription_q(prefix) | complimentary_q(prefix, now)
+
+
+def effective_tier_q(tier, prefix="subscription__", now=None):
+    """Database equivalent of ``UserSubscription.effective_tier == tier``."""
+    paid = paid_subscription_q(prefix)
+    complimentary = complimentary_q(prefix, now)
+    if tier == "free":
+        return ~paid & ~complimentary
+    return (paid & models.Q(**{f"{prefix}tier": tier})) | (
+        ~paid & complimentary & models.Q(**{f"{prefix}complimentary_tier": tier})
+    )
+
 
 def get_user_radar_limit(user):
     try:
-        return RADAR_LIMITS.get(user.subscription.tier, 1)
-    except UserSubscription.DoesNotExist:
-        return RADAR_LIMITS["free"]
+        return user.subscription.radar_limit
+    except (UserSubscription.DoesNotExist, AttributeError):
+        return 0
+
 
 class UserSubscription(models.Model):
-    TIERS = [("free", "Free"), ("pro", "Pro"), ("business", "Business")]
+    TIERS = [("free", "Free (Legacy)"), ("pro", "Pro"), ("business", "Business"), ("enterprise", "Enterprise / Real-Time"), ("custom", "Custom / Enterprise")]
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="subscription")
     tier = models.CharField(max_length=20, choices=TIERS, default="free")
+    status = models.CharField(max_length=30, default="inactive")
+    complimentary_tier = models.CharField(max_length=20, choices=[("none", "None"), ("pro", "Pro"), ("business", "Business"), ("enterprise", "Enterprise / Real-Time"), ("custom", "Custom / Enterprise")], default="none")
+    complimentary_until = models.DateTimeField(null=True, blank=True)
+    custom_radar_limit = models.IntegerField(null=True, blank=True, help_text="Custom radar limit set by Superadmin")
+    last_sent_company_id = models.IntegerField(default=0, help_text="ID of last sent intraday GEMI company")
     stripe_customer_id = models.CharField(max_length=100, blank=True)
     stripe_subscription_id = models.CharField(max_length=100, blank=True)
     active_until = models.DateTimeField(null=True, blank=True)
@@ -230,8 +325,123 @@ class UserSubscription(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+    ALLOWED_PAID_STATUSES = ("active",)
+
+    @property
+    def has_active_paid_subscription(self):
+        return self.tier in ("pro", "business", "enterprise", "custom") and self.status in self.ALLOWED_PAID_STATUSES
+
+    @property
+    def has_valid_complimentary_access(self):
+        if self.complimentary_tier not in ("pro", "business", "enterprise", "custom"):
+            return False
+        if self.complimentary_until and self.complimentary_until < timezone.now():
+            return False
+        return True
+
+    @property
+    def effective_tier(self):
+        if self.has_active_paid_subscription:
+            return self.tier
+        if self.has_valid_complimentary_access:
+            return self.complimentary_tier
+        return "free"
+
+    @property
+    def has_entitlement(self):
+        return self.has_active_paid_subscription or self.has_valid_complimentary_access
+
+    @property
+    def radar_limit(self):
+        if self.custom_radar_limit is not None and self.custom_radar_limit > 0:
+            return self.custom_radar_limit
+        return RADAR_LIMITS.get(self.effective_tier, 0)
+
     def __str__(self):
-        return f"{self.user.username} - {self.get_tier_display()}"
+        return f"{self.user.username} - {self.get_tier_display()} ({self.status})"
+
+
+class PersonSuppression(models.Model):
+    """A person who exercised their right to object under Article 21 GDPR.
+
+    Kept in its own table rather than in Company.raw_data, because the importer
+    overwrites raw_data wholesale on every run and the suppression must outlive that.
+
+    Matching is on the accent-folded, uppercased name. ΓΕΜΗ publishes no stable
+    identifier for individuals, so the name is all there is to match on. That makes the
+    match deliberately broad: an objection is about a person, and 559 people in the
+    current data appear in more than one company (one in 22), so a per-company flag
+    would leave the other entries visible and the objection unhonoured. A company can
+    still be named to scope the suppression when the request is only about one role.
+    """
+
+    full_name = models.CharField("Ονοματεπώνυμο", max_length=300)
+    normalized_name = models.CharField(max_length=300, editable=False, db_index=True)
+    company = models.ForeignKey(
+        Company, on_delete=models.CASCADE, null=True, blank=True, related_name="person_suppressions",
+        verbose_name="Μόνο για την επιχείρηση", help_text="Κενό = απόκρυψη σε όλες τις επιχειρήσεις.",
+    )
+    reason = models.TextField("Σημείωση", blank=True, help_text="Εσωτερική τεκμηρίωση του αιτήματος.")
+    requested_at = models.DateTimeField("Ημερομηνία αιτήματος", default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Εναντίωση προσώπου"
+        verbose_name_plural = "Εναντιώσεις προσώπων (άρθρο 21 ΓΚΠΔ)"
+        ordering = ["-requested_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["normalized_name", "company"], name="unique_person_suppression"),
+            models.UniqueConstraint(
+                fields=["normalized_name"], condition=models.Q(company__isnull=True),
+                name="unique_global_person_suppression",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        from .kad import normalize_kad_search
+
+        normalized = normalize_kad_search(self.full_name)
+        if normalized != self.normalized_name:
+            self.normalized_name = normalized
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None and "normalized_name" not in update_fields:
+                kwargs["update_fields"] = list(update_fields) + ["normalized_name"]
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        scope = self.company.name if self.company_id else "όλες τις επιχειρήσεις"
+        return f"{self.full_name} — {scope}"
+
+    @classmethod
+    def names_for(cls, company):
+        """Normalised names to hide for this company: global objections plus its own.
+
+        An unsaved Company cannot be the target of a scoped objection and cannot be used
+        in a related filter, so only the global rows apply to it.
+        """
+        scope = models.Q(company__isnull=True)
+        if getattr(company, "pk", None) is not None:
+            scope |= models.Q(company=company)
+        return set(cls.objects.filter(scope).values_list("normalized_name", flat=True))
+
+
+class AdminAuditLog(models.Model):
+    admin_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="admin_audit_logs")
+    action = models.CharField(max_length=100, db_index=True)
+    target_type = models.CharField(max_length=50, blank=True)
+    target_id = models.CharField(max_length=100, blank=True)
+    target_repr = models.CharField(max_length=255, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-timestamp"]
+        verbose_name = "Audit Log"
+        verbose_name_plural = "Audit Logs"
+
+    def __str__(self):
+        return f"[{self.timestamp.strftime('%Y-%m-%d %H:%M')}] {self.admin_user} -> {self.action} ({self.target_repr})"
+
 
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -239,4 +449,7 @@ from django.dispatch import receiver
 @receiver(post_save, sender=User)
 def create_user_subscription(sender, instance, created, **kwargs):
     if created:
-        UserSubscription.objects.create(user=instance)
+        UserSubscription.objects.get_or_create(user=instance)
+        # send_digests iterates DigestPreference, so an account without one is silently
+        # unreachable no matter which tier it is on.
+        DigestPreference.objects.get_or_create(user=instance)
