@@ -124,26 +124,36 @@
         <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Daily Email Digest</li>
       </ul>
       
-      {% if user.is_authenticated and user.subscription.has_valid_complimentary_access %}
-        {% if user.subscription.complimentary_tier == "pro" %}
-        <div class="w-full rounded-xl bg-purple-100 border border-purple-200 py-3 text-center text-xs font-bold text-purple-900">
-          ✨ Ενεργό (Δωρεάν Access)
-        </div>
+      {% comment %}
+      Phase 5g item 3: complimentary access must never hide a real checkout button -- a
+      complimentary-only user (no Stripe subscription at all) falls straight through to the
+      normal "no active paid subscription" branch below, same as anyone else. The top-of-page
+      banner already announces complimentary access; these per-tier cards only ever reflect the
+      *paid Stripe subscription* state.
+      {% endcomment %}
+      {% if user.is_authenticated and user.subscription.has_active_paid_subscription and user.subscription.tier == "pro" %}
+        {% if user.subscription.active_until %}
+        {% include "includes/pending_change_notice.html" %}
         {% else %}
-        <div class="w-full rounded-xl bg-sand-100 py-3 text-center text-xs font-bold text-navy-700/60">
-          Περιλαμβάνεται στο Admin Access
-        </div>
+        <form action="{% url 'customer_portal' %}" method="post">
+          {% csrf_token %}
+          <button class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white transition hover:bg-blue-600">Διαχείριση</button>
+        </form>
         {% endif %}
-      {% elif user.is_authenticated and user.subscription.has_active_paid_subscription and user.subscription.tier == "pro" %}
-      <form action="{% url 'customer_portal' %}" method="post">
-        {% csrf_token %}
-        <button class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white transition hover:bg-blue-600">Διαχείριση</button>
-      </form>
       {% elif user.is_authenticated and user.subscription.has_active_paid_subscription %}
-      <form action="{% url 'customer_portal' %}" method="post">
-        {% csrf_token %}
-        <button class="w-full rounded-xl border border-navy-900/10 py-3 text-xs font-bold transition hover:bg-sand-50">Διαχείριση</button>
-      </form>
+      {% comment %}
+      Pro is the lowest paid tier, so reaching this card while already on Business/Enterprise is
+      always a downgrade target (Phase 5e: scheduled, at period end, via change_plan).
+      {% endcomment %}
+        {% if not user.subscription.active_until and not user.subscription.scheduled_tier %}
+        <form action="{% url 'change_plan' %}" method="post">
+          {% csrf_token %}
+          <input type="hidden" name="target_tier" value="pro">
+          <button class="w-full rounded-xl border border-navy-900/10 py-3 text-xs font-bold transition hover:bg-sand-50">Υποβάθμιση στο τέλος περιόδου</button>
+        </form>
+        {% else %}
+        {% include "includes/pending_change_notice.html" %}
+        {% endif %}
       {% else %}
       {% include "includes/checkout_button.html" with tier="pro" label="Επιλογή Pro — €19/μήνα" %}
       {% endif %}
@@ -163,26 +173,41 @@
         <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> Προτεραιότητα support</li>
       </ul>
       
-      {% if user.is_authenticated and user.subscription.has_valid_complimentary_access %}
-        {% if user.subscription.complimentary_tier == "business" %}
-        <div class="w-full rounded-xl bg-purple-100 border border-purple-200 py-3 text-center text-xs font-bold text-purple-900">
-          ✨ Ενεργό (Δωρεάν Access)
-        </div>
+      {% if user.is_authenticated and user.subscription.has_active_paid_subscription and user.subscription.tier == "business" %}
+        {% if user.subscription.active_until %}
+        {% include "includes/pending_change_notice.html" %}
         {% else %}
-        <div class="w-full rounded-xl bg-sand-100 py-3 text-center text-xs font-bold text-navy-700/60">
-          Περιλαμβάνεται στο Admin Access
-        </div>
+        <form action="{% url 'customer_portal' %}" method="post">
+          {% csrf_token %}
+          <button class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white transition hover:bg-blue-600">Διαχείριση</button>
+        </form>
         {% endif %}
-      {% elif user.is_authenticated and user.subscription.has_active_paid_subscription and user.subscription.tier == "business" %}
-      <form action="{% url 'customer_portal' %}" method="post">
-        {% csrf_token %}
-        <button class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white transition hover:bg-blue-600">Διαχείριση</button>
-      </form>
+      {% elif user.is_authenticated and user.subscription.has_active_paid_subscription and user.subscription.tier == "pro" %}
+        {% if not user.subscription.active_until and not user.subscription.scheduled_tier %}
+        <form action="{% url 'change_plan' %}" method="post">
+          {% csrf_token %}
+          <input type="hidden" name="target_tier" value="business">
+          <button class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white transition hover:bg-blue-600">Αναβάθμιση</button>
+        </form>
+        {% else %}
+        {% comment %}
+        A scheduled cancellation or a scheduled downgrade must be resolved first (Resume, or
+        Cancel Scheduled Downgrade, from Settings) -- the backend blocks this anyway, but hiding
+        the button avoids sending someone into a guaranteed-blocked action.
+        {% endcomment %}
+        {% include "includes/pending_change_notice.html" %}
+        {% endif %}
       {% elif user.is_authenticated and user.subscription.has_active_paid_subscription %}
-      <form action="{% url 'customer_portal' %}" method="post">
-        {% csrf_token %}
-        <button class="w-full rounded-xl border border-navy-900/10 py-3 text-xs font-bold transition hover:bg-sand-50">Διαχείριση</button>
-      </form>
+      {% comment %} Only Enterprise reaches here (Business/Pro already handled above), a downgrade target. {% endcomment %}
+        {% if not user.subscription.active_until and not user.subscription.scheduled_tier %}
+        <form action="{% url 'change_plan' %}" method="post">
+          {% csrf_token %}
+          <input type="hidden" name="target_tier" value="business">
+          <button class="w-full rounded-xl border border-navy-900/10 py-3 text-xs font-bold transition hover:bg-sand-50">Υποβάθμιση στο τέλος περιόδου</button>
+        </form>
+        {% else %}
+        {% include "includes/pending_change_notice.html" %}
+        {% endif %}
       {% else %}
       {% include "includes/checkout_button.html" with tier="business" label="Επιλογή Business — €49/μήνα" %}
       {% endif %}
@@ -203,26 +228,26 @@
         <li class="flex items-center gap-2"><svg class="h-4 w-4 text-signal flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg> VIP Support</li>
       </ul>
 
-      {% if user.is_authenticated and user.subscription.has_valid_complimentary_access %}
-        {% if user.subscription.complimentary_tier == "enterprise" %}
-        <div class="w-full rounded-xl bg-purple-100 border border-purple-200 py-3 text-center text-xs font-bold text-purple-900">
-          ✨ Ενεργό (Δωρεάν Access)
-        </div>
+      {% if user.is_authenticated and user.subscription.has_active_paid_subscription and user.subscription.tier == "enterprise" %}
+        {% if user.subscription.active_until %}
+        {% include "includes/pending_change_notice.html" %}
         {% else %}
-        <div class="w-full rounded-xl bg-sand-100 py-3 text-center text-xs font-bold text-navy-700/60">
-          Περιλαμβάνεται στο Admin Access
-        </div>
+        <form action="{% url 'customer_portal' %}" method="post">
+          {% csrf_token %}
+          <button class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white transition hover:bg-blue-600">Διαχείριση</button>
+        </form>
         {% endif %}
-      {% elif user.is_authenticated and user.subscription.has_active_paid_subscription and user.subscription.tier == "enterprise" %}
-      <form action="{% url 'customer_portal' %}" method="post">
-        {% csrf_token %}
-        <button class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white transition hover:bg-blue-600">Διαχείριση</button>
-      </form>
       {% elif user.is_authenticated and user.subscription.has_active_paid_subscription %}
-      <form action="{% url 'customer_portal' %}" method="post">
-        {% csrf_token %}
-        <button class="w-full rounded-xl border border-navy-900/10 py-3 text-xs font-bold transition hover:bg-sand-50">Διαχείριση</button>
-      </form>
+      {% comment %} Enterprise is the highest tier, so Pro/Business here is always an upgrade. {% endcomment %}
+        {% if not user.subscription.active_until and not user.subscription.scheduled_tier %}
+        <form action="{% url 'change_plan' %}" method="post">
+          {% csrf_token %}
+          <input type="hidden" name="target_tier" value="enterprise">
+          <button class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white transition hover:bg-blue-600">Αναβάθμιση</button>
+        </form>
+        {% else %}
+        {% include "includes/pending_change_notice.html" %}
+        {% endif %}
       {% else %}
       {% include "includes/checkout_button.html" with tier="enterprise" label="Επιλογή Enterprise — €99/μήνα" %}
       {% endif %}

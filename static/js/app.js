@@ -118,6 +118,15 @@
     });
     document.addEventListener('click', event => { if (!root.contains(event.target)) closeResults(); });
   });
+  // UX-only double-submit guard for checkout forms (pricing.html can render several, one per
+  // tier): disables just the submitted button so a double-click can't fire a second POST. The
+  // real protection against a duplicate Stripe Checkout Session is server-side idempotency.
+  document.addEventListener('submit', event => {
+    const form = event.target.closest('[data-checkout-form]'); if (!form) return;
+    const button = form.querySelector('[data-checkout-submit]'); if (!button || button.disabled) return;
+    button.disabled = true; button.setAttribute('aria-busy', 'true');
+    button.textContent = button.dataset.loadingLabel || button.textContent;
+  });
   document.getElementById('menuButton')?.addEventListener('click', () => document.getElementById('mobileMenu')?.classList.toggle('hidden'));
   setTimeout(() => document.querySelectorAll('[data-toast]').forEach(x => { x.style.opacity = '0'; setTimeout(() => x.remove(), 300); }), 3500);
   document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); });

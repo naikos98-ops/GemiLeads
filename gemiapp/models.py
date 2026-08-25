@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.functions import Lower
 from django.utils import timezone
@@ -318,6 +319,38 @@ class UserSubscription(models.Model):
     last_sent_company_id = models.IntegerField(default=0, help_text="ID of last sent intraday GEMI company")
     stripe_customer_id = models.CharField(max_length=100, blank=True)
     stripe_subscription_id = models.CharField(max_length=100, blank=True)
+    # Server-side reference to a Stripe Subscription Schedule managing a future plan change
+    # (Phase 5b+). Blank, not null, for consistency with stripe_customer_id/stripe_subscription_id
+    # above: "no schedule yet" is already expressed the same way every other Stripe id on this
+    # model expresses "not linked yet," so every existing `if sub.stripe_..._id:` style check
+    # keeps working the same way for this field too. Never set from client input.
+    stripe_schedule_id = models.CharField(max_length=100, blank=True)
+    # Tiers a Stripe Subscription Schedule can target as a future phase. "custom" has no Stripe
+    # price id (quote-based) and "free" means no subscription at all -- neither is ever a
+    # *scheduled tier change*, only a genuinely priced plan is.
+    scheduled_tier = models.CharField(
+        max_length=20,
+        choices=[choice for choice in TIERS if choice[0] in ("pro", "business", "enterprise")],
+        # null=True (not just blank=True) is deliberate here, unlike the CharFields above: None
+        # is the explicit "no scheduled change" sentinel this field is specified to have, kept
+        # distinct from any tier string -- including one that could otherwise collide with a
+        # real tier value the way an empty string would not for a *tier* field.
+        null=True, blank=True, default=None,
+    )
+    # Projection of the Stripe schedule's next phase start, kept only for UX ("Business μέχρι
+    # X, μετά Pro"). Read-only cache: nothing in this codebase may branch entitlement or
+    # authorization on this value -- see has_entitlement/effective_tier below, which never
+    # reference it, and gemiapp/tests.py::ScheduledTierProjectionTests which pins that down.
+    scheduled_change_at = models.DateTimeField(null=True, blank=True)
+    # Known future date when the CURRENT entitlement will end because a termination is already
+    # scheduled at Stripe -- i.e. cancel_at_period_end=True, not a plan change. None for a
+    # normal recurring subscription with nothing scheduled to end: current_period_end is a
+    # renewal boundary, not an expiry, so it must never be written here. A scheduled downgrade
+    # (Business -> Pro) does NOT set this field either -- entitlement continues past that date,
+    # it just changes tier; that case is expressed by scheduled_tier/scheduled_change_at above,
+    # not by active_until. Wiring the webhook to actually populate this is Phase 5c+; this
+    # field's column already existed before Phase 5, only this semantics is new/authoritative
+    # as of Phase 5a.
     active_until = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -326,6 +359,18 @@ class UserSubscription(models.Model):
         ordering = ["-created_at"]
 
     ALLOWED_PAID_STATUSES = ("active",)
+
+    def clean(self):
+        super().clean()
+        # Soft, application-level invariant only (not a DB constraint, so it costs nothing in
+        # portability and doesn't run on every plain .save() the way the rest of this codebase
+        # already calls it -- Django never calls clean()/full_clean() automatically on save(),
+        # and nothing here changes that). A schedule reference or a projected change time with
+        # no scheduled_tier to go with it is inconsistent data, not a valid "no schedule" state.
+        if self.scheduled_tier is None and (self.scheduled_change_at or self.stripe_schedule_id):
+            raise ValidationError(
+                "scheduled_change_at and stripe_schedule_id must be empty when scheduled_tier is None."
+            )
 
     @property
     def has_active_paid_subscription(self):
@@ -441,6 +486,45 @@ class AdminAuditLog(models.Model):
 
     def __str__(self):
         return f"[{self.timestamp.strftime('%Y-%m-%d %H:%M')}] {self.admin_user} -> {self.action} ({self.target_repr})"
+
+
+class StripeWebhookEvent(models.Model):
+    """Durable record of every Stripe webhook delivery, keyed by Stripe's own event id.
+
+    Stripe guarantees at-least-once delivery, never exactly-once, so this table is what makes
+    webhook processing idempotent: a row is written with status="received" before any business
+    logic runs, and a duplicate delivery of the same event id is recognised and skipped by
+    looking this table up first. Stripe remains the source of truth for billing state;
+    UserSubscription stays a projection kept in sync by the processing this table gates.
+    """
+
+    STATUS_CHOICES = [
+        ("received", "Received"),
+        ("processed", "Processed"),
+        ("failed", "Failed"),
+        ("ignored", "Ignored"),
+    ]
+
+    stripe_event_id = models.CharField(max_length=255, unique=True)
+    event_type = models.CharField(max_length=255, db_index=True)
+    payload = models.JSONField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="received", db_index=True)
+    error_message = models.TextField(blank=True)
+    received_at = models.DateTimeField(auto_now_add=True)
+    # Set whenever we finish an attempt to handle this event, regardless of outcome: on success
+    # (processed), on a recognised-but-unhandled type (ignored), and on a caught exception
+    # (failed) alike. Stays null only while status="received" -- i.e. no attempt has finished
+    # yet, either because processing is still in flight or because a previous attempt crashed
+    # before reaching any of the three terminal states.
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-received_at"]
+        verbose_name = "Stripe Webhook Event"
+        verbose_name_plural = "Stripe Webhook Events"
+
+    def __str__(self):
+        return f"{self.stripe_event_id} ({self.event_type}) — {self.status}"
 
 
 from django.db.models.signals import post_save

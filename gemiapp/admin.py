@@ -9,6 +9,7 @@ from .models import (
     ImportRun,
     PersonSuppression,
     RadarMatch,
+    StripeWebhookEvent,
     UserCompanyLead,
 )
 
@@ -78,3 +79,20 @@ class PersonSuppressionAdmin(admin.ModelAdmin):
     @admin.display(description="Εμβέλεια")
     def scope(self, obj):
         return obj.company.name if obj.company_id else "Όλες οι επιχειρήσεις"
+
+
+@admin.register(StripeWebhookEvent)
+class StripeWebhookEventAdmin(admin.ModelAdmin):
+    """Inspection only. Rows are written exclusively by stripe_webhook; hand-editing one would
+    misrepresent what actually happened during a Stripe delivery, so add/change are disabled."""
+
+    list_display = ("stripe_event_id", "event_type", "status", "received_at", "processed_at")
+    list_filter = ("status", "event_type")
+    search_fields = ("stripe_event_id", "event_type")
+    readonly_fields = ("stripe_event_id", "event_type", "payload", "status", "error_message", "received_at", "processed_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
