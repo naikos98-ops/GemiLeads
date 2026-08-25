@@ -46,12 +46,11 @@ services:
         sync: false
       - key: SUPERADMIN_EMAILS
         value: info@gemileads.gr,naikos98@gmail.com,iotellis@taxville.gr
-      # Beta: "0" keeps every payment path refused server-side. Flip to "1" only when payments
-      # genuinely go live, together with the three STRIPE_PRICE_* ids and the webhook secret.
+      # Billing went live 2026-08-26 -- real Stripe subscriptions, real charges.
       - key: LEGAL_BILLING_ACTIVE
-        value: "0"
-      - key: BETA_MODE
         value: "1"
+      - key: BETA_MODE
+        value: "0"
       - key: GA_MEASUREMENT_ID
         sync: false
       - key: GOOGLE_SITE_VERIFICATION
