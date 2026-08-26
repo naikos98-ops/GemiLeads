@@ -2204,6 +2204,45 @@ class HomepageAnswerContentTests(TestCase):
         self.assertIn('aria-hidden="true"', button[:400])
 
 
+class DashboardChartDataTests(TestCase):
+    """The bar heights used to be a fixed `value*2 + 5` px formula with no cap relative to the
+    template's h-32 (128px) bar container -- a spike day (e.g. many leads generated at once)
+    rendered a bar taller than the container and got visually clipped at its edge. Heights are
+    now scaled against the single largest value across both series, capped well inside the
+    container, so no day can overflow it regardless of how large a single day's count gets.
+    """
+
+    def test_no_bar_height_exceeds_the_chart_container(self):
+        from gemiapp.superadmin.services import get_chart_data_last_30_days
+
+        for i in range(80):
+            User.objects.create_user(username=f"spike{i}", email=f"spike{i}@example.com")
+
+        chart = get_chart_data_last_30_days()
+        for day in chart:
+            self.assertLessEqual(day["users_height"], 128)
+            self.assertLessEqual(day["leads_height"], 128)
+
+    def test_zero_count_day_still_renders_a_visible_sliver(self):
+        from gemiapp.superadmin.services import get_chart_data_last_30_days
+
+        chart = get_chart_data_last_30_days()
+        for day in chart:
+            self.assertGreaterEqual(day["users_height"], 2)
+            self.assertGreaterEqual(day["leads_height"], 2)
+
+    def test_the_largest_day_reaches_close_to_the_top_of_the_container(self):
+        """Scaling must not compress everything into a sliver either -- the tallest day should
+        visibly use most of the available height, not just avoid overflow."""
+        from gemiapp.superadmin.services import get_chart_data_last_30_days
+
+        for i in range(80):
+            User.objects.create_user(username=f"spike{i}", email=f"spike{i}@example.com")
+
+        chart = get_chart_data_last_30_days()
+        self.assertEqual(max(day["users_height"] for day in chart), 120)
+
+
 class SchedulerHealthCheckTests(TestCase):
     """The check counted every failure ever recorded, so it pinned itself to Warning forever.
 

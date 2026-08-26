@@ -216,6 +216,17 @@ def get_chart_data_last_30_days():
             "companies": company_data.get(curr, 0),
         })
         curr += timedelta(days=1)
+
+    # Bar heights are scaled against the single largest value across both series (not each
+    # series independently) so a tall "leads" day and a tall "users" day stay visually
+    # comparable -- and, critically, so every bar fits inside the fixed-height chart container
+    # in the template no matter how big a single day's count gets (a spike day used to render
+    # taller than the container and get clipped at its edge).
+    max_value = max([d["users"] for d in chart] + [d["leads"] for d in chart] + [1])
+    for d in chart:
+        d["users_height"] = round((d["users"] / max_value) * 118) + 2 if d["users"] else 2
+        d["leads_height"] = round((d["leads"] / max_value) * 118) + 2 if d["leads"] else 2
+
     return chart
 
 
