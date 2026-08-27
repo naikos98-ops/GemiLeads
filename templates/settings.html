@@ -1,50 +1,140 @@
 {% extends 'base.html' %}
+{% load billing_tags %}
 {% block title %}Ρυθμίσεις · Gemi Leads{% endblock %}
 {% block robots %}noindex, nofollow{% endblock %}
 {% block content %}
 <section class="min-h-[80vh] px-5 py-16">
   <div class="mx-auto max-w-3xl">
     <!-- Subscription Section -->
+    {% with sub=user.subscription state=user.subscription|billing_state %}
     <div data-reveal class="mb-10">
       <p class="text-sm font-bold uppercase tracking-[.2em] text-blue-600">ΛΟΓΑΡΙΑΣΜΟΣ</p>
       <h1 class="mt-2 text-4xl font-extrabold">Το πλάνο σου.</h1>
+
+      {% comment %}
+      Phase 5g: a single canonical, mutually-exclusive billing card driven by billing_state
+      (gemiapp/templatetags/billing_tags.py), which itself only re-reads existing server-side
+      fields (status, active_until, scheduled_tier, complimentary_*) -- no Stripe call here, no
+      new persisted field. State priority: payment_problem > scheduled_cancellation >
+      scheduled_downgrade > normal_active > terminal > complimentary_only > none. Exactly one of
+      these renders, so there is never more than one lifecycle action on screen at once.
+      {% endcomment %}
+
+      {% if state == "payment_problem" %}
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border-2 border-amber-400/60 bg-amber-50 p-6 shadow-soft sm:flex-row sm:items-center">
+        <div>
+          <h3 class="text-lg font-bold text-navy-950">{{ sub.get_tier_display }} Πλάνο</h3>
+          <p class="text-sm font-semibold text-amber-800 mt-1">⚠️ Χρειάζεται ενέργεια για την πληρωμή σας ({{ sub.status|stripe_status_label }}).</p>
+        </div>
+        <div class="flex-shrink-0">
+          <form action="{% url 'customer_portal' %}" method="post">
+            {% csrf_token %}
+            <button class="w-full rounded-xl bg-amber-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-amber-700">Διαχείριση Χρέωσης</button>
+          </form>
+        </div>
+      </div>
+
+      {% elif state == "scheduled_cancellation" %}
       <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
         <div>
-          <h3 class="text-lg font-bold text-navy-950">
-            {% if user.subscription.has_valid_complimentary_access %}
-              🎁 Δωρεάν Πρόσβαση {{ user.subscription.get_complimentary_tier_display|default:user.subscription.complimentary_tier|upper }}
-            {% elif user.subscription.has_active_paid_subscription %}
-              {{ user.subscription.get_tier_display }} Πλάνο
-            {% else %}
-              Χωρίς Ενεργή Συνδρομή
-            {% endif %}
-          </h3>
+          <h3 class="text-lg font-bold text-navy-950">{{ sub.get_tier_display }} Πλάνο</h3>
           <p class="text-sm text-navy-700/60 mt-1">
-            {% if user.subscription.has_valid_complimentary_access %}
-              Έχεις ενεργή δωρεάν πρόσβαση Admin με όριο έως <strong>{{ user.subscription.radar_limit }} Ραντάρ</strong> (Διάρκεια: <strong>{% if user.subscription.complimentary_until %}Έως {{ user.subscription.complimentary_until|date:"d/m/Y H:i" }}{% else %}Μόνιμη / Για πάντα{% endif %}</strong>).
-            {% elif user.subscription.has_active_paid_subscription %}
-              Έχεις ενεργή συνδρομή με όριο έως <strong>{{ user.subscription.radar_limit }} Ραντάρ Πελατών</strong>.
-            {% else %}
-              Έχεις όριο 0 Ραντάρ Πελατών. Επίλεξε συνδρομητικό πλάνο για να ενεργοποιήσεις την εφαρμογή.
-            {% endif %}
+            Κατάσταση: <strong>{{ sub.status|stripe_status_label }}</strong> &bull; Έχεις όριο έως <strong>{{ sub.radar_limit }} Ραντάρ Πελατών</strong>.
+            <br><span class="font-semibold text-amber-700">Η συνδρομή σου θα λήξει στις {{ sub.active_until|date:"d/m/Y" }}.</span>
+          </p>
+        </div>
+        <div class="flex flex-shrink-0 flex-col items-stretch gap-2 sm:items-end">
+          <form action="{% url 'resume_subscription' %}" method="post">
+            {% csrf_token %}
+            <button class="w-full rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600">Συνέχιση συνδρομής</button>
+          </form>
+          <form action="{% url 'customer_portal' %}" method="post">
+            {% csrf_token %}
+            <button class="text-xs font-semibold text-navy-700/50 underline decoration-dotted transition hover:text-navy-900">Διαχείριση χρέωσης</button>
+          </form>
+        </div>
+      </div>
+
+      {% elif state == "scheduled_downgrade" %}
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+        <div>
+          <h3 class="text-lg font-bold text-navy-950">Τρέχον πλάνο: {{ sub.get_tier_display }}</h3>
+          <p class="text-sm text-navy-700/60 mt-1">
+            Κατάσταση: <strong>{{ sub.status|stripe_status_label }}</strong>
+            <br><span class="font-semibold text-blue-700">Προγραμματισμένη αλλαγή: {{ sub.get_scheduled_tier_display }} στις {{ sub.scheduled_change_at|date:"d/m/Y" }}.</span>
+          </p>
+        </div>
+        <div class="flex flex-shrink-0 flex-col items-stretch gap-2 sm:items-end">
+          <form action="{% url 'cancel_scheduled_downgrade' %}" method="post">
+            {% csrf_token %}
+            <button class="w-full rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600">Ακύρωση προγραμματισμένης υποβάθμισης</button>
+          </form>
+          <form action="{% url 'customer_portal' %}" method="post">
+            {% csrf_token %}
+            <button class="text-xs font-semibold text-navy-700/50 underline decoration-dotted transition hover:text-navy-900">Διαχείριση χρέωσης</button>
+          </form>
+        </div>
+      </div>
+
+      {% elif state == "normal_active" %}
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+        <div>
+          <h3 class="text-lg font-bold text-navy-950">{{ sub.get_tier_display }} Πλάνο</h3>
+          <p class="text-sm text-navy-700/60 mt-1">
+            Κατάσταση: <strong>{{ sub.status|stripe_status_label }}</strong> &bull; Έχεις όριο έως <strong>{{ sub.radar_limit }} Ραντάρ Πελατών</strong>.
+          </p>
+        </div>
+        <div class="flex flex-shrink-0 flex-col items-stretch gap-2 sm:items-end">
+          <form action="{% url 'customer_portal' %}" method="post">
+            {% csrf_token %}
+            <button class="w-full rounded-xl border border-navy-900/10 px-6 py-3 text-sm font-bold text-navy-950 transition hover:bg-sand-50">Διαχείριση Συνδρομής</button>
+          </form>
+          <form action="{% url 'cancel_subscription' %}" method="post">
+            {% csrf_token %}
+            <button class="text-xs font-semibold text-navy-700/50 underline decoration-dotted transition hover:text-navy-900">Ακύρωση στο τέλος περιόδου</button>
+          </form>
+        </div>
+      </div>
+
+      {% elif state == "terminal" %}
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+        <div>
+          <h3 class="text-lg font-bold text-navy-950">Χωρίς Ενεργή Συνδρομή</h3>
+          <p class="text-sm text-navy-700/60 mt-1">
+            Η προηγούμενη συνδρομή σου ({{ sub.status|stripe_status_label }}) δεν είναι πλέον ενεργή. Έχεις όριο 0 Ραντάρ Πελατών.
           </p>
         </div>
         <div class="flex-shrink-0">
-          {% if user.subscription.has_valid_complimentary_access %}
-            <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-purple-100 border border-purple-300 px-5 py-2.5 text-xs font-bold text-purple-900 transition hover:bg-purple-200">
-              ✨ Ενεργή Δωρεάν Πρόσβαση
-            </a>
-          {% elif user.subscription.has_active_paid_subscription %}
-            <form action="{% url 'customer_portal' %}" method="post" class="inline">
-              {% csrf_token %}
-              <button class="rounded-xl border border-navy-900/10 px-6 py-3 text-sm font-bold text-navy-950 transition hover:bg-sand-50">Διαχείριση Συνδρομής</button>
-            </form>
-          {% else %}
-            <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">Επιλογή Πλάνου</a>
-          {% endif %}
+          <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">Επιλογή νέου πλάνου</a>
         </div>
       </div>
+
+      {% elif state == "complimentary_only" %}
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+        <div>
+          <h3 class="text-lg font-bold text-navy-950">🎁 Δωρεάν Πρόσβαση {{ sub.get_complimentary_tier_display|default:sub.complimentary_tier|upper }}</h3>
+          <p class="text-sm text-navy-700/60 mt-1">
+            Έχεις ενεργή δωρεάν πρόσβαση Admin με όριο έως <strong>{{ sub.radar_limit }} Ραντάρ</strong> (Διάρκεια: <strong>{% if sub.complimentary_until %}Έως {{ sub.complimentary_until|date:"d/m/Y H:i" }}{% else %}Μόνιμη / Για πάντα{% endif %}</strong>).
+          </p>
+        </div>
+        <div class="flex-shrink-0">
+          <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">Αγορά συνδρομής</a>
+        </div>
+      </div>
+
+      {% else %}
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+        <div>
+          <h3 class="text-lg font-bold text-navy-950">Δεν υπάρχει ενεργή συνδρομή</h3>
+          <p class="text-sm text-navy-700/60 mt-1">Έχεις όριο 0 Ραντάρ Πελατών. Επίλεξε συνδρομητικό πλάνο για να ενεργοποιήσεις την εφαρμογή.</p>
+        </div>
+        <div class="flex-shrink-0">
+          <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">Δείτε τα πλάνα</a>
+        </div>
+      </div>
+      {% endif %}
     </div>
+    {% endwith %}
 
     <!-- Digest Preferences -->
     <div data-reveal>

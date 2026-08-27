@@ -6,10 +6,29 @@ button still ships a working POST target that a stale page or a devtools click c
 server refuses it too (create_checkout_session), so this is the outer of two gates, not the only one.
 {% endcomment %}
 {% if billing_active %}
-<form action="{% url 'create_checkout_session' %}" method="post">
+{% comment %}
+data-checkout-form / data-checkout-submit are picked up by app.js: on submit it disables just
+this button and swaps in the loading label, so a double-click can't fire a second POST from the
+same form. That's UX protection only -- the real, correctness-bearing protection against a
+duplicate Stripe Checkout Session from a repeated submit is server-side (a Stripe idempotency
+key derived from user + tier + a per-attempt nonce, in create_checkout_session). A normal full
+POST -> redirect happens either way, so the disabled state never outlives this page: a
+successful submit navigates away, and an error re-renders this template fresh, with the button
+enabled again.
+{% endcomment %}
+<form action="{% url 'create_checkout_session' %}" method="post" data-checkout-form>
   {% csrf_token %}
   <input type="hidden" name="tier" value="{{ tier }}">
+<<<<<<< HEAD
   <button data-analytics="pricing_cta_click" data-analytics-tier="{{ tier }}" class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">{{ label }}</button>
+=======
+  <button
+    type="submit"
+    class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-70"
+    data-checkout-submit
+    data-loading-label="Μεταφορά στο Stripe…"
+  >{{ label }}</button>
+>>>>>>> e8f4e5e8ce672e434f0953cdcbd806d628694155
 </form>
 {% else %}
 <div class="w-full rounded-xl border border-dashed border-navy-900/20 bg-sand-50 py-3 text-center text-xs font-bold text-navy-700/60">

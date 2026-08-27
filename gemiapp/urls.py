@@ -34,5 +34,9 @@ urlpatterns = [
     # GET-safe landing point after login when a plan was chosen while logged out.
     path("checkout/resume/", billing.resume_checkout, name="resume_checkout"),
     path("api/stripe/customer-portal/", billing.customer_portal, name="customer_portal"),
+    path("api/stripe/cancel-subscription/", billing.cancel_subscription, name="cancel_subscription"),
+    path("api/stripe/resume-subscription/", billing.resume_subscription, name="resume_subscription"),
+    path("api/stripe/change-plan/", billing.change_plan, name="change_plan"),
+    path("api/stripe/cancel-scheduled-downgrade/", billing.cancel_scheduled_downgrade, name="cancel_scheduled_downgrade"),
     path("api/stripe/webhook/", billing.stripe_webhook, name="stripe_webhook"),
 ]

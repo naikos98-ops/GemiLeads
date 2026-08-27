@@ -18,6 +18,7 @@ from ..models import (
     CustomerRadar,
     DigestDelivery,
     RadarMatch,
+    StripeWebhookEvent,
     UserCompanyLead,
     UserSubscription,
     complimentary_q,
@@ -29,6 +30,11 @@ logger = logging.getLogger(__name__)
 
 # A scheduler failure older than this is history, not an active problem.
 SCHEDULER_FAILURE_WINDOW_DAYS = 7
+
+# A failed Stripe webhook older than this is history, not an active problem -- same reasoning
+# as SCHEDULER_FAILURE_WINDOW_DAYS: a health check that can never return to green after one
+# incident stops carrying information.
+STRIPE_WEBHOOK_FAILURE_WINDOW_DAYS = 7
 
 # Plan Prices for Subscription MRR Calculation
 PLAN_PRICES = {
@@ -215,6 +221,17 @@ def get_chart_data_last_30_days():
             "companies": company_data.get(curr, 0),
         })
         curr += timedelta(days=1)
+
+    # Bar heights are scaled against the single largest value across both series (not each
+    # series independently) so a tall "leads" day and a tall "users" day stay visually
+    # comparable -- and, critically, so every bar fits inside the fixed-height chart container
+    # in the template no matter how big a single day's count gets (a spike day used to render
+    # taller than the container and get clipped at its edge).
+    max_value = max([d["users"] for d in chart] + [d["leads"] for d in chart] + [1])
+    for d in chart:
+        d["users_height"] = round((d["users"] / max_value) * 118) + 2 if d["users"] else 2
+        d["leads_height"] = round((d["leads"] / max_value) * 118) + 2 if d["leads"] else 2
+
     return chart
 
 
@@ -410,11 +427,26 @@ def get_system_health():
         checks["brevo_email"] = {"name": "Brevo Email / Sender", "status": "Warning", "details": "SMTP credentials incomplete."}
 
     # 4. Stripe Config Check
+    #
+    # Being configured is necessary but not sufficient: real webhook deliveries can still fail
+    # (a code bug, a malformed payload, a Stripe API change) with nothing in the config check
+    # above to catch it. A recent StripeWebhookEvent(status="failed") row is the only signal
+    # that something is actually going wrong right now, so it must independently gate the
+    # overall status -- a fully-configured-but-silently-failing webhook must never show green.
     stripe_key = getattr(settings, "STRIPE_SECRET_KEY", "")
     price_pro = getattr(settings, "STRIPE_PRICE_PRO", "")
     price_biz = getattr(settings, "STRIPE_PRICE_BUSINESS", "")
     price_ent = getattr(settings, "STRIPE_PRICE_ENTERPRISE", "")
     webhook_sec = getattr(settings, "STRIPE_WEBHOOK_SECRET", "")
+
+    webhook_cutoff = timezone.now() - timedelta(days=STRIPE_WEBHOOK_FAILURE_WINDOW_DAYS)
+    recent_webhook_failures = StripeWebhookEvent.objects.filter(
+        status="failed", received_at__gte=webhook_cutoff,
+    ).count()
+    older_webhook_failures = StripeWebhookEvent.objects.filter(
+        status="failed", received_at__lt=webhook_cutoff,
+    ).count()
+
     if stripe_key and price_pro and price_biz:
         details = "Stripe API & Price IDs configured."
         healthy = bool(webhook_sec) and bool(price_ent)
@@ -422,9 +454,23 @@ def get_system_health():
             details += " (Webhook secret missing)"
         if not price_ent:
             details += " (Enterprise price id missing — το Enterprise checkout δεν λειτουργεί)"
+        if recent_webhook_failures:
+            healthy = False
+            details += (
+                f" ({recent_webhook_failures} failed webhook event(s) in the last "
+                f"{STRIPE_WEBHOOK_FAILURE_WINDOW_DAYS} days — check StripeWebhookEvent)"
+            )
+        elif older_webhook_failures:
+            details += f" ({older_webhook_failures} older failed webhook event(s) retained for history.)"
         checks["stripe"] = {"name": "Stripe Payments", "status": "Operational" if healthy else "Warning", "details": details}
     else:
-        checks["stripe"] = {"name": "Stripe Payments", "status": "Warning", "details": "Stripe keys or price IDs missing."}
+        details = "Stripe keys or price IDs missing."
+        if recent_webhook_failures:
+            details += (
+                f" Also: {recent_webhook_failures} failed webhook event(s) in the last "
+                f"{STRIPE_WEBHOOK_FAILURE_WINDOW_DAYS} days."
+            )
+        checks["stripe"] = {"name": "Stripe Payments", "status": "Warning", "details": details}
 
     # 5. django-q2 Scheduler Check
     #
