@@ -6,6 +6,24 @@
 {% block content %}
 <div class="space-y-6">
 
+  <!-- Test send -->
+  <div class="rounded-[2rem] border border-signal/30 bg-blue-50/60 p-6 shadow-soft">
+    <form method="post" action="{% url 'superadmin:client_finder_test' %}" class="flex flex-wrap items-end gap-3">
+      {% csrf_token %}
+      <div class="flex-1 min-w-[240px]">
+        <label class="block text-xs font-bold text-navy-700/60 uppercase mb-1">Δοκιμαστική αποστολή σε</label>
+        <input type="email" name="email" value="{{ test_email }}" required
+               class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+      </div>
+      <button class="rounded-xl bg-signal px-5 py-2.5 text-sm font-bold text-white hover:opacity-90 transition">
+        Στείλε δοκιμαστικό email
+      </button>
+      <p class="w-full text-xs text-navy-700/50">
+        Στέλνει το outreach email με δείγμα επιχείρησης. Δεν καταγράφεται και δεν επηρεάζει τη λίστα.
+      </p>
+    </form>
+  </div>
+
   <!-- Stat cards -->
   <div class="grid gap-4 sm:grid-cols-3">
     <div class="rounded-2xl border border-navy-900/10 bg-white p-5 shadow-soft">

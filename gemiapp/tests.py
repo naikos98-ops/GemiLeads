@@ -898,6 +898,14 @@ class SuperadminTests(TestCase):
         self.assertNotContains(res, "Χωρίς Email ΟΕ")
         self.assertNotContains(res, "Ήδη Επικοινωνημένη")
 
+        # Test send: goes to an arbitrary address, records nothing.
+        res_test = self.client.post(reverse("superadmin:client_finder_test"), {"email": "tester@example.com"})
+        self.assertRedirects(res_test, reverse("superadmin:client_finder"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["tester@example.com"])
+        self.assertEqual(CompanyOutreach.objects.count(), 1)  # only the pre-existing "already" row
+        mail.outbox.clear()
+
         res_send = self.client.post(reverse("superadmin:client_finder_send"), {
             "mode": "selected", "company_ids": [with_email.id, no_email.id],
         })

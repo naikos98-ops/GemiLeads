@@ -167,6 +167,9 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Gemi Leads <notifications@send.gemileads.gr>")
 EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "info@gemileads.gr")
 
+# Default recipient for the "Δοκιμαστική αποστολή" button on the Εύρεση Πελατών page.
+OUTREACH_TEST_EMAIL = os.getenv("OUTREACH_TEST_EMAIL", "naikos98@gmail.com")
+
 # Stripe settings
 STRIPE_PUBLIC_KEY = os.getenv("STRIPE_PUBLIC_KEY")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")

@@ -24,6 +24,7 @@ from .services import (
     log_admin_action,
     revoke_complimentary_access,
     send_company_outreach,
+    send_outreach_test_email,
     toggle_user_active_state,
     uncontacted_companies_qs,
 )
@@ -249,6 +250,7 @@ def client_finder(request):
         "batch_limit": OUTREACH_BATCH_LIMIT,
         "sent_total": sent_total,
         "failed_total": failed_total,
+        "test_email": settings.OUTREACH_TEST_EMAIL,
         "search": search,
         "prefecture_filter": prefecture,
         "legal_type_filter": legal_type,
@@ -282,6 +284,18 @@ def client_finder_send(request):
     if skipped:
         messages.info(request, f"{skipped} επιχειρήσεις παραλείφθηκαν (χωρίς email ή ήδη επικοινωνημένες).")
 
+    return redirect("superadmin:client_finder")
+
+
+@superadmin_required
+@require_POST
+def client_finder_test(request):
+    to_email = request.POST.get("email", "").strip() or settings.OUTREACH_TEST_EMAIL
+    try:
+        send_outreach_test_email(request.user, to_email)
+        messages.success(request, f"Δοκιμαστικό email εστάλη στο {to_email}.")
+    except Exception as exc:
+        messages.error(request, f"Σφάλμα αποστολής δοκιμαστικού email: {exc}")
     return redirect("superadmin:client_finder")
 
 

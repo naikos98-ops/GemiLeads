@@ -13,6 +13,7 @@ urlpatterns = [
     path("subscriptions/", views.subscription_list, name="subscription_list"),
     path("client-finder/", views.client_finder, name="client_finder"),
     path("client-finder/send/", views.client_finder_send, name="client_finder_send"),
+    path("client-finder/test/", views.client_finder_test, name="client_finder_test"),
     path("radars/", views.radar_list, name="radar_list"),
     path("radars/<int:radar_id>/", views.radar_detail, name="radar_detail"),
     path("leads/", views.lead_list, name="lead_list"),

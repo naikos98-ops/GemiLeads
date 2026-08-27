@@ -326,21 +326,80 @@ def uncontacted_companies_qs():
     )
 
 
-def send_company_outreach(admin_user, companies):
-    """Send the personalised introduction email to each company, once.
+OUTREACH_SUBJECT = "Μπήκατε στην αγορά — τώρα χρειάζεστε πελάτες"
 
-    ``companies`` is any iterable of Company objects. Companies without an email, or
-    already recorded in CompanyOutreach, are skipped. Returns (sent, failed, skipped).
+
+def _outreach_reply_to():
+    addr = getattr(settings, "EMAIL_REPLY_TO", "")
+    return [addr] if addr else None
+
+
+def build_outreach_email(company, to_email=None):
+    """Render the outreach email for ``company``. Returns an unsent EmailMultiAlternatives.
+
+    ``to_email`` overrides the recipient (used for test sends); otherwise the company's
+    own published address is used.
     """
     from django.core.signing import TimestampSigner
     from django.urls import reverse
 
     from ..views import OUTREACH_UNSUBSCRIBE_SALT
 
-    sent = failed = skipped = 0
-    signup_url = f"{settings.BASE_URL}{reverse('signup')}"
-    reply_to = [getattr(settings, "EMAIL_REPLY_TO", "")] if getattr(settings, "EMAIL_REPLY_TO", "") else None
+    recipient = to_email or company.email
     signer = TimestampSigner(salt=OUTREACH_UNSUBSCRIBE_SALT)
+    people = company.people if company.pk else []
+    context = {
+        "company": company,
+        "contact_name": people[0]["name"] if people else "",
+        "signup_url": f"{settings.BASE_URL}{reverse('signup')}",
+        "site_url": settings.BASE_URL,
+        "unsubscribe_url": f"{settings.BASE_URL}{reverse('outreach_unsubscribe', kwargs={'token': signer.sign(recipient)})}",
+    }
+    msg = EmailMultiAlternatives(
+        OUTREACH_SUBJECT,
+        render_to_string("emails/client_outreach.txt", context),
+        settings.DEFAULT_FROM_EMAIL,
+        [recipient],
+        reply_to=_outreach_reply_to(),
+    )
+    msg.attach_alternative(render_to_string("emails/client_outreach.html", context), "text/html")
+    return msg
+
+
+def send_outreach_test_email(admin_user, to_email):
+    """Send the outreach email to an arbitrary address for visual review.
+
+    Uses a representative in-memory Company. Records nothing in CompanyOutreach and
+    does not consult the suppression list — this is a manual test, not real outreach.
+    """
+    from datetime import date
+
+    sample = Company(
+        gemi_number="000000000000",
+        name="ΠΑΡΑΔΕΙΓΜΑ ΕΜΠΟΡΙΚΗ ΜΟΝΟΠΡΟΣΩΠΗ ΙΚΕ",
+        incorporation_date=date.today(),
+        legal_type="ΙΔΙΩΤΙΚΗ ΚΕΦΑΛΑΙΟΥΧΙΚΗ ΕΤΑΙΡΕΙΑ",
+        city="Θεσσαλονίκη",
+        prefecture="ΘΕΣΣΑΛΟΝΙΚΗΣ",
+        email=to_email,
+    )
+    build_outreach_email(sample, to_email=to_email).send()
+    log_admin_action(
+        admin_user=admin_user,
+        action="company_outreach_test",
+        target_type="Email",
+        target_id=to_email,
+        target_repr=to_email,
+    )
+
+
+def send_company_outreach(admin_user, companies):
+    """Send the personalised introduction email to each company, once.
+
+    ``companies`` is any iterable of Company objects. Companies without an email, or
+    already recorded in CompanyOutreach, are skipped. Returns (sent, failed, skipped).
+    """
+    sent = failed = skipped = 0
 
     for company in companies:
         if (
@@ -351,26 +410,8 @@ def send_company_outreach(admin_user, companies):
             skipped += 1
             continue
 
-        people = company.people
-        contact_name = people[0]["name"] if people else ""
-        token = signer.sign(company.email)
-        context = {
-            "company": company,
-            "contact_name": contact_name,
-            "signup_url": signup_url,
-            "site_url": settings.BASE_URL,
-            "unsubscribe_url": f"{settings.BASE_URL}{reverse('outreach_unsubscribe', kwargs={'token': token})}",
-        }
-        subject = "Μπήκατε στην αγορά — τώρα χρειάζεστε πελάτες"
-        body_text = render_to_string("emails/client_outreach.txt", context)
-        body_html = render_to_string("emails/client_outreach.html", context)
-
         try:
-            msg = EmailMultiAlternatives(
-                subject, body_text, settings.DEFAULT_FROM_EMAIL, [company.email], reply_to=reply_to,
-            )
-            msg.attach_alternative(body_html, "text/html")
-            msg.send()
+            build_outreach_email(company).send()
             CompanyOutreach.objects.create(
                 company=company, status="sent", sent_to=company.email, sent_by=admin_user,
             )
