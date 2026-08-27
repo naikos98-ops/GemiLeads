@@ -118,7 +118,6 @@
     });
     document.addEventListener('click', event => { if (!root.contains(event.target)) closeResults(); });
   });
-<<<<<<< HEAD
   // Fires a GA4 event when a tagged element is activated. gtag only exists after the visitor
   // accepts analytics cookies (see includes/analytics.html); without consent this is a no-op.
   document.addEventListener('click', event => {
@@ -127,7 +126,7 @@
     const params = {};
     if (el.dataset.analyticsTier) params.tier = el.dataset.analyticsTier;
     window.gtag('event', el.dataset.analytics, params);
-=======
+  });
   // UX-only double-submit guard for checkout forms (pricing.html can render several, one per
   // tier): disables just the submitted button so a double-click can't fire a second POST. The
   // real protection against a duplicate Stripe Checkout Session is server-side idempotency.
@@ -136,7 +135,6 @@
     const button = form.querySelector('[data-checkout-submit]'); if (!button || button.disabled) return;
     button.disabled = true; button.setAttribute('aria-busy', 'true');
     button.textContent = button.dataset.loadingLabel || button.textContent;
->>>>>>> e8f4e5e8ce672e434f0953cdcbd806d628694155
   });
   document.getElementById('menuButton')?.addEventListener('click', () => document.getElementById('mobileMenu')?.classList.toggle('hidden'));
   setTimeout(() => document.querySelectorAll('[data-toast]').forEach(x => { x.style.opacity = '0'; setTimeout(() => x.remove(), 300); }), 3500);
