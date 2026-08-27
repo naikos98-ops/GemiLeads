@@ -24,8 +24,8 @@ class StaticViewSitemap(Sitemap):
     protocol = "https"
 
     LAST_MODIFIED = {
-        "home": date(2026, 8, 22),     # answer sections added
-        "pricing": date(2026, 8, 22),  # tier copy corrected
+        "home": date(2026, 8, 27),     # conversion pass: new hero, sample-leads & use-cases sections
+        "pricing": date(2026, 8, 27),  # Real-Time tier renamed to Priority Alerts
         "signup": date(2026, 8, 22),
         "login": date(2026, 8, 22),
     }
