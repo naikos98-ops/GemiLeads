@@ -306,16 +306,16 @@ def toggle_user_active_state(admin_user, target_user, active_state):
     return target_user
 
 
-# A single web request sends these synchronously; keep the batch small enough that
-# the mail round-trips finish well inside the request timeout.
-OUTREACH_BATCH_LIMIT = 200
+# The web request only claims rows and enqueues; a django-q worker does the sending.
+# The cap bounds how much one enqueue can hand a single worker.
+OUTREACH_BATCH_LIMIT = 500
 
 
 def uncontacted_companies_qs():
-    """New companies that publish an email and have never been sent an outreach email.
+    """Companies eligible for a first outreach email.
 
-    Addresses that opted out (OutreachSuppression) are excluded, so they never appear in
-    the tool nor get sent to via "all filtered".
+    Excludes any company that already has a CompanyOutreach row (any status, so a
+    queued send is not re-queued) and any address on the suppression list.
     """
     suppressed = OutreachSuppression.objects.values_list("email", flat=True)
     return (
@@ -393,46 +393,76 @@ def send_outreach_test_email(admin_user, to_email):
     )
 
 
-def send_company_outreach(admin_user, companies):
-    """Send the personalised introduction email to each company, once.
+def queue_company_outreach(admin_user, company_ids):
+    """Claim eligible companies as pending and hand the send to a background worker.
 
-    ``companies`` is any iterable of Company objects. Companies without an email, or
-    already recorded in CompanyOutreach, are skipped. Returns (sent, failed, skipped).
+    Fast and synchronous: only writes CompanyOutreach(status="pending") rows and calls
+    async_task. The rows make the companies vanish from the tool immediately and stop a
+    second enqueue from picking them up. Returns the number of companies queued.
     """
-    sent = failed = skipped = 0
+    from django_q.tasks import async_task
 
-    for company in companies:
-        if (
-            not company.email
-            or CompanyOutreach.objects.filter(company=company).exists()
-            or OutreachSuppression.is_suppressed(company.email)
-        ):
-            skipped += 1
-            continue
+    eligible = uncontacted_companies_qs().filter(id__in=company_ids)[:OUTREACH_BATCH_LIMIT]
+    rows = [
+        CompanyOutreach(company=c, status="pending", sent_to=c.email, sent_by=admin_user)
+        for c in eligible
+    ]
+    if not rows:
+        return 0
 
-        try:
-            build_outreach_email(company).send()
-            CompanyOutreach.objects.create(
-                company=company, status="sent", sent_to=company.email, sent_by=admin_user,
-            )
-            sent += 1
-        except Exception as exc:
-            logger.exception("Failed sending outreach to company %s", company.pk)
-            CompanyOutreach.objects.create(
-                company=company, status="failed", sent_to=company.email,
-                error_message=str(exc), sent_by=admin_user,
-            )
-            failed += 1
+    # ignore_conflicts: a company claimed by a racing enqueue keeps its existing row.
+    CompanyOutreach.objects.bulk_create(rows, ignore_conflicts=True)
+    queued_ids = list(
+        CompanyOutreach.objects.filter(
+            company_id__in=[r.company_id for r in rows], status="pending"
+        ).values_list("company_id", flat=True)
+    )
 
     log_admin_action(
         admin_user=admin_user,
-        action="company_outreach_send",
+        action="company_outreach_queue",
         target_type="Company",
         target_id="batch",
-        target_repr=f"{sent} sent, {failed} failed, {skipped} skipped",
-        metadata={"sent": sent, "failed": failed, "skipped": skipped},
+        target_repr=f"{len(queued_ids)} queued",
+        metadata={"queued": len(queued_ids)},
     )
-    return sent, failed, skipped
+    async_task("gemiapp.tasks.send_company_outreach_task", queued_ids)
+    return len(queued_ids)
+
+
+def process_pending_outreach(company_ids):
+    """Send the email for each pending CompanyOutreach row. Runs in a django-q worker.
+
+    Returns (sent, failed). A suppressed address or a missing email marks the row failed
+    rather than deleting it, so the company is not re-queued and the reason is visible.
+    """
+    sent = failed = 0
+    rows = CompanyOutreach.objects.filter(
+        company_id__in=company_ids, status="pending"
+    ).select_related("company")
+
+    for row in rows:
+        company = row.company
+        if not company.email or OutreachSuppression.is_suppressed(company.email):
+            row.status = "failed"
+            row.error_message = "Χωρίς email ή στη λίστα απεγγραφών."
+            row.save(update_fields=["status", "error_message"])
+            failed += 1
+            continue
+        try:
+            build_outreach_email(company).send()
+            row.status = "sent"
+            row.error_message = ""
+            row.save(update_fields=["status", "error_message"])
+            sent += 1
+        except Exception as exc:
+            logger.exception("Failed sending outreach to company %s", company.pk)
+            row.status = "failed"
+            row.error_message = str(exc)[:2000]
+            row.save(update_fields=["status", "error_message"])
+            failed += 1
+
+    return sent, failed
 
 
 def get_system_health():

@@ -479,6 +479,7 @@ class CompanyOutreach(models.Model):
     """
 
     STATUSES = [
+        ("pending", "Σε ουρά"),
         ("sent", "Εστάλη"),
         ("failed", "Απέτυχε"),
     ]

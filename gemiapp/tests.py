@@ -906,13 +906,24 @@ class SuperadminTests(TestCase):
         self.assertEqual(CompanyOutreach.objects.count(), 1)  # only the pre-existing "already" row
         mail.outbox.clear()
 
+        # Send: the request only queues (pending rows), a worker task does the SMTP.
         res_send = self.client.post(reverse("superadmin:client_finder_send"), {
             "mode": "selected", "company_ids": [with_email.id, no_email.id],
         })
         self.assertRedirects(res_send, reverse("superadmin:client_finder"))
+        self.assertEqual(len(mail.outbox), 0)  # nothing sent synchronously
+        self.assertTrue(CompanyOutreach.objects.filter(company=with_email, status="pending").exists())
+        # Queued companies drop out of the tool immediately.
+        res_after = self.client.get(reverse("superadmin:client_finder"))
+        self.assertNotContains(res_after, "Νέα ΑΕ")
+
+        # Run the worker task explicitly.
+        from gemiapp.tasks import send_company_outreach_task
+        send_company_outreach_task([with_email.id])
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn("Νέα ΑΕ", mail.outbox[0].body)
         self.assertTrue(CompanyOutreach.objects.filter(company=with_email, status="sent").exists())
+        mail.outbox.clear()
 
         # The unsubscribe link opts the address out for good.
         from django.core.signing import TimestampSigner

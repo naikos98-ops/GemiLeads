@@ -22,8 +22,8 @@ from .services import (
     get_system_health,
     grant_complimentary_access,
     log_admin_action,
+    queue_company_outreach,
     revoke_complimentary_access,
-    send_company_outreach,
     send_outreach_test_email,
     toggle_user_active_state,
     uncontacted_companies_qs,
@@ -243,6 +243,7 @@ def client_finder(request):
 
     sent_total = CompanyOutreach.objects.filter(status="sent").count()
     failed_total = CompanyOutreach.objects.filter(status="failed").count()
+    pending_total = CompanyOutreach.objects.filter(status="pending").count()
 
     return render(request, "superadmin/client_finder/list.html", {
         "page_obj": page_obj,
@@ -250,6 +251,7 @@ def client_finder(request):
         "batch_limit": OUTREACH_BATCH_LIMIT,
         "sent_total": sent_total,
         "failed_total": failed_total,
+        "pending_total": pending_total,
         "test_email": settings.OUTREACH_TEST_EMAIL,
         "search": search,
         "prefecture_filter": prefecture,
@@ -267,22 +269,22 @@ def client_finder_send(request):
 
     if mode == "all_filtered":
         qs, *_ = _client_finder_qs(request)
-        companies = list(qs[:OUTREACH_BATCH_LIMIT])
+        ids = list(qs.values_list("id", flat=True)[:OUTREACH_BATCH_LIMIT])
     else:
         ids = request.POST.getlist("company_ids")
-        companies = list(uncontacted_companies_qs().filter(id__in=ids)[:OUTREACH_BATCH_LIMIT])
 
-    if not companies:
+    if not ids:
         messages.error(request, "Δεν επιλέχθηκε καμία επιχείρηση για αποστολή.")
         return redirect("superadmin:client_finder")
 
-    sent, failed, skipped = send_company_outreach(request.user, companies)
-    if sent:
-        messages.success(request, f"Απεστάλησαν {sent} email σε νέες επιχειρήσεις.")
-    if failed:
-        messages.error(request, f"{failed} αποστολές απέτυχαν (καταγράφηκαν).")
-    if skipped:
-        messages.info(request, f"{skipped} επιχειρήσεις παραλείφθηκαν (χωρίς email ή ήδη επικοινωνημένες).")
+    queued = queue_company_outreach(request.user, ids)
+    if queued:
+        messages.success(
+            request,
+            f"{queued} email μπήκαν σε ουρά αποστολής. Θα σταλούν στο παρασκήνιο μέσα σε λίγα λεπτά.",
+        )
+    else:
+        messages.info(request, "Καμία επιχείρηση δεν ήταν διαθέσιμη για αποστολή (ίσως μπήκαν ήδη σε ουρά).")
 
     return redirect("superadmin:client_finder")
 

@@ -41,6 +41,19 @@ def run_daily_pipeline_task():
         raise
 
 
+def send_company_outreach_task(company_ids):
+    """Send queued client-outreach emails. Enqueued by the Εύρεση Πελατών page.
+
+    The web request only claims the rows (status="pending"); this worker does the SMTP
+    round-trips, which are what used to time out the gunicorn worker.
+    """
+    from gemiapp.superadmin.services import process_pending_outreach
+
+    sent, failed = process_pending_outreach(company_ids)
+    logger.info("Client outreach: %s sent, %s failed (of %s queued)", sent, failed, len(company_ids))
+    return {"sent": sent, "failed": failed}
+
+
 def run_intraday_pipeline_task():
     """
     Runs every three hours between 08:00 and 23:00 Europe/Athens, on the cron slots registered in
