@@ -6,10 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#071725">
   <title>{% block title %}Superadmin Control Center · Gemi Leads{% endblock %}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config={theme:{extend:{colors:{navy:{950:'#071725',900:'#0b2239',800:'#123453',700:'#1b496c'},sand:{50:'#fbf8f1',100:'#f3ecdf',200:'#e6d8c3',300:'#d8c2a2'},signal:'#2878ff'},fontFamily:{sans:['Inter','ui-sans-serif','system-ui']},boxShadow:{soft:'0 24px 80px rgba(7,23,37,.12)',glow:'0 0 40px rgba(40,120,255,.22)'}}}};
-  </script>
+  {# Same compiled Tailwind build as the public site. The old cdn.tailwindcss.com JIT #}
+  {# script failed to load on some mobile networks / content blockers, leaving every #}
+  {# superadmin page unstyled and effectively blank. tailwind.config.js already scans #}
+  {# templates/**/*.html, so all classes used here are in this file. #}
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
