@@ -38,6 +38,25 @@ from .billing import PENDING_TIER_SESSION_KEY
 from .services import filter_companies_for_radar
 
 
+# Anonymized, static sample rows for the public "δείγμα leads" section on the homepage. Not real
+# GEMI records: names are invented, so no private data is exposed and there is no query on every
+# landing-page hit. The shape mirrors what a subscriber actually receives — website and email are
+# deliberately absent on some rows because the registry does not publish them for every company.
+SAMPLE_LEADS = [
+    {"name": "ΝΕΑ ΕΣΤΙΑΣΗ ΙΚΕ", "kad": "56.10", "sector": "Εστιατόρια", "region": "Θεσσαλονίκη", "founded": "18/08/2026", "website": "neaestiasi.gr", "email": "info@neaestiasi.gr"},
+    {"name": "ΔΕΛΤΑ ΣΥΜΒΟΥΛΕΥΤΙΚΗ Ο.Ε.", "kad": "70.22", "sector": "Επιχειρηματικές συμβουλές", "region": "Αθήνα", "founded": "18/08/2026", "website": "", "email": "contact@delta-consulting.gr"},
+    {"name": "ΑΝΔΡΕΟΥ ΜΑΡΙΑ", "kad": "47.71", "sector": "Λιανικό ένδυσης", "region": "Πάτρα", "founded": "17/08/2026", "website": "", "email": ""},
+    {"name": "CLOUDWORKS ΜΟΝ. ΙΚΕ", "kad": "62.01", "sector": "Ανάπτυξη λογισμικού", "region": "Αθήνα", "founded": "17/08/2026", "website": "cloudworks.io", "email": "hello@cloudworks.io"},
+    {"name": "ΠΑΠΑΔΑΚΗΣ & ΣΙΑ Ε.Ε.", "kad": "43.32", "sector": "Ξυλουργικές εργασίες", "region": "Ηράκλειο", "founded": "17/08/2026", "website": "", "email": ""},
+    {"name": "ΓΑΛΑΝΟΥ ΕΛΕΝΗ", "kad": "96.02", "sector": "Κομμωτήριο", "region": "Λάρισα", "founded": "16/08/2026", "website": "", "email": "elenih.studio@gmail.com"},
+    {"name": "ΒΟΡΕΙΟ ΑΙΓΑΙΟ LOGISTICS Α.Ε.", "kad": "52.29", "sector": "Υπηρεσίες μεταφορών", "region": "Μυτιλήνη", "founded": "16/08/2026", "website": "va-logistics.gr", "email": "ops@va-logistics.gr"},
+    {"name": "ΚΑΦΕ ΤΟ ΣΤΕΚΙ ΙΚΕ", "kad": "56.30", "sector": "Καφετέριες & μπαρ", "region": "Ιωάννινα", "founded": "15/08/2026", "website": "", "email": ""},
+    {"name": "GREEN ENERGY SOLUTIONS Α.Ε.", "kad": "43.21", "sector": "Ηλεκτρολογικές εγκαταστάσεις", "region": "Αθήνα", "founded": "15/08/2026", "website": "greenenergy.gr", "email": "sales@greenenergy.gr"},
+    {"name": "ΚΩΝΣΤΑΝΤΙΝΙΔΗΣ ΓΕΩΡΓΙΟΣ", "kad": "71.11", "sector": "Αρχιτεκτονικές δραστηριότητες", "region": "Καβάλα", "founded": "14/08/2026", "website": "", "email": "gk.architects@gmail.com"},
+    {"name": "ΑΜΠΕΛΩΝΕΣ ΝΟΤΟΥ Ο.Ε.", "kad": "11.02", "sector": "Οινοποιία", "region": "Ναύπλιο", "founded": "14/08/2026", "website": "ampelonesnotou.gr", "email": ""},
+    {"name": "ΜΙΚΡΟΒΙΟΜΗΧΑΝΙΑ ΤΡΟΦΙΜΩΝ ΙΚΕ", "kad": "10.89", "sector": "Παραγωγή τροφίμων", "region": "Σέρρες", "founded": "13/08/2026", "website": "", "email": "info@mvt-foods.gr"},
+]
+
 MAX_SELECTED_KADS = 25
 # An unfiltered export would otherwise buffer every company in the database into one response.
 MAX_EXPORT_ROWS = 5000
@@ -95,6 +114,7 @@ def home(request):
             lambda: Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).count(),
             600,
         ),
+        "sample_leads": SAMPLE_LEADS,
     }
     return render(request, "home.html", context)
 

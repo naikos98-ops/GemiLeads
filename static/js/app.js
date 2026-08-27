@@ -118,6 +118,15 @@
     });
     document.addEventListener('click', event => { if (!root.contains(event.target)) closeResults(); });
   });
+  // Fires a GA4 event when a tagged element is activated. gtag only exists after the visitor
+  // accepts analytics cookies (see includes/analytics.html); without consent this is a no-op.
+  document.addEventListener('click', event => {
+    const el = event.target.closest('[data-analytics]');
+    if (!el || typeof window.gtag !== 'function') return;
+    const params = {};
+    if (el.dataset.analyticsTier) params.tier = el.dataset.analyticsTier;
+    window.gtag('event', el.dataset.analytics, params);
+  });
   document.getElementById('menuButton')?.addEventListener('click', () => document.getElementById('mobileMenu')?.classList.toggle('hidden'));
   setTimeout(() => document.querySelectorAll('[data-toast]').forEach(x => { x.style.opacity = '0'; setTimeout(() => x.remove(), 300); }), 3500);
   document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); });

@@ -242,7 +242,7 @@ class RadarMatch(models.Model):
 
 class DigestDelivery(models.Model):
     STATUSES = [("sent", "Εστάλη"), ("skipped", "Παραλείφθηκε"), ("failed", "Απέτυχε")]
-    FREQUENCIES = [("daily", "Καθημερινά"), ("intraday", "3-ωρο / Real-Time"), ("manual_yesterday", "Χειροκίνητο (Χθες)"), ("weekly", "Εβδομαδιαία (καταργήθηκε)")]
+    FREQUENCIES = [("daily", "Καθημερινά"), ("intraday", "3-ωρο / Priority Alerts"), ("manual_yesterday", "Χειροκίνητο (Χθες)"), ("weekly", "Εβδομαδιαία (καταργήθηκε)")]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="digest_deliveries")
     frequency = models.CharField(max_length=30, choices=FREQUENCIES, default="daily")
     digest_date = models.DateField(db_index=True)
@@ -308,11 +308,11 @@ def get_user_radar_limit(user):
 
 
 class UserSubscription(models.Model):
-    TIERS = [("free", "Free (Legacy)"), ("pro", "Pro"), ("business", "Business"), ("enterprise", "Enterprise / Real-Time"), ("custom", "Custom / Enterprise")]
+    TIERS = [("free", "Free (Legacy)"), ("pro", "Pro"), ("business", "Business"), ("enterprise", "Enterprise / Priority Alerts"), ("custom", "Custom / Enterprise")]
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="subscription")
     tier = models.CharField(max_length=20, choices=TIERS, default="free")
     status = models.CharField(max_length=30, default="inactive")
-    complimentary_tier = models.CharField(max_length=20, choices=[("none", "None"), ("pro", "Pro"), ("business", "Business"), ("enterprise", "Enterprise / Real-Time"), ("custom", "Custom / Enterprise")], default="none")
+    complimentary_tier = models.CharField(max_length=20, choices=[("none", "None"), ("pro", "Pro"), ("business", "Business"), ("enterprise", "Enterprise / Priority Alerts"), ("custom", "Custom / Enterprise")], default="none")
     complimentary_until = models.DateTimeField(null=True, blank=True)
     custom_radar_limit = models.IntegerField(null=True, blank=True, help_text="Custom radar limit set by Superadmin")
     last_sent_company_id = models.IntegerField(default=0, help_text="ID of last sent intraday GEMI company")

@@ -1458,7 +1458,7 @@ class RealtimeDashboardTests(TestCase):
             target_date=self.today, status="success", finished_at=timezone.now()
         )
         response = self.client.get(reverse("dashboard"))
-        self.assertContains(response, "Real-Time ΓΕΜΗ")
+        self.assertContains(response, "Priority Alerts")
         self.assertTrue(response.context["is_realtime_tier"])
         self.assertIsNotNone(response.context["last_intraday_run"])
 
@@ -1468,7 +1468,7 @@ class RealtimeDashboardTests(TestCase):
         sub.save()
         response = self.client.get(reverse("dashboard"))
         self.assertFalse(response.context["is_realtime_tier"])
-        self.assertNotContains(response, "Real-Time ΓΕΜΗ")
+        self.assertNotContains(response, "Priority Alerts · σημερινές")
         # The company itself is still listed; only the panel is tier specific.
         self.assertContains(response, "ΣΗΜΕΡΙΝΗ REALTIME ΙΚΕ")
 

@@ -9,7 +9,7 @@ server refuses it too (create_checkout_session), so this is the outer of two gat
 <form action="{% url 'create_checkout_session' %}" method="post">
   {% csrf_token %}
   <input type="hidden" name="tier" value="{{ tier }}">
-  <button class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">{{ label }}</button>
+  <button data-analytics="pricing_cta_click" data-analytics-tier="{{ tier }}" class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">{{ label }}</button>
 </form>
 {% else %}
 <div class="w-full rounded-xl border border-dashed border-navy-900/20 bg-sand-50 py-3 text-center text-xs font-bold text-navy-700/60">

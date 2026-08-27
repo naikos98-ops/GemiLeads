@@ -462,7 +462,7 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
                 "unsubscribe_url": unsubscribe_url,
             }
             if frequency == "intraday":
-                subject = f"Gemi Leads Real-Time Alert · {total_companies_count} νέες επιχειρήσεις"
+                subject = f"Gemi Leads Priority Alert · {total_companies_count} νέες επιχειρήσεις"
                 txt_tmpl = "emails/daily_digest.txt"
                 html_tmpl = "emails/daily_digest.html"
             else:

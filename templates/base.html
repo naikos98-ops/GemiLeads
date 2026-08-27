@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-  <meta name="description" content="{% block meta_description %}Παρακολούθησε καθημερινά τις νέες επιχειρήσεις που εγγράφονται στο ΓΕΜΗ. Φίλτρα ΚΑΔ και περιοχής, Ραντάρ Πελατών, CSV export και email ειδοποιήσεις.{% endblock %}">
+  <meta name="description" content="{% block meta_description %}Νέες επιχειρήσεις και B2B leads από το ΓΕΜΗ. Βρες νέους πιθανούς πελάτες τη στιγμή που μπαίνουν στην αγορά, φιλτραρισμένους ανά ΚΑΔ και περιοχή.{% endblock %}">
   {# Parameter-free: build_absolute_uri echoes the query string, which would make #}
   {# every ?utm_source=... URL self-canonicalise instead of the clean path. #}
   <link rel="canonical" href="{% block canonical %}{{ request.scheme }}://{{ request.get_host }}{{ request.path }}{% endblock %}">
@@ -26,7 +26,7 @@
   <meta property="og:locale" content="el_GR">
   {# Overridden per page; page_title is not a context variable, so no default lookup here. #}
   <meta property="og:title" content="{% block og_title %}Gemi Leads{% endblock %}">
-  <meta property="og:description" content="{% block og_description %}Παρακολούθησε καθημερινά τις νέες επιχειρήσεις που εγγράφονται στο ΓΕΜΗ.{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}Νέες επιχειρήσεις και B2B leads από το ΓΕΜΗ — βρες νέους πιθανούς πελάτες τη στιγμή που μπαίνουν στην αγορά.{% endblock %}">
   <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
   <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'images/logo.png' %}">
   <meta name="twitter:card" content="summary_large_image">

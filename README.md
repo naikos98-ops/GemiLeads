@@ -4,7 +4,7 @@
 
 Ένα Django SaaS για καθημερινή εισαγωγή νέων επιχειρήσεων από το επίσημο Open Data API ΓΕΜΗ, ιστορική αναζήτηση, CSV exports και προσωποποιημένα email digests.
 
-Τα digests είναι δύο ειδών: το **ημερήσιο** (09:00, για κάθε συνδρομητή) και το **3ωρο real-time** (08:00–23:00, μόνο για Enterprise/Custom). Το εβδομαδιαίο digest έχει καταργηθεί.
+Τα digests είναι δύο ειδών: το **ημερήσιο** (09:00, για κάθε συνδρομητή) και το **3ωρο Priority Alerts** (08:00–23:00, μόνο για Enterprise/Custom). Το εβδομαδιαίο digest έχει καταργηθεί.
 
 > Για Codex/ChatGPT συνεργασία, διάβασε πρώτα το `AGENTS.md`. Είναι η μόνιμη κοινή μνήμη και το handoff του project.
 
@@ -79,7 +79,7 @@ $env:GEMI_API_KEY = [Environment]::GetEnvironmentVariable("GEMI_API_KEY", "User"
 | Free (legacy) | — | 0 |
 | Pro | €19/μήνα | 5 |
 | Business | €49/μήνα | 10 |
-| Enterprise / Real-Time | €99/μήνα | 15 (+ 3ωρα alerts) |
+| Enterprise / Priority Alerts | €99/μήνα | 15 (+ 3ωρα alerts) |
 | Custom | κατόπιν συμφωνίας | 15 |
 
 Τα όρια ορίζονται στο `RADAR_LIMITS` (`gemiapp/models.py`) και είναι η μοναδική πηγή αλήθειας. Ανά λογαριασμό μπορούν να παρακαμφθούν από το Superadmin μέσω `custom_radar_limit`.
