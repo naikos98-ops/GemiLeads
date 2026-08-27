@@ -871,6 +871,58 @@ class SuperadminTests(TestCase):
         self.assertEqual(sub.custom_radar_limit, 50)
         self.assertEqual(sub.radar_limit, 50)
 
+    def test_client_finder_lists_and_sends_outreach(self):
+        from datetime import date
+        from .models import Company, CompanyOutreach
+
+        with_email = Company.objects.create(
+            gemi_number="900001", name="Νέα ΑΕ", incorporation_date=date.today(), email="hello@nea.gr",
+        )
+        no_email = Company.objects.create(
+            gemi_number="900002", name="Χωρίς Email ΟΕ", incorporation_date=date.today(),
+        )
+        already = Company.objects.create(
+            gemi_number="900003", name="Ήδη Επικοινωνημένη", incorporation_date=date.today(), email="x@y.gr",
+        )
+        CompanyOutreach.objects.create(company=already, status="sent", sent_to="x@y.gr")
+
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        res = self.client.get(reverse("superadmin:client_finder"))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "Νέα ΑΕ")
+        self.assertNotContains(res, "Χωρίς Email ΟΕ")
+        self.assertNotContains(res, "Ήδη Επικοινωνημένη")
+
+        res_send = self.client.post(reverse("superadmin:client_finder_send"), {
+            "mode": "selected", "company_ids": [with_email.id, no_email.id],
+        })
+        self.assertRedirects(res_send, reverse("superadmin:client_finder"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Νέα ΑΕ", mail.outbox[0].body)
+        self.assertTrue(CompanyOutreach.objects.filter(company=with_email, status="sent").exists())
+
+        # The unsubscribe link opts the address out for good.
+        from django.core.signing import TimestampSigner
+        from gemiapp.views import OUTREACH_UNSUBSCRIBE_SALT
+        token = TimestampSigner(salt=OUTREACH_UNSUBSCRIBE_SALT).sign("later@co.gr")
+        res_unsub = self.client.get(reverse("outreach_unsubscribe", kwargs={"token": token}))
+        self.assertEqual(res_unsub.status_code, 200)
+        from gemiapp.models import OutreachSuppression
+        self.assertTrue(OutreachSuppression.is_suppressed("later@co.gr"))
+
+        opted_out = Company.objects.create(
+            gemi_number="900004", name="Απεγγεγραμμένη", incorporation_date=date.today(), email="later@co.gr",
+        )
+        res2 = self.client.get(reverse("superadmin:client_finder"))
+        self.assertNotContains(res2, "Απεγγεγραμμένη")
+
+        # A second send must not email the same company again.
+        mail.outbox.clear()
+        self.client.post(reverse("superadmin:client_finder_send"), {
+            "mode": "all_filtered",
+        })
+        self.assertEqual(len(mail.outbox), 0)
+
     def test_intraday_pipeline_only_notifies_enterprise_users(self):
         from gemiapp.services import send_digests
         from gemiapp.models import UserSubscription

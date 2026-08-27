@@ -5,11 +5,16 @@ from django.contrib.auth.models import User
 from django.db import connection
 from django.db.models import Count
 from django.utils import timezone
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+
 from ..models import (
     ActivityCode,
     AdminAuditLog,
     Company,
     CompanyActivity,
+    CompanyOutreach,
+    OutreachSuppression,
     CustomerRadar,
     DigestDelivery,
     RadarMatch,
@@ -282,6 +287,94 @@ def toggle_user_active_state(admin_user, target_user, active_state):
         metadata={"is_active": active_state},
     )
     return target_user
+
+
+# A single web request sends these synchronously; keep the batch small enough that
+# the mail round-trips finish well inside the request timeout.
+OUTREACH_BATCH_LIMIT = 200
+
+
+def uncontacted_companies_qs():
+    """New companies that publish an email and have never been sent an outreach email.
+
+    Addresses that opted out (OutreachSuppression) are excluded, so they never appear in
+    the tool nor get sent to via "all filtered".
+    """
+    suppressed = OutreachSuppression.objects.values_list("email", flat=True)
+    return (
+        Company.objects.filter(outreach__isnull=True)
+        .exclude(email="")
+        .exclude(email__in=suppressed)
+        .order_by("-incorporation_date", "-id")
+    )
+
+
+def send_company_outreach(admin_user, companies):
+    """Send the personalised introduction email to each company, once.
+
+    ``companies`` is any iterable of Company objects. Companies without an email, or
+    already recorded in CompanyOutreach, are skipped. Returns (sent, failed, skipped).
+    """
+    from django.core.signing import TimestampSigner
+    from django.urls import reverse
+
+    from ..views import OUTREACH_UNSUBSCRIBE_SALT
+
+    sent = failed = skipped = 0
+    signup_url = f"{settings.BASE_URL}{reverse('signup')}"
+    reply_to = [getattr(settings, "EMAIL_REPLY_TO", "")] if getattr(settings, "EMAIL_REPLY_TO", "") else None
+    signer = TimestampSigner(salt=OUTREACH_UNSUBSCRIBE_SALT)
+
+    for company in companies:
+        if (
+            not company.email
+            or CompanyOutreach.objects.filter(company=company).exists()
+            or OutreachSuppression.is_suppressed(company.email)
+        ):
+            skipped += 1
+            continue
+
+        people = company.people
+        contact_name = people[0]["name"] if people else ""
+        token = signer.sign(company.email)
+        context = {
+            "company": company,
+            "contact_name": contact_name,
+            "signup_url": signup_url,
+            "site_url": settings.BASE_URL,
+            "unsubscribe_url": f"{settings.BASE_URL}{reverse('outreach_unsubscribe', kwargs={'token': token})}",
+        }
+        subject = "Μπήκατε στην αγορά — τώρα χρειάζεστε πελάτες"
+        body_text = render_to_string("emails/client_outreach.txt", context)
+        body_html = render_to_string("emails/client_outreach.html", context)
+
+        try:
+            msg = EmailMultiAlternatives(
+                subject, body_text, settings.DEFAULT_FROM_EMAIL, [company.email], reply_to=reply_to,
+            )
+            msg.attach_alternative(body_html, "text/html")
+            msg.send()
+            CompanyOutreach.objects.create(
+                company=company, status="sent", sent_to=company.email, sent_by=admin_user,
+            )
+            sent += 1
+        except Exception as exc:
+            logger.exception("Failed sending outreach to company %s", company.pk)
+            CompanyOutreach.objects.create(
+                company=company, status="failed", sent_to=company.email,
+                error_message=str(exc), sent_by=admin_user,
+            )
+            failed += 1
+
+    log_admin_action(
+        admin_user=admin_user,
+        action="company_outreach_send",
+        target_type="Company",
+        target_id="batch",
+        target_repr=f"{sent} sent, {failed} failed, {skipped} skipped",
+        metadata={"sent": sent, "failed": failed, "skipped": skipped},
+    )
+    return sent, failed, skipped
 
 
 def get_system_health():

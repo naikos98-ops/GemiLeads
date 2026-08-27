@@ -25,6 +25,7 @@ urlpatterns = [
     path("verify/<uidb64>/<token>/", views.verify_email, name="verify_email"),
     path("resend-verification/", views.resend_verification, name="resend_verification"),
     path("unsubscribe/<token>/", views.unsubscribe, name="unsubscribe"),
+    path("outreach/unsubscribe/<token>/", views.outreach_unsubscribe, name="outreach_unsubscribe"),
     # Billing / Stripe
     path("pricing/", billing.pricing, name="pricing"),
     path("privacy/", views.privacy, name="privacy"),

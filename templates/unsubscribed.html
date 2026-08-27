@@ -16,7 +16,7 @@
     </div>
     <h1 class="text-3xl font-extrabold">Απεγγραφή επιτυχής</h1>
     <p class="mt-4 text-sm text-navy-700/60">
-      Δεν θα λαμβάνετε πλέον αυτοματοποιημένα emails (digests) από εμάς. Μπορείτε να ενεργοποιήσετε ξανά τις ειδοποιήσεις οποιαδήποτε στιγμή από τις Ρυθμίσεις του λογαριασμού σας.
+      {% if message %}{{ message }}{% else %}Δεν θα λαμβάνετε πλέον αυτοματοποιημένα emails (digests) από εμάς. Μπορείτε να ενεργοποιήσετε ξανά τις ειδοποιήσεις οποιαδήποτε στιγμή από τις Ρυθμίσεις του λογαριασμού σας.{% endif %}
     </p>
     {% endif %}
     <a href="{% url 'home' %}" class="mt-8 inline-block rounded-full bg-blue-600 px-8 py-3.5 font-bold text-white transition hover:bg-blue-700">

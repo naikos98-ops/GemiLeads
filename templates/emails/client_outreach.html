@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="el">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="x-apple-disable-message-reformatting">
+  <title>Gemi Leads</title>
+</head>
+
+<body style="margin:0; padding:0; background-color:#f3f6f9; font-family:Arial, Helvetica, sans-serif; color:#071725;">
+
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0;">
+    Η «{{ company.name }}» μόλις μπήκε στην αγορά. Δείτε πώς να βρίσκετε νέες επιχειρηματικές ευκαιρίες κάθε μέρα.
+  </div>
+
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f3f6f9; width:100%;">
+    <tr>
+      <td align="center" style="padding:32px 12px;">
+
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+               style="max-width:640px; background:#ffffff; border-radius:18px; overflow:hidden; box-shadow:0 10px 35px rgba(7,23,37,0.08);">
+
+          <!-- Header -->
+          <tr>
+            <td style="background:#071725; padding:26px 32px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="font-size:22px; line-height:28px; font-weight:700; color:#ffffff;">
+                    Gemi<span style="color:#3b82f6;">Leads</span>
+                  </td>
+                  <td align="right" style="font-size:12px; color:#a8b4c0;">
+                    Νέες επιχειρήσεις. Νέες ευκαιρίες.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Hero -->
+          <tr>
+            <td style="padding:52px 38px 24px; text-align:center;">
+
+              <div style="display:inline-block; background:#eaf2ff; color:#2563eb; font-size:12px; font-weight:700; letter-spacing:0.8px; text-transform:uppercase; padding:8px 14px; border-radius:999px; margin-bottom:22px;">
+                Η επιχείρησή σας μόλις ξεκίνησε
+              </div>
+
+              <h1 style="margin:0; font-size:38px; line-height:44px; font-weight:800; color:#071725;">
+                Μπήκατε στην αγορά.<br>
+                <span style="color:#3b82f6;">Τώρα χρειάζεστε πελάτες.</span>
+              </h1>
+
+              <p style="margin:22px auto 0; max-width:520px; font-size:17px; line-height:27px; color:#516171;">
+                {% if contact_name %}{{ contact_name }}, μ{% else %}Μ{% endif %}όλις είδαμε ότι η
+                <strong style="color:#071725;">«{{ company.name }}»</strong> καταχωρίστηκε στο ΓΕΜΗ
+                ({{ company.incorporation_date|date:"d/m/Y" }}). Την εγγραφή αυτή τη «διαβάσαμε» μέσα από
+                το <strong style="color:#071725;">Gemi Leads</strong> — το ίδιο εργαλείο μπορεί να
+                βρίσκει και για εσάς νέες επιχειρήσεις κάθε μέρα.
+              </p>
+
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin-top:30px;">
+                <tr>
+                  <td align="center" bgcolor="#3b82f6" style="border-radius:10px;">
+                    <a href="{{ signup_url }}" target="_blank"
+                       style="display:inline-block; padding:16px 28px; font-size:16px; font-weight:700; color:#ffffff; text-decoration:none; border-radius:10px;">
+                      Δείτε το Gemi Leads →
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:14px 0 0; font-size:12px; color:#98a4af;">
+                {{ site_url }}
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- Dashboard-style visual -->
+          <tr>
+            <td style="padding:8px 30px 34px;">
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                     style="background:#071725; border-radius:16px; overflow:hidden;">
+
+                <tr>
+                  <td style="padding:22px 24px 10px; color:#ffffff;">
+                    <div style="font-size:12px; color:#8ea2b5; margin-bottom:6px;">
+                      ΝΕΕΣ ΕΠΙΧΕΙΡΗΣΕΙΣ
+                    </div>
+                    <div style="font-size:30px; line-height:36px; font-weight:800;">
+                      Οι επόμενοι πελάτες σας
+                      <span style="color:#60a5fa;">εμφανίζονται κάθε μέρα.</span>
+                    </div>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td style="padding:16px 24px 24px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td width="31%" valign="top" style="background:#102536; padding:16px; border-radius:12px;">
+                          <div style="font-size:20px;">📍</div>
+                          <div style="margin-top:8px; font-size:13px; font-weight:700; color:#ffffff;">Περιοχή</div>
+                          <div style="margin-top:4px; font-size:12px; line-height:18px; color:#9fb0bf;">
+                            Βρείτε επιχειρήσεις εκεί που σας ενδιαφέρει.
+                          </div>
+                        </td>
+                        <td width="3%"></td>
+                        <td width="31%" valign="top" style="background:#102536; padding:16px; border-radius:12px;">
+                          <div style="font-size:20px;">🏢</div>
+                          <div style="margin-top:8px; font-size:13px; font-weight:700; color:#ffffff;">Δραστηριότητα</div>
+                          <div style="margin-top:4px; font-size:12px; line-height:18px; color:#9fb0bf;">
+                            Φιλτράρετε με βάση τον κλάδο που σας ενδιαφέρει.
+                          </div>
+                        </td>
+                        <td width="3%"></td>
+                        <td width="31%" valign="top" style="background:#102536; padding:16px; border-radius:12px;">
+                          <div style="font-size:20px;">📅</div>
+                          <div style="margin-top:8px; font-size:13px; font-weight:700; color:#ffffff;">Νέες εγγραφές</div>
+                          <div style="margin-top:4px; font-size:12px; line-height:18px; color:#9fb0bf;">
+                            Εστιάστε στις επιχειρήσεις που μόλις ξεκίνησαν.
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- Use cases -->
+          <tr>
+            <td style="padding:8px 38px 34px;">
+
+              <h2 style="margin:0 0 20px; font-size:24px; line-height:30px; color:#071725; text-align:center;">
+                Αν πουλάτε σε επιχειρήσεις,<br>
+                <span style="color:#3b82f6;">αυτό είναι το κοινό σας.</span>
+              </h2>
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                <tr>
+                  <td style="padding:14px 0; border-bottom:1px solid #e8edf2;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td width="46" valign="top">
+                          <div style="width:38px; height:38px; line-height:38px; text-align:center; background:#eef4ff; border-radius:10px; font-size:18px;">☕</div>
+                        </td>
+                        <td style="padding-left:12px;">
+                          <div style="font-size:15px; font-weight:700; color:#071725;">Άνοιξε νέο café;</div>
+                          <div style="margin-top:4px; font-size:13px; line-height:20px; color:#657383;">
+                            Ο προμηθευτής καφέ, εξοπλισμού ή υπηρεσιών μπορεί να το εντοπίσει.
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 0; border-bottom:1px solid #e8edf2;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td width="46" valign="top">
+                          <div style="width:38px; height:38px; line-height:38px; text-align:center; background:#eef4ff; border-radius:10px; font-size:18px;">🛍️</div>
+                        </td>
+                        <td style="padding-left:12px;">
+                          <div style="font-size:15px; font-weight:700; color:#071725;">Άνοιξε νέο κατάστημα;</div>
+                          <div style="margin-top:4px; font-size:13px; line-height:20px; color:#657383;">
+                            Marketing, ασφάλειες, software, logistics και δεκάδες άλλες υπηρεσίες γίνονται άμεσα relevant.
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 0;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr>
+                        <td width="46" valign="top">
+                          <div style="width:38px; height:38px; line-height:38px; text-align:center; background:#eef4ff; border-radius:10px; font-size:18px;">🚀</div>
+                        </td>
+                        <td style="padding-left:12px;">
+                          <div style="font-size:15px; font-weight:700; color:#071725;">Ξεκίνησε νέα εταιρεία;</div>
+                          <div style="margin-top:4px; font-size:13px; line-height:20px; color:#657383;">
+                            Μπορεί να είναι ο επόμενος πελάτης, συνεργάτης ή εμπορικός σας στόχος.
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Final CTA -->
+          <tr>
+            <td style="padding:0 30px 36px;">
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
+                     style="background:#f5f8fc; border:1px solid #e1e8ef; border-radius:16px;">
+                <tr>
+                  <td align="center" style="padding:34px 24px;">
+
+                    <div style="font-size:13px; font-weight:700; color:#3b82f6; text-transform:uppercase; letter-spacing:0.7px;">
+                      Το timing κάνει τη διαφορά
+                    </div>
+
+                    <h2 style="margin:10px 0 12px; font-size:27px; line-height:34px; color:#071725;">
+                      Μην περιμένετε να σας βρουν.
+                    </h2>
+
+                    <p style="margin:0 auto 22px; max-width:470px; font-size:15px; line-height:23px; color:#657383;">
+                      Δείτε ποιες επιχειρήσεις ξεκινούν τώρα και βρεθείτε μπροστά στις επόμενες ευκαιρίες σας.
+                    </p>
+
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center">
+                      <tr>
+                        <td bgcolor="#3b82f6" style="border-radius:10px;">
+                          <a href="{{ signup_url }}" target="_blank"
+                             style="display:inline-block; padding:16px 30px; color:#ffffff; font-size:16px; line-height:20px; font-weight:700; text-decoration:none; border-radius:10px;">
+                            Ανακαλύψτε το Gemi Leads →
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background:#071725; padding:26px 32px; text-align:center;">
+
+              <div style="font-size:18px; font-weight:700; color:#ffffff;">
+                Gemi<span style="color:#3b82f6;">Leads</span>
+              </div>
+
+              <div style="margin-top:8px; font-size:12px; line-height:18px; color:#8798a8;">
+                Οι νέες επιχειρήσεις εμφανίζονται κάθε μέρα.<br>
+                Οι ευκαιρίες επίσης.
+              </div>
+
+              <div style="margin-top:18px; font-size:11px; line-height:18px; color:#66798a;">
+                Λαμβάνετε αυτό το μήνυμα επειδή τα στοιχεία επικοινωνίας της «{{ company.name }}»
+                δημοσιεύθηκαν στο δημόσιο μητρώο του ΓΕΜΗ.
+                <br>
+                <a href="{{ unsubscribe_url }}" style="color:#9db2c3; text-decoration:underline;">
+                  Κατάργηση εγγραφής
+                </a>
+              </div>
+
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

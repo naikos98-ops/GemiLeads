@@ -31,6 +31,7 @@ from .models import (
     DigestPreference,
     DigestDelivery,
     ImportRun,
+    OutreachSuppression,
     UserCompanyLead,
     get_user_radar_limit,
 )
@@ -221,6 +222,23 @@ def unsubscribe(request, token):
     preference.frequency = "off"
     preference.save(update_fields=["frequency", "updated_at"])
     return render(request, "unsubscribed.html")
+
+
+# Prospecting emails carry a signed address, not a user id: the recipient has no account.
+OUTREACH_UNSUBSCRIBE_SALT = "outreach-unsubscribe"
+
+
+def outreach_unsubscribe(request, token):
+    signer = TimestampSigner(salt=OUTREACH_UNSUBSCRIBE_SALT)
+    try:
+        email = signer.unsign(token, max_age=timedelta(days=365))
+    except (BadSignature, SignatureExpired):
+        return render(request, "unsubscribed.html", {"error": "Ο σύνδεσμος είναι άκυρος ή έχει λήξει."})
+
+    OutreachSuppression.objects.get_or_create(email=OutreachSuppression.normalize(email))
+    return render(request, "unsubscribed.html", {
+        "message": "Η διεύθυνσή σας αφαιρέθηκε. Δεν θα λαμβάνετε άλλα ενημερωτικά emails από το Gemi Leads.",
+    })
 
 
 def _legal_context():

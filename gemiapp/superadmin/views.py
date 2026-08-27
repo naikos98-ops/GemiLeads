@@ -16,16 +16,21 @@ from gemiapp.backups import backup_filename, backup_json
 from .decorators import is_superadmin, superadmin_required
 from .forms import AdminUserCreateForm
 from .services import (
+    OUTREACH_BATCH_LIMIT,
     get_chart_data_last_30_days,
     get_saas_overview_metrics,
     get_system_health,
     grant_complimentary_access,
     log_admin_action,
     revoke_complimentary_access,
+    send_company_outreach,
     toggle_user_active_state,
+    uncontacted_companies_qs,
 )
 from ..models import (
     AdminAuditLog,
+    Company,
+    CompanyOutreach,
     CustomerRadar,
     DigestDelivery,
     ImportRun,
@@ -199,6 +204,85 @@ def user_send_yesterday_digest(request, user_id):
         messages.error(request, f"Σφάλμα κατά την αποστολή email: {exc}")
 
     return redirect("superadmin:user_detail", user_id=target_user.id)
+
+
+def _client_finder_qs(request):
+    """The uncontacted-companies queryset with the request's filters applied."""
+    qs = uncontacted_companies_qs()
+
+    search = request.GET.get("q", "").strip()
+    if search:
+        qs = qs.filter(Q(name__icontains=search) | Q(gemi_number__icontains=search) | Q(email__icontains=search))
+
+    prefecture = request.GET.get("prefecture", "").strip()
+    if prefecture:
+        qs = qs.filter(prefecture=prefecture)
+
+    legal_type = request.GET.get("legal_type", "").strip()
+    if legal_type:
+        qs = qs.filter(legal_type=legal_type)
+
+    since = request.GET.get("since", "").strip()
+    if since:
+        try:
+            qs = qs.filter(incorporation_date__gte=date.fromisoformat(since))
+        except ValueError:
+            pass
+
+    return qs, search, prefecture, legal_type, since
+
+
+@superadmin_required
+def client_finder(request):
+    qs, search, prefecture, legal_type, since = _client_finder_qs(request)
+
+    total_matching = qs.count()
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get("page"))
+
+    sent_total = CompanyOutreach.objects.filter(status="sent").count()
+    failed_total = CompanyOutreach.objects.filter(status="failed").count()
+
+    return render(request, "superadmin/client_finder/list.html", {
+        "page_obj": page_obj,
+        "total_matching": total_matching,
+        "batch_limit": OUTREACH_BATCH_LIMIT,
+        "sent_total": sent_total,
+        "failed_total": failed_total,
+        "search": search,
+        "prefecture_filter": prefecture,
+        "legal_type_filter": legal_type,
+        "since_filter": since,
+        "prefectures": Company.objects.exclude(prefecture="").order_by("prefecture").values_list("prefecture", flat=True).distinct(),
+        "legal_types": Company.objects.exclude(legal_type="").order_by("legal_type").values_list("legal_type", flat=True).distinct(),
+    })
+
+
+@superadmin_required
+@require_POST
+def client_finder_send(request):
+    mode = request.POST.get("mode", "selected")
+
+    if mode == "all_filtered":
+        qs, *_ = _client_finder_qs(request)
+        companies = list(qs[:OUTREACH_BATCH_LIMIT])
+    else:
+        ids = request.POST.getlist("company_ids")
+        companies = list(uncontacted_companies_qs().filter(id__in=ids)[:OUTREACH_BATCH_LIMIT])
+
+    if not companies:
+        messages.error(request, "Δεν επιλέχθηκε καμία επιχείρηση για αποστολή.")
+        return redirect("superadmin:client_finder")
+
+    sent, failed, skipped = send_company_outreach(request.user, companies)
+    if sent:
+        messages.success(request, f"Απεστάλησαν {sent} email σε νέες επιχειρήσεις.")
+    if failed:
+        messages.error(request, f"{failed} αποστολές απέτυχαν (καταγράφηκαν).")
+    if skipped:
+        messages.info(request, f"{skipped} επιχειρήσεις παραλείφθηκαν (χωρίς email ή ήδη επικοινωνημένες).")
+
+    return redirect("superadmin:client_finder")
 
 
 @superadmin_required

@@ -3,10 +3,12 @@ from .models import (
     ActivityCode,
     Company,
     CompanyActivity,
+    CompanyOutreach,
     CustomerRadar,
     DigestDelivery,
     DigestPreference,
     ImportRun,
+    OutreachSuppression,
     PersonSuppression,
     RadarMatch,
     UserCompanyLead,
@@ -19,6 +21,21 @@ class CompanyAdmin(admin.ModelAdmin):
     list_filter = ("incorporation_date", "is_active", "legal_type", "prefecture")
     search_fields = ("name", "gemi_number", "vat_number")
     date_hierarchy = "incorporation_date"
+
+
+@admin.register(CompanyOutreach)
+class CompanyOutreachAdmin(admin.ModelAdmin):
+    list_display = ("company", "status", "sent_to", "sent_by", "created_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("company__name", "company__gemi_number", "sent_to")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(OutreachSuppression)
+class OutreachSuppressionAdmin(admin.ModelAdmin):
+    list_display = ("email", "created_at")
+    search_fields = ("email",)
+    readonly_fields = ("created_at",)
 
 
 admin.site.register(DigestPreference)

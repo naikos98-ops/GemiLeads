@@ -425,6 +425,63 @@ class PersonSuppression(models.Model):
         return set(cls.objects.filter(scope).values_list("normalized_name", flat=True))
 
 
+class CompanyOutreach(models.Model):
+    """One prospecting email sent (or attempted) to a newly registered company.
+
+    Used by the Superadmin "Εύρεση Πελατών" tool to remember which companies have
+    already been contacted, so the same business is never emailed twice. One row per
+    company — the tool only ever sends a single introductory email.
+    """
+
+    STATUSES = [
+        ("sent", "Εστάλη"),
+        ("failed", "Απέτυχε"),
+    ]
+
+    company = models.OneToOneField(Company, on_delete=models.CASCADE, related_name="outreach")
+    status = models.CharField(max_length=10, choices=STATUSES, default="sent")
+    sent_to = models.EmailField(blank=True)
+    error_message = models.TextField(blank=True)
+    sent_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="company_outreach")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Επικοινωνία με επιχείρηση"
+        verbose_name_plural = "Επικοινωνίες με επιχειρήσεις"
+
+    def __str__(self):
+        return f"{self.company.name} → {self.sent_to} ({self.status})"
+
+
+class OutreachSuppression(models.Model):
+    """An email address that asked not to receive prospecting emails.
+
+    Populated by the unsubscribe link in the "Εύρεση Πελατών" outreach email. Matching
+    is on the lower-cased, stripped address, so a company is never emailed again through
+    this tool once anyone at that address opts out.
+    """
+
+    email = models.EmailField(unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Απεγγραφή outreach"
+        verbose_name_plural = "Απεγγραφές outreach"
+
+    def __str__(self):
+        return self.email
+
+    @staticmethod
+    def normalize(email):
+        return (email or "").strip().lower()
+
+    @classmethod
+    def is_suppressed(cls, email):
+        return cls.objects.filter(email=cls.normalize(email)).exists()
+
+
 class AdminAuditLog(models.Model):
     admin_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="admin_audit_logs")
     action = models.CharField(max_length=100, db_index=True)

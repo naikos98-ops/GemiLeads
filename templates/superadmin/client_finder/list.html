@@ -1,0 +1,143 @@
+{% extends 'superadmin/base.html' %}
+
+{% block title %}Εύρεση Πελατών · Superadmin Control Center{% endblock %}
+{% block page_title %}Εύρεση Πελατών{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+  <!-- Stat cards -->
+  <div class="grid gap-4 sm:grid-cols-3">
+    <div class="rounded-2xl border border-navy-900/10 bg-white p-5 shadow-soft">
+      <p class="text-xs font-bold uppercase tracking-wider text-navy-700/50">Μη επικοινωνημένες (με email)</p>
+      <p class="mt-1 text-3xl font-extrabold text-navy-950">{{ total_matching }}</p>
+    </div>
+    <div class="rounded-2xl border border-navy-900/10 bg-white p-5 shadow-soft">
+      <p class="text-xs font-bold uppercase tracking-wider text-navy-700/50">Απεσταλμένα σύνολο</p>
+      <p class="mt-1 text-3xl font-extrabold text-emerald-600">{{ sent_total }}</p>
+    </div>
+    <div class="rounded-2xl border border-navy-900/10 bg-white p-5 shadow-soft">
+      <p class="text-xs font-bold uppercase tracking-wider text-navy-700/50">Αποτυχίες</p>
+      <p class="mt-1 text-3xl font-extrabold text-red-600">{{ failed_total }}</p>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+    <form method="get" class="grid gap-4 md:grid-cols-4">
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Αναζήτηση</label>
+        <input type="text" name="q" value="{{ search }}" placeholder="Επωνυμία, ΓΕΜΗ, email..." class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Περιφ. ενότητα</label>
+        <select name="prefecture" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+          <option value="">Όλες</option>
+          {% for p in prefectures %}<option value="{{ p }}" {% if prefecture_filter == p %}selected{% endif %}>{{ p }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Νομική μορφή</label>
+        <select name="legal_type" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+          <option value="">Όλες</option>
+          {% for lt in legal_types %}<option value="{{ lt }}" {% if legal_type_filter == lt %}selected{% endif %}>{{ lt }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Σύσταση από</label>
+        <input type="date" name="since" value="{{ since_filter }}" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+      </div>
+      <div class="flex items-end gap-2 md:col-span-4">
+        <button class="rounded-xl bg-navy-950 px-6 py-2.5 font-bold text-white text-sm hover:bg-navy-800 transition">Φιλτράρισμα</button>
+        <a href="{% url 'superadmin:client_finder' %}" class="rounded-xl border border-navy-900/10 px-4 py-2.5 font-bold text-sm hover:bg-sand-100 transition">Καθαρισμός</a>
+      </div>
+    </form>
+  </div>
+
+  <form method="post" action="{% url 'superadmin:client_finder_send' %}" id="outreachForm">
+    {% csrf_token %}
+    {# carry the active filters so "όλες οι φιλτραρισμένες" targets the same set #}
+    <input type="hidden" name="q" value="{{ search }}">
+    <input type="hidden" name="prefecture" value="{{ prefecture_filter }}">
+    <input type="hidden" name="legal_type" value="{{ legal_type_filter }}">
+    <input type="hidden" name="since" value="{{ since_filter }}">
+    <input type="hidden" name="mode" value="selected" id="sendMode">
+
+    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p class="text-sm font-bold text-navy-700/70">
+          Ανά αποστολή στέλνονται έως <strong>{{ batch_limit }}</strong> email. Το email είναι προσωποποιημένο ανά επιχείρηση.
+        </p>
+        <div class="flex gap-2">
+          <button type="submit"
+                  onclick="document.getElementById('sendMode').value='selected'"
+                  class="rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition"
+                  onsubmit="return confirm('Αποστολή email στις επιλεγμένες επιχειρήσεις;')">
+            Αποστολή σε επιλεγμένες
+          </button>
+          <button type="submit"
+                  onclick="if(!confirm('Αποστολή email σε ΟΛΕΣ τις φιλτραρισμένες επιχειρήσεις (έως {{ batch_limit }});')){return false;} document.getElementById('sendMode').value='all_filtered';"
+                  class="rounded-xl bg-signal px-5 py-2.5 text-sm font-bold text-white hover:opacity-90 transition">
+            Αποστολή σε όλες τις φιλτραρισμένες ({{ total_matching }})
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+            <tr>
+              <th class="p-3"><input type="checkbox" id="checkAll"></th>
+              <th class="p-3">Επιχείρηση</th>
+              <th class="p-3">Email</th>
+              <th class="p-3">Νομική μορφή</th>
+              <th class="p-3">Περιοχή</th>
+              <th class="p-3">Σύσταση</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-navy-900/5">
+            {% for c in page_obj %}
+            <tr class="hover:bg-sand-50/50 transition">
+              <td class="p-3"><input type="checkbox" name="company_ids" value="{{ c.id }}" class="rowCheck"></td>
+              <td class="p-3">
+                <span class="block font-bold text-navy-950">{{ c.name }}</span>
+                <span class="text-xs text-navy-700/50">ΓΕΜΗ: {{ c.gemi_number }}</span>
+              </td>
+              <td class="p-3 text-xs text-navy-700/80 font-medium">{{ c.email }}</td>
+              <td class="p-3 text-xs text-navy-700/70">{{ c.legal_type|default:'—' }}</td>
+              <td class="p-3 text-xs text-navy-700/70">{{ c.city|default:c.prefecture|default:'—' }}</td>
+              <td class="p-3 text-xs text-navy-700/70">{{ c.incorporation_date|date:"d/m/Y" }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="p-8 text-center text-navy-700/50">Δεν βρέθηκαν επιχειρήσεις προς επικοινωνία.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if page_obj.has_other_pages %}
+      <div class="mt-6 flex items-center justify-between border-t border-navy-900/5 pt-4 text-xs font-bold text-navy-700/60">
+        <span>Σελίδα {{ page_obj.number }} από {{ page_obj.paginator.num_pages }}</span>
+        <div class="flex gap-2">
+          {% if page_obj.has_previous %}
+          <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&prefecture={{ prefecture_filter }}&legal_type={{ legal_type_filter }}&since={{ since_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
+          {% endif %}
+          {% if page_obj.has_next %}
+          <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&prefecture={{ prefecture_filter }}&legal_type={{ legal_type_filter }}&since={{ since_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<script>
+  const checkAll = document.getElementById('checkAll');
+  if (checkAll) {
+    checkAll.addEventListener('change', () => {
+      document.querySelectorAll('.rowCheck').forEach(cb => { cb.checked = checkAll.checked; });
+    });
+  }
+</script>
+{% endblock %}
