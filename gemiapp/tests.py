@@ -897,7 +897,9 @@ class SuperadminTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertContains(res, "Νέα ΑΕ")
         self.assertNotContains(res, "Χωρίς Email ΟΕ")
-        self.assertNotContains(res, "Ήδη Επικοινωνημένη")
+        # Already contacted: absent from the candidate checkboxes, but shows in Sent History.
+        self.assertNotContains(res, f'value="{already.id}"')
+        self.assertContains(res, "Ήδη Επικοινωνημένη")
 
         # Test send: goes to an arbitrary address, records nothing.
         res_test = self.client.post(reverse("superadmin:client_finder_test"), {"email": "tester@example.com"})
@@ -914,9 +916,10 @@ class SuperadminTests(TestCase):
         self.assertRedirects(res_send, reverse("superadmin:client_finder"))
         self.assertEqual(len(mail.outbox), 0)  # nothing sent synchronously
         self.assertTrue(CompanyOutreach.objects.filter(company=with_email, status="pending").exists())
-        # Queued companies drop out of the tool immediately.
+        # Queued companies drop out of the candidate checkboxes immediately (they now show in
+        # Sent History instead, as "pending").
         res_after = self.client.get(reverse("superadmin:client_finder"))
-        self.assertNotContains(res_after, "Νέα ΑΕ")
+        self.assertNotContains(res_after, f'value="{with_email.id}"')
 
         # Run the worker task explicitly.
         from gemiapp.tasks import send_company_outreach_task
@@ -2465,6 +2468,58 @@ class EmailEngagementStatsTests(TestCase):
     def test_no_events_yields_empty_dict_not_an_error(self):
         delivery = self._delivery()
         (annotated,) = self.attach([delivery])
+        self.assertEqual(annotated.engagement, {})
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class OutreachEngagementTests(TestCase):
+    """Same Brevo tag/tracking machinery as digest emails, applied to the "Εύρεση Πελατών" cold
+    outreach tool -- so a sent CompanyOutreach row can show delivered/opened/clicked/
+    unsubscribed the same way a DigestDelivery row does.
+    """
+
+    def setUp(self):
+        from gemiapp.models import Company, CompanyOutreach
+        from gemiapp.superadmin.services import attach_outreach_engagement_stats, build_outreach_email
+        self.Company = Company
+        self.CompanyOutreach = CompanyOutreach
+        self.attach = attach_outreach_engagement_stats
+        self.build_email = build_outreach_email
+        self.company = Company.objects.create(
+            gemi_number="900010", name="Tag Test ΑΕ", incorporation_date=date(2026, 8, 1), email="a@tagtest.gr",
+        )
+
+    def test_sent_outreach_carries_the_tag_header(self):
+        message = self.build_email(self.company)
+        self.assertEqual(message.extra_headers.get("X-Mailin-Tag"), f"outreach:{self.company.pk}")
+
+    def test_test_send_on_an_unsaved_company_has_no_tag(self):
+        """send_outreach_test_email builds the email against an in-memory, unsaved Company (no
+        pk, no CompanyOutreach row could ever exist to match a tag against)."""
+        unsaved = self.Company(name="Δείγμα", incorporation_date=date(2026, 8, 1))
+        message = self.build_email(unsaved, to_email="tester@example.com")
+        self.assertNotIn("X-Mailin-Tag", message.extra_headers)
+
+    def test_counts_bucket_by_event_type(self):
+        outreach = self.CompanyOutreach.objects.create(company=self.company, status="sent", sent_to="a@tagtest.gr")
+        tag = f"outreach:{self.company.id}"
+        EmailEngagementEvent.objects.create(event_type="delivered", email="a@tagtest.gr", tag=tag, payload={})
+        EmailEngagementEvent.objects.create(event_type="opened", email="a@tagtest.gr", tag=tag, payload={})
+        EmailEngagementEvent.objects.create(event_type="click", email="a@tagtest.gr", tag=tag, payload={})
+
+        (annotated,) = self.attach([outreach])
+        self.assertEqual(annotated.engagement, {"delivered": 1, "opened": 1, "clicked": 1})
+
+    def test_events_for_a_different_company_never_bleed_in(self):
+        other = self.Company.objects.create(
+            gemi_number="900011", name="Άλλη ΑΕ", incorporation_date=date(2026, 8, 1), email="b@other.gr",
+        )
+        outreach = self.CompanyOutreach.objects.create(company=self.company, status="sent", sent_to="a@tagtest.gr")
+        EmailEngagementEvent.objects.create(
+            event_type="opened", email="b@other.gr", tag=f"outreach:{other.id}", payload={},
+        )
+
+        (annotated,) = self.attach([outreach])
         self.assertEqual(annotated.engagement, {})
 
 

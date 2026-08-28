@@ -253,15 +253,15 @@ _ENGAGEMENT_BUCKETS = {
 }
 
 
-def attach_email_engagement_stats(deliveries):
-    """Annotates each DigestDelivery with `.engagement`, a dict of bucketed Brevo event counts
-    (delivered/opened/clicked/unsubscribed/bounced/spam/other) for the email that delivery
-    represents -- matched via the same tag it was sent with (see
-    gemiapp.services.digest_email_tag). One query for the whole page rather than one per row.
+def _attach_engagement_stats(objects, tag_of):
+    """Shared implementation: annotates each object with `.engagement`, a dict of bucketed
+    Brevo event counts (delivered/opened/clicked/unsubscribed/bounced/spam/other), matched via
+    the tag it was sent with (`tag_of(obj)` -> that tag string). One query for the whole page
+    rather than one per row.
     """
-    deliveries = list(deliveries)
-    tag_by_id = {d.id: digest_email_tag(d.user_id, d.digest_date, d.frequency) for d in deliveries}
-    tags = list(tag_by_id.values())
+    objects = list(objects)
+    tag_by_pk = {o.pk: tag_of(o) for o in objects}
+    tags = list(tag_by_pk.values())
 
     counts_by_tag = {}
     if tags:
@@ -275,9 +275,25 @@ def attach_email_engagement_stats(deliveries):
             per_tag = counts_by_tag.setdefault(row["tag"], {})
             per_tag[bucket] = per_tag.get(bucket, 0) + row["n"]
 
-    for d in deliveries:
-        d.engagement = counts_by_tag.get(tag_by_id[d.id], {})
-    return deliveries
+    for o in objects:
+        o.engagement = counts_by_tag.get(tag_by_pk[o.pk], {})
+    return objects
+
+
+def attach_email_engagement_stats(deliveries):
+    """Annotates each DigestDelivery with `.engagement` -- see _attach_engagement_stats. Tag
+    format matches gemiapp.services.digest_email_tag, used at send time.
+    """
+    return _attach_engagement_stats(
+        deliveries, lambda d: digest_email_tag(d.user_id, d.digest_date, d.frequency)
+    )
+
+
+def attach_outreach_engagement_stats(outreach_rows):
+    """Annotates each CompanyOutreach with `.engagement` -- see _attach_engagement_stats. Tag
+    format matches build_outreach_email's own "outreach:<company_id>", used at send time.
+    """
+    return _attach_engagement_stats(outreach_rows, lambda o: f"outreach:{o.company_id}")
 
 
 def grant_complimentary_access(admin_user, target_user, tier, until_datetime=None):
@@ -400,12 +416,16 @@ def build_outreach_email(company, to_email=None):
         "site_url": settings.BASE_URL,
         "unsubscribe_url": f"{settings.BASE_URL}{reverse('outreach_unsubscribe', kwargs={'token': signer.sign(recipient)})}",
     }
+    # No tag on a test send (company.pk is None for the in-memory representative company used
+    # by send_outreach_test_email) -- there is no CompanyOutreach row to ever match it against.
+    headers = {"X-Mailin-Tag": f"outreach:{company.pk}"} if company.pk else None
     msg = EmailMultiAlternatives(
         OUTREACH_SUBJECT,
         render_to_string("emails/client_outreach.txt", context),
         settings.DEFAULT_FROM_EMAIL,
         [recipient],
         reply_to=_outreach_reply_to(),
+        headers=headers,
     )
     msg.attach_alternative(render_to_string("emails/client_outreach.html", context), "text/html")
     return msg

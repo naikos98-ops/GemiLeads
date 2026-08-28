@@ -18,6 +18,7 @@ from .forms import AdminUserCreateForm
 from .services import (
     OUTREACH_BATCH_LIMIT,
     attach_email_engagement_stats,
+    attach_outreach_engagement_stats,
     get_chart_data_last_30_days,
     get_saas_overview_metrics,
     get_system_health,
@@ -247,6 +248,21 @@ def client_finder(request):
     failed_total = CompanyOutreach.objects.filter(status="failed").count()
     pending_total = CompanyOutreach.objects.filter(status="pending").count()
 
+    history_qs = CompanyOutreach.objects.select_related("company", "sent_by").order_by("-created_at")
+    history_search = request.GET.get("hq", "").strip()
+    if history_search:
+        history_qs = history_qs.filter(
+            Q(company__name__icontains=history_search)
+            | Q(sent_to__icontains=history_search)
+            | Q(company__gemi_number__icontains=history_search)
+        )
+    history_status = request.GET.get("hstatus", "").strip()
+    if history_status:
+        history_qs = history_qs.filter(status=history_status)
+    history_paginator = Paginator(history_qs, 25)
+    history_page_obj = history_paginator.get_page(request.GET.get("history_page"))
+    history_page_obj.object_list = attach_outreach_engagement_stats(history_page_obj.object_list)
+
     return render(request, "superadmin/client_finder/list.html", {
         "page_obj": page_obj,
         "total_matching": total_matching,
@@ -254,6 +270,9 @@ def client_finder(request):
         "sent_total": sent_total,
         "failed_total": failed_total,
         "pending_total": pending_total,
+        "history_page_obj": history_page_obj,
+        "history_search": history_search,
+        "history_status_filter": history_status,
         "test_email": settings.OUTREACH_TEST_EMAIL,
         "search": search,
         "prefecture_filter": prefecture,
