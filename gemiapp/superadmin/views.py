@@ -17,6 +17,7 @@ from .decorators import is_superadmin, superadmin_required
 from .forms import AdminUserCreateForm
 from .services import (
     OUTREACH_BATCH_LIMIT,
+    attach_email_engagement_stats,
     get_chart_data_last_30_days,
     get_saas_overview_metrics,
     get_system_health,
@@ -34,6 +35,7 @@ from ..models import (
     CompanyOutreach,
     CustomerRadar,
     DigestDelivery,
+    EmailEngagementEvent,
     ImportRun,
     RadarMatch,
     UserCompanyLead,
@@ -44,7 +46,7 @@ from ..models import (
     get_user_radar_limit,
     paid_subscription_q,
 )
-from ..services import import_for_date, send_digests
+from ..services import digest_email_tag, import_for_date, send_digests
 
 
 @superadmin_required
@@ -463,6 +465,7 @@ def digest_list(request):
 
     paginator = Paginator(deliveries, 20)
     page_obj = paginator.get_page(request.GET.get("page"))
+    page_obj.object_list = attach_email_engagement_stats(page_obj.object_list)
 
     return render(request, "superadmin/digests/list.html", {
         "page_obj": page_obj,

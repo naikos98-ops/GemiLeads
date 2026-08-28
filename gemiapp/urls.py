@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from . import billing
+from . import email_tracking
 
 urlpatterns = [
     path("", views.home, name="home"),
@@ -39,4 +40,5 @@ urlpatterns = [
     path("api/stripe/change-plan/", billing.change_plan, name="change_plan"),
     path("api/stripe/cancel-scheduled-downgrade/", billing.cancel_scheduled_downgrade, name="cancel_scheduled_downgrade"),
     path("api/stripe/webhook/", billing.stripe_webhook, name="stripe_webhook"),
+    path("api/brevo/webhook/<str:token>/", email_tracking.brevo_webhook, name="brevo_webhook"),
 ]

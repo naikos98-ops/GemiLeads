@@ -27,11 +27,12 @@ from .models import (
     RadarMatch,
     RADAR_LIMITS,
     PersonSuppression,
+    EmailEngagementEvent,
     StripeWebhookEvent,
     UserCompanyLead,
     UserSubscription,
 )
-from .services import import_for_date, match_imported_companies, send_digests
+from .services import digest_email_tag, import_for_date, match_imported_companies, send_digests
 
 
 SAMPLE = {
@@ -1649,7 +1650,7 @@ class IntradayIncrementalTests(TestCase):
 
     def test_pointer_is_not_advanced_when_sending_fails(self):
         self._matched_company("800000000030", "ΑΠΟΤΥΧΙΑ ΙΚΕ")
-        with patch("gemiapp.services.send_mail", side_effect=RuntimeError("smtp down")):
+        with patch("gemiapp.services.EmailMultiAlternatives.send", side_effect=RuntimeError("smtp down")):
             sent, _ = send_digests(self.today, frequency="intraday")
         self.assertEqual(sent, 0)
 
@@ -2312,6 +2313,159 @@ class DashboardChartDataTests(TestCase):
 
         chart = get_chart_data_last_30_days()
         self.assertEqual(max(day["users_height"] for day in chart), 120)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class DigestEmailTagTests(TestCase):
+    """The X-Mailin-Tag header is how an inbound Brevo engagement event (opened/clicked/
+    unsubscribed) gets matched back to the DigestDelivery row it's about -- if it's ever
+    missing, or built differently by different send paths, engagement stats silently show as
+    zero for a real delivery instead of erroring, which would be much harder to notice.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user("digest@example.com", "digest@example.com", "StrongPass123")
+        sub, _ = UserSubscription.objects.get_or_create(user=self.user)
+        sub.tier = "pro"
+        sub.status = "active"
+        sub.save()
+        DigestPreference.objects.get_or_create(user=self.user)
+
+    def test_tag_format(self):
+        tag = digest_email_tag(self.user.id, date(2026, 8, 28), "daily")
+        self.assertEqual(tag, f"digest:{self.user.id}:2026-08-28:daily")
+
+    @patch("gemiapp.services.fetch_companies", return_value=[SAMPLE])
+    def test_sent_digest_carries_the_tag_header(self, _fetch):
+        import_for_date(date(2026, 8, 1))
+        send_digests(date(2026, 8, 1), frequency="daily")
+        self.assertEqual(len(mail.outbox), 1)
+        expected_tag = digest_email_tag(self.user.id, date(2026, 8, 1), "daily")
+        self.assertEqual(mail.outbox[0].extra_headers.get("X-Mailin-Tag"), expected_tag)
+
+    @patch("gemiapp.services.fetch_companies", return_value=[SAMPLE])
+    def test_html_alternative_is_attached(self, _fetch):
+        import_for_date(date(2026, 8, 1))
+        send_digests(date(2026, 8, 1), frequency="daily")
+        message = mail.outbox[0]
+        self.assertEqual(len(message.alternatives), 1)
+        self.assertEqual(message.alternatives[0][1], "text/html")
+
+
+@override_settings(BREVO_WEBHOOK_TOKEN="test-token-123")
+class BrevoWebhookTests(TestCase):
+    """The webhook has no signature to verify (Brevo's own "token-based authentication" just
+    echoes a shared secret back verbatim), so the token check is the only thing standing
+    between this endpoint and an unauthenticated write -- and, unlike the Stripe webhook, a
+    malformed item must never take the rest of a batch down with it.
+    """
+
+    def _post(self, token, payload_bytes, content_type="application/json"):
+        return self.client.post(
+            reverse("brevo_webhook", kwargs={"token": token}),
+            data=payload_bytes, content_type=content_type,
+        )
+
+    def test_wrong_token_is_rejected(self):
+        response = self._post("wrong-token", json.dumps({"event": "opened", "email": "a@example.com"}).encode())
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(EmailEngagementEvent.objects.count(), 0)
+
+    @override_settings(BREVO_WEBHOOK_TOKEN="")
+    def test_unconfigured_token_rejects_everything(self):
+        response = self._post("anything", json.dumps({"event": "opened"}).encode())
+        self.assertEqual(response.status_code, 403)
+
+    def test_malformed_json_is_rejected(self):
+        response = self._post("test-token-123", b"not json")
+        self.assertEqual(response.status_code, 400)
+
+    def test_single_event_is_recorded(self):
+        payload = {"event": "opened", "email": "a@example.com", "tag": "digest:1:2026-08-01:daily"}
+        response = self._post("test-token-123", json.dumps(payload).encode())
+        self.assertEqual(response.status_code, 200)
+        event = EmailEngagementEvent.objects.get()
+        self.assertEqual(event.event_type, "opened")
+        self.assertEqual(event.email, "a@example.com")
+        self.assertEqual(event.tag, "digest:1:2026-08-01:daily")
+        self.assertEqual(event.payload, payload)
+
+    def test_transactional_tags_list_is_read(self):
+        """Transactional (vs marketing) Brevo events carry the tag under a "tags" list rather
+        than a singular "tag" string -- both shapes must resolve to the same stored tag."""
+        payload = {"event": "delivered", "email": "a@example.com", "tags": ["digest:1:2026-08-01:daily"]}
+        self._post("test-token-123", json.dumps(payload).encode())
+        self.assertEqual(EmailEngagementEvent.objects.get().tag, "digest:1:2026-08-01:daily")
+
+    def test_batch_array_is_recorded(self):
+        payload = [
+            {"event": "delivered", "email": "a@example.com", "tag": "t1"},
+            {"event": "opened", "email": "a@example.com", "tag": "t1"},
+        ]
+        response = self._post("test-token-123", json.dumps(payload).encode())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(EmailEngagementEvent.objects.count(), 2)
+
+    def test_one_malformed_item_does_not_lose_the_rest_of_the_batch(self):
+        payload = ["not-a-dict", {"event": "opened", "email": "a@example.com", "tag": "t1"}]
+        response = self._post("test-token-123", json.dumps(payload).encode())
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(EmailEngagementEvent.objects.count(), 1)
+
+    def test_missing_tag_is_stored_as_empty_not_dropped(self):
+        payload = {"event": "spam", "email": "a@example.com"}
+        self._post("test-token-123", json.dumps(payload).encode())
+        event = EmailEngagementEvent.objects.get()
+        self.assertEqual(event.tag, "")
+
+
+class EmailEngagementStatsTests(TestCase):
+    """Aggregation must key strictly on the (user, date, frequency) tag -- an event tagged for
+    a different delivery must never bleed into another delivery's counts."""
+
+    def setUp(self):
+        from gemiapp.superadmin.services import attach_email_engagement_stats
+        self.attach = attach_email_engagement_stats
+        self.user = User.objects.create_user("digest2@example.com", "digest2@example.com", "StrongPass123")
+
+    def _delivery(self, digest_date=date(2026, 8, 1), frequency="daily"):
+        return DigestDelivery.objects.create(
+            user=self.user, digest_date=digest_date, frequency=frequency,
+            status="sent", company_count=1,
+        )
+
+    def test_counts_bucket_by_event_type(self):
+        delivery = self._delivery()
+        tag = digest_email_tag(self.user.id, delivery.digest_date, delivery.frequency)
+        EmailEngagementEvent.objects.create(event_type="delivered", email="x@example.com", tag=tag, payload={})
+        EmailEngagementEvent.objects.create(event_type="opened", email="x@example.com", tag=tag, payload={})
+        EmailEngagementEvent.objects.create(event_type="opened", email="x@example.com", tag=tag, payload={})
+        EmailEngagementEvent.objects.create(event_type="click", email="x@example.com", tag=tag, payload={})
+        EmailEngagementEvent.objects.create(event_type="unsubscribed", email="x@example.com", tag=tag, payload={})
+
+        (annotated,) = self.attach([delivery])
+        self.assertEqual(annotated.engagement, {"delivered": 1, "opened": 2, "clicked": 1, "unsubscribed": 1})
+
+    def test_unrecognised_event_type_falls_into_other_not_dropped(self):
+        delivery = self._delivery()
+        tag = digest_email_tag(self.user.id, delivery.digest_date, delivery.frequency)
+        EmailEngagementEvent.objects.create(event_type="deferred", email="x@example.com", tag=tag, payload={})
+
+        (annotated,) = self.attach([delivery])
+        self.assertEqual(annotated.engagement, {"other": 1})
+
+    def test_events_for_a_different_delivery_never_bleed_in(self):
+        delivery = self._delivery(digest_date=date(2026, 8, 1))
+        other_tag = digest_email_tag(self.user.id, date(2026, 8, 2), "daily")
+        EmailEngagementEvent.objects.create(event_type="opened", email="x@example.com", tag=other_tag, payload={})
+
+        (annotated,) = self.attach([delivery])
+        self.assertEqual(annotated.engagement, {})
+
+    def test_no_events_yields_empty_dict_not_an_error(self):
+        delivery = self._delivery()
+        (annotated,) = self.attach([delivery])
+        self.assertEqual(annotated.engagement, {})
 
 
 class SchedulerHealthCheckTests(TestCase):

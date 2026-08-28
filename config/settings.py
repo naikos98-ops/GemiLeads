@@ -170,6 +170,12 @@ EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "info@gemileads.gr")
 # Default recipient for the "Δοκιμαστική αποστολή" button on the Εύρεση Πελατών page.
 OUTREACH_TEST_EMAIL = os.getenv("OUTREACH_TEST_EMAIL", "naikos98@gmail.com")
 
+# Shared secret Brevo sends back with every outbound webhook call (Brevo's own "Token-based
+# authentication" option, not an HMAC signature) -- checked with a constant-time comparison in
+# gemiapp.email_tracking.brevo_webhook. Empty means the endpoint refuses every delivery, the
+# same fail-closed default as STRIPE_WEBHOOK_SECRET.
+BREVO_WEBHOOK_TOKEN = os.getenv("BREVO_WEBHOOK_TOKEN", "")
+
 # Stripe settings
 STRIPE_PUBLIC_KEY = os.getenv("STRIPE_PUBLIC_KEY")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -358,6 +358,27 @@ def digest_skip_reason(user, frequency):
     return None
 
 
+def digest_email_tag(user_id: int, digest_date: date, frequency: str) -> str:
+    """The `X-Mailin-Tag` value a digest email is sent with, and the same format
+    gemiapp.email_tracking parses back out of incoming Brevo webhook events to match an
+    engagement event (opened/clicked/unsubscribed/...) to the DigestDelivery row it's about.
+    """
+    return f"digest:{user_id}:{digest_date.isoformat()}:{frequency}"
+
+
+def _send_digest_email(user, subject, body_text, body_html, tag):
+    """Every digest send goes through here so the Brevo engagement tag is never forgotten on
+    one call site but not another. `X-Mailin-Tag` is Brevo's (undocumented but confirmed
+    working) SMTP-relay equivalent of the `tags` parameter their transactional API takes --
+    they echo it back verbatim in every webhook event about this message."""
+    message = EmailMultiAlternatives(
+        subject, body_text, settings.DEFAULT_FROM_EMAIL, [user.email],
+        headers={"X-Mailin-Tag": tag},
+    )
+    message.attach_alternative(body_html, "text/html")
+    message.send()
+
+
 def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]:
     if frequency == "weekly":
         raise ValueError("Το εβδομαδιαίο digest έχει καταργηθεί.")
@@ -472,7 +493,8 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
 
             body_text = render_to_string(txt_tmpl, context)
             body_html = render_to_string(html_tmpl, context)
-            send_mail(subject, body_text, settings.DEFAULT_FROM_EMAIL, [user.email], html_message=body_html)
+            tag = digest_email_tag(user.id, target_date, frequency)
+            _send_digest_email(user, subject, body_text, body_html, tag)
 
             if frequency == "intraday" and subscription is not None:
                 all_sent_ids = [c.id for c in general_companies] + list(radar_company_ids)
@@ -551,7 +573,8 @@ def send_user_yesterday_digest(user) -> int:
     body_text = render_to_string("emails/daily_digest.txt", context)
     body_html = render_to_string("emails/daily_digest.html", context)
 
-    send_mail(subject, body_text, settings.DEFAULT_FROM_EMAIL, [user.email], html_message=body_html)
+    tag = digest_email_tag(user.id, yesterday, "manual_yesterday")
+    _send_digest_email(user, subject, body_text, body_html, tag)
 
     DigestDelivery.objects.update_or_create(
         user=user,

@@ -7,6 +7,7 @@ from .models import (
     CustomerRadar,
     DigestDelivery,
     DigestPreference,
+    EmailEngagementEvent,
     ImportRun,
     OutreachSuppression,
     PersonSuppression,
@@ -107,6 +108,23 @@ class StripeWebhookEventAdmin(admin.ModelAdmin):
     list_filter = ("status", "event_type")
     search_fields = ("stripe_event_id", "event_type")
     readonly_fields = ("stripe_event_id", "event_type", "payload", "status", "error_message", "received_at", "processed_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(EmailEngagementEvent)
+class EmailEngagementEventAdmin(admin.ModelAdmin):
+    """Inspection only, same reasoning as StripeWebhookEventAdmin -- rows are written
+    exclusively by the Brevo webhook and must reflect what Brevo actually reported."""
+
+    list_display = ("email", "event_type", "tag", "received_at")
+    list_filter = ("event_type",)
+    search_fields = ("email", "tag")
+    readonly_fields = ("event_type", "email", "tag", "payload", "received_at")
 
     def has_add_permission(self, request):
         return False

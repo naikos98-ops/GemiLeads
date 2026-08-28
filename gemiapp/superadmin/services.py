@@ -17,6 +17,7 @@ from ..models import (
     OutreachSuppression,
     CustomerRadar,
     DigestDelivery,
+    EmailEngagementEvent,
     RadarMatch,
     StripeWebhookEvent,
     UserCompanyLead,
@@ -25,6 +26,7 @@ from ..models import (
     entitlement_q,
     paid_subscription_q,
 )
+from ..services import digest_email_tag
 
 logger = logging.getLogger(__name__)
 
@@ -233,6 +235,49 @@ def get_chart_data_last_30_days():
         d["leads_height"] = round((d["leads"] / max_value) * 118) + 2 if d["leads"] else 2
 
     return chart
+
+
+# Brevo's own event vocabulary (transactional webhooks) collapsed into the handful of buckets
+# the digest list actually wants to show. Anything not listed here (deferred, blocked, invalid,
+# error, ...) falls into "other" rather than being silently dropped, so a new/unexpected Brevo
+# event type is still visible somewhere instead of vanishing from the count.
+_ENGAGEMENT_BUCKETS = {
+    "delivered": "delivered",
+    "opened": "opened",
+    "uniqueOpened": "opened",
+    "click": "clicked",
+    "unsubscribed": "unsubscribed",
+    "hardBounce": "bounced",
+    "softBounce": "bounced",
+    "spam": "spam",
+}
+
+
+def attach_email_engagement_stats(deliveries):
+    """Annotates each DigestDelivery with `.engagement`, a dict of bucketed Brevo event counts
+    (delivered/opened/clicked/unsubscribed/bounced/spam/other) for the email that delivery
+    represents -- matched via the same tag it was sent with (see
+    gemiapp.services.digest_email_tag). One query for the whole page rather than one per row.
+    """
+    deliveries = list(deliveries)
+    tag_by_id = {d.id: digest_email_tag(d.user_id, d.digest_date, d.frequency) for d in deliveries}
+    tags = list(tag_by_id.values())
+
+    counts_by_tag = {}
+    if tags:
+        rows = (
+            EmailEngagementEvent.objects.filter(tag__in=tags)
+            .values("tag", "event_type")
+            .annotate(n=Count("id"))
+        )
+        for row in rows:
+            bucket = _ENGAGEMENT_BUCKETS.get(row["event_type"], "other")
+            per_tag = counts_by_tag.setdefault(row["tag"], {})
+            per_tag[bucket] = per_tag.get(bucket, 0) + row["n"]
+
+    for d in deliveries:
+        d.engagement = counts_by_tag.get(tag_by_id[d.id], {})
+    return deliveries
 
 
 def grant_complimentary_access(admin_user, target_user, tier, until_datetime=None):

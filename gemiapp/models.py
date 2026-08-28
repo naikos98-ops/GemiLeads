@@ -581,6 +581,32 @@ class StripeWebhookEvent(models.Model):
         verbose_name = "Stripe Webhook Event"
         verbose_name_plural = "Stripe Webhook Events"
 
+
+class EmailEngagementEvent(models.Model):
+    """Durable, append-only log of Brevo delivery/engagement events (delivered, opened, click,
+    unsubscribed, hardBounce, softBounce, blocked, spam, ...) for digest emails.
+
+    Unlike StripeWebhookEvent this is never idempotency-critical: a duplicate "opened" event
+    recorded twice has no real-money consequence, so every delivery is simply appended rather
+    than deduplicated against a stored event id (Brevo's own webhook docs don't guarantee one is
+    always present or stable across retries).
+
+    `tag` is the value we set on `X-Mailin-Tag` at send time (see
+    `services._send_digest_email`), formatted as "digest:<user_id>:<digest_date>:<frequency>" --
+    it is how an incoming event is matched back to the DigestDelivery row it's about. Brevo
+    echoes the tag back verbatim in the "tag" (marketing) or "tags" (transactional, a list)
+    field of every webhook payload for a message that was sent with it.
+    """
+
+    event_type = models.CharField(max_length=50, db_index=True)
+    email = models.EmailField()
+    tag = models.CharField(max_length=255, blank=True, db_index=True)
+    payload = models.JSONField()
+    received_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-received_at"]
+
     def __str__(self):
         return f"{self.stripe_event_id} ({self.event_type}) — {self.status}"
 

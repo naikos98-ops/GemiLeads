@@ -42,6 +42,7 @@
             <th class="p-3">Status</th>
             <th class="p-3 text-center">Company Count</th>
             <th class="p-3">Sent At</th>
+            <th class="p-3">Engagement (Brevo)</th>
             <th class="p-3">Details / Error</th>
             <th class="p-3 text-right">Actions</th>
           </tr>
@@ -59,6 +60,23 @@
             </td>
             <td class="p-3 text-center font-bold">{{ d.company_count }}</td>
             <td class="p-3 text-xs text-navy-700/70">{{ d.sent_at|date:"d/m/Y H:i:s" }}</td>
+            <td class="p-3 text-xs">
+              {% if d.status == 'sent' %}
+              <div class="flex flex-wrap gap-1.5">
+                <span class="inline-block rounded-full bg-blue-50 px-2 py-0.5 font-bold text-blue-700" title="Delivered">📬 {{ d.engagement.delivered|default:0 }}</span>
+                <span class="inline-block rounded-full bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700" title="Opened">👀 {{ d.engagement.opened|default:0 }}</span>
+                <span class="inline-block rounded-full bg-purple-50 px-2 py-0.5 font-bold text-purple-700" title="Clicked">🖱️ {{ d.engagement.clicked|default:0 }}</span>
+                {% if d.engagement.unsubscribed %}
+                <span class="inline-block rounded-full bg-red-50 px-2 py-0.5 font-bold text-red-700" title="Unsubscribed">🚫 {{ d.engagement.unsubscribed }}</span>
+                {% endif %}
+                {% if d.engagement.bounced %}
+                <span class="inline-block rounded-full bg-amber-50 px-2 py-0.5 font-bold text-amber-700" title="Bounced">⚠️ {{ d.engagement.bounced }}</span>
+                {% endif %}
+              </div>
+              {% else %}
+              <span class="text-navy-700/30">—</span>
+              {% endif %}
+            </td>
             <td class="p-3 text-xs text-navy-700/60 font-mono">{{ d.error_message|default:"—" }}</td>
             <td class="p-3 text-right">
               {% if d.status == 'failed' %}
@@ -72,7 +90,7 @@
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="8" class="p-8 text-center text-navy-700/50">Δεν βρέθηκαν εγγραφές αποστολής digest.</td></tr>
+          <tr><td colspan="9" class="p-8 text-center text-navy-700/50">Δεν βρέθηκαν εγγραφές αποστολής digest.</td></tr>
           {% endfor %}
         </tbody>
       </table>

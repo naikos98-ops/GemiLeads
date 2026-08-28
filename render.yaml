@@ -34,6 +34,8 @@ services:
         value: Gemi Leads <notifications@send.gemileads.gr>
       - key: EMAIL_REPLY_TO
         value: info@gemileads.gr
+      - key: BREVO_WEBHOOK_TOKEN
+        sync: false
       - key: LEGAL_CONTROLLER_NAME
         sync: false
       - key: LEGAL_VAT
