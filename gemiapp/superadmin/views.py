@@ -233,12 +233,18 @@ def _client_finder_qs(request):
         except ValueError:
             pass
 
-    return qs, search, prefecture, legal_type, since
+    kad = request.GET.get("kad", "").strip()
+    if kad:
+        # distinct(): a company with more than one matching activity record would otherwise
+        # be joined in once per match and show up as duplicate rows in the list.
+        qs = qs.filter(activity_records__code__istartswith=kad).distinct()
+
+    return qs, search, prefecture, legal_type, since, kad
 
 
 @superadmin_required
 def client_finder(request):
-    qs, search, prefecture, legal_type, since = _client_finder_qs(request)
+    qs, search, prefecture, legal_type, since, kad = _client_finder_qs(request)
 
     total_matching = qs.count()
     paginator = Paginator(qs, 25)
@@ -248,21 +254,6 @@ def client_finder(request):
     failed_total = CompanyOutreach.objects.filter(status="failed").count()
     pending_total = CompanyOutreach.objects.filter(status="pending").count()
 
-    history_qs = CompanyOutreach.objects.select_related("company", "sent_by").order_by("-created_at")
-    history_search = request.GET.get("hq", "").strip()
-    if history_search:
-        history_qs = history_qs.filter(
-            Q(company__name__icontains=history_search)
-            | Q(sent_to__icontains=history_search)
-            | Q(company__gemi_number__icontains=history_search)
-        )
-    history_status = request.GET.get("hstatus", "").strip()
-    if history_status:
-        history_qs = history_qs.filter(status=history_status)
-    history_paginator = Paginator(history_qs, 25)
-    history_page_obj = history_paginator.get_page(request.GET.get("history_page"))
-    history_page_obj.object_list = attach_outreach_engagement_stats(history_page_obj.object_list)
-
     return render(request, "superadmin/client_finder/list.html", {
         "page_obj": page_obj,
         "total_matching": total_matching,
@@ -270,16 +261,61 @@ def client_finder(request):
         "sent_total": sent_total,
         "failed_total": failed_total,
         "pending_total": pending_total,
-        "history_page_obj": history_page_obj,
-        "history_search": history_search,
-        "history_status_filter": history_status,
         "test_email": settings.OUTREACH_TEST_EMAIL,
         "search": search,
         "prefecture_filter": prefecture,
         "legal_type_filter": legal_type,
         "since_filter": since,
+        "kad_filter": kad,
         "prefectures": Company.objects.exclude(prefecture="").order_by("prefecture").values_list("prefecture", flat=True).distinct(),
         "legal_types": Company.objects.exclude(legal_type="").order_by("legal_type").values_list("legal_type", flat=True).distinct(),
+    })
+
+
+# Sort keys available on the outreach history list -- "recent" stays a cheap DB-level
+# ORDER BY + per-page engagement lookup (scales fine as CompanyOutreach grows); the engagement
+# sorts need every matching row's counts computed first (tag matching isn't a DB join), so they
+# fetch the full filtered set into Python once, sort there, then paginate the plain list. Capped
+# well above any realistic outreach volume today so this stays a deliberate, bounded trade-off.
+_OUTREACH_HISTORY_ENGAGEMENT_SORT_LIMIT = 5000
+
+
+@superadmin_required
+def outreach_history(request):
+    history_qs = CompanyOutreach.objects.select_related("company", "sent_by").order_by("-created_at")
+
+    search = request.GET.get("hq", "").strip()
+    if search:
+        history_qs = history_qs.filter(
+            Q(company__name__icontains=search)
+            | Q(sent_to__icontains=search)
+            | Q(company__gemi_number__icontains=search)
+        )
+    status = request.GET.get("hstatus", "").strip()
+    if status:
+        history_qs = history_qs.filter(status=status)
+    kad = request.GET.get("hkad", "").strip()
+    if kad:
+        history_qs = history_qs.filter(company__activity_records__code__istartswith=kad).distinct()
+
+    sort = request.GET.get("sort", "recent")
+    if sort in ("opens", "clicks"):
+        bucket = "opened" if sort == "opens" else "clicked"
+        rows = attach_outreach_engagement_stats(history_qs[:_OUTREACH_HISTORY_ENGAGEMENT_SORT_LIMIT])
+        rows.sort(key=lambda o: o.engagement.get(bucket, 0), reverse=True)
+        paginator = Paginator(rows, 25)
+        page_obj = paginator.get_page(request.GET.get("history_page"))
+    else:
+        paginator = Paginator(history_qs, 25)
+        page_obj = paginator.get_page(request.GET.get("history_page"))
+        page_obj.object_list = attach_outreach_engagement_stats(page_obj.object_list)
+
+    return render(request, "superadmin/outreach_history/list.html", {
+        "history_page_obj": page_obj,
+        "history_search": search,
+        "history_status_filter": status,
+        "history_kad_filter": kad,
+        "sort": sort,
     })
 
 

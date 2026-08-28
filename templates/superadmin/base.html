@@ -72,6 +72,10 @@
               <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/></svg>
               Εύρεση Πελατών
             </a>
+            <a href="{% url 'superadmin:outreach_history' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
+              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+              Ιστορικό Αποστολών
+            </a>
           </div>
         </div>
 
@@ -191,6 +195,7 @@
           <a href="{% url 'superadmin:user_list' %}" class="block py-2 text-white/80 hover:text-white">Users</a>
           <a href="{% url 'superadmin:subscription_list' %}" class="block py-2 text-white/80 hover:text-white">Subscriptions</a>
           <a href="{% url 'superadmin:client_finder' %}" class="block py-2 text-white/80 hover:text-white">Εύρεση Πελατών</a>
+          <a href="{% url 'superadmin:outreach_history' %}" class="block py-2 text-white/80 hover:text-white">Ιστορικό Αποστολών</a>
           <a href="{% url 'superadmin:radar_list' %}" class="block py-2 text-white/80 hover:text-white">Radars</a>
           <a href="{% url 'superadmin:lead_list' %}" class="block py-2 text-white/80 hover:text-white">Leads</a>
           <a href="{% url 'superadmin:pipeline_overview' %}" class="block py-2 text-white/80 hover:text-white">GEMI Pipeline</a>

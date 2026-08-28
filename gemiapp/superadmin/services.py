@@ -243,8 +243,14 @@ def get_chart_data_last_30_days():
 # event type is still visible somewhere instead of vanishing from the count.
 _ENGAGEMENT_BUCKETS = {
     "delivered": "delivered",
+    # Brevo sends both "opened" (fires on every open, including re-opens by the same person)
+    # and "uniqueOpened"/"unique_opened" (fires once per recipient) for the SAME underlying
+    # open action -- bucketing both into "opened" would double-count a single real open.
+    # "opened" is the one kept: a raw activity count is the more useful vanity metric here,
+    # and it's what most Brevo accounts have enabled. The unique variant is intentionally left
+    # unmapped (falls into "other") rather than merged in, so this can never over-count --
+    # under-counting is the safer failure mode for a display-only metric.
     "opened": "opened",
-    "uniqueOpened": "opened",
     "click": "clicked",
     "unsubscribed": "unsubscribed",
     "hardBounce": "bounced",

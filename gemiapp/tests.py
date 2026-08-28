@@ -897,9 +897,9 @@ class SuperadminTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertContains(res, "Νέα ΑΕ")
         self.assertNotContains(res, "Χωρίς Email ΟΕ")
-        # Already contacted: absent from the candidate checkboxes, but shows in Sent History.
+        # Already contacted: absent from the candidate checkboxes (history lives on its own
+        # page now -- see OutreachHistoryTests).
         self.assertNotContains(res, f'value="{already.id}"')
-        self.assertContains(res, "Ήδη Επικοινωνημένη")
 
         # Test send: goes to an arbitrary address, records nothing.
         res_test = self.client.post(reverse("superadmin:client_finder_test"), {"email": "tester@example.com"})
@@ -950,6 +950,65 @@ class SuperadminTests(TestCase):
             "mode": "all_filtered",
         })
         self.assertEqual(len(mail.outbox), 0)
+
+    def test_outreach_history_lives_on_its_own_page(self):
+        from datetime import date
+        from .models import Company, CompanyActivity, CompanyOutreach
+
+        low_engagement = Company.objects.create(
+            gemi_number="900101", name="Χαμηλό Engagement ΑΕ", incorporation_date=date.today(), email="low@a.gr",
+        )
+        high_engagement = Company.objects.create(
+            gemi_number="900102", name="Υψηλό Engagement ΑΕ", incorporation_date=date.today(), email="high@b.gr",
+        )
+        low_out = CompanyOutreach.objects.create(company=low_engagement, status="sent", sent_to="low@a.gr")
+        high_out = CompanyOutreach.objects.create(company=high_engagement, status="sent", sent_to="high@b.gr")
+        EmailEngagementEvent.objects.create(event_type="click", email="high@b.gr", tag=f"outreach:{high_engagement.id}", payload={})
+        EmailEngagementEvent.objects.create(event_type="click", email="high@b.gr", tag=f"outreach:{high_engagement.id}", payload={})
+        EmailEngagementEvent.objects.create(event_type="click", email="low@a.gr", tag=f"outreach:{low_engagement.id}", payload={})
+
+        CompanyActivity.objects.create(company=high_engagement, code="47.71", description="Λιανικό ένδυσης")
+
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+
+        # The candidate-finder page no longer shows sent history.
+        res_finder = self.client.get(reverse("superadmin:client_finder"))
+        self.assertNotContains(res_finder, "Χαμηλό Engagement ΑΕ")
+        self.assertContains(res_finder, "Ιστορικό Αποστολών")  # the link to the new page
+
+        # The new page shows it instead, with engagement counts.
+        res_history = self.client.get(reverse("superadmin:outreach_history"))
+        self.assertEqual(res_history.status_code, 200)
+        self.assertContains(res_history, "Χαμηλό Engagement ΑΕ")
+        self.assertContains(res_history, "Υψηλό Engagement ΑΕ")
+
+        # Sort by clicks: the higher-engagement row comes first.
+        res_sorted = self.client.get(reverse("superadmin:outreach_history"), {"sort": "clicks"})
+        body = res_sorted.content.decode()
+        self.assertLess(body.index("Υψηλό Engagement ΑΕ"), body.index("Χαμηλό Engagement ΑΕ"))
+
+        # ΚΑΔ filter narrows to the matching company only.
+        res_kad = self.client.get(reverse("superadmin:outreach_history"), {"hkad": "47"})
+        self.assertContains(res_kad, "Υψηλό Engagement ΑΕ")
+        self.assertNotContains(res_kad, "Χαμηλό Engagement ΑΕ")
+
+    def test_client_finder_candidate_search_filters_by_kad(self):
+        from datetime import date
+        from .models import ActivityCode, Company, CompanyActivity
+
+        matching = Company.objects.create(
+            gemi_number="900103", name="ΚΑΔ Ταιριάζει", incorporation_date=date.today(), email="m@a.gr",
+        )
+        CompanyActivity.objects.create(company=matching, code="47.71", description="Λιανικό ένδυσης")
+        other = Company.objects.create(
+            gemi_number="900104", name="ΚΑΔ Δεν Ταιριάζει", incorporation_date=date.today(), email="o@a.gr",
+        )
+        CompanyActivity.objects.create(company=other, code="62.01", description="Προγραμματισμός")
+
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        res = self.client.get(reverse("superadmin:client_finder"), {"kad": "47"})
+        self.assertContains(res, "ΚΑΔ Ταιριάζει")
+        self.assertNotContains(res, "ΚΑΔ Δεν Ταιριάζει")
 
     def test_intraday_pipeline_only_notifies_enterprise_users(self):
         from gemiapp.services import send_digests

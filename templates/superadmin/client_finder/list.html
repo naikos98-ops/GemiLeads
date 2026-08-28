@@ -44,9 +44,15 @@
     </div>
   </div>
 
+  <div class="flex justify-end">
+    <a href="{% url 'superadmin:outreach_history' %}" class="rounded-xl border border-navy-900/10 bg-white px-4 py-2.5 text-sm font-bold text-navy-700 hover:bg-sand-100 transition">
+      Ιστορικό Αποστολών & Engagement →
+    </a>
+  </div>
+
   <!-- Filters -->
   <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-    <form method="get" class="grid gap-4 md:grid-cols-4">
+    <form method="get" class="grid gap-4 md:grid-cols-5">
       <div>
         <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Αναζήτηση</label>
         <input type="text" name="q" value="{{ search }}" placeholder="Επωνυμία, ΓΕΜΗ, email..." class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
@@ -66,10 +72,14 @@
         </select>
       </div>
       <div>
+        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">ΚΑΔ</label>
+        <input type="text" name="kad" value="{{ kad_filter }}" placeholder="π.χ. 47" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+      </div>
+      <div>
         <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Σύσταση από</label>
         <input type="date" name="since" value="{{ since_filter }}" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
       </div>
-      <div class="flex items-end gap-2 md:col-span-4">
+      <div class="flex items-end gap-2 md:col-span-5">
         <button class="rounded-xl bg-navy-950 px-6 py-2.5 font-bold text-white text-sm hover:bg-navy-800 transition">Φιλτράρισμα</button>
         <a href="{% url 'superadmin:client_finder' %}" class="rounded-xl border border-navy-900/10 px-4 py-2.5 font-bold text-sm hover:bg-sand-100 transition">Καθαρισμός</a>
       </div>
@@ -83,6 +93,7 @@
     <input type="hidden" name="prefecture" value="{{ prefecture_filter }}">
     <input type="hidden" name="legal_type" value="{{ legal_type_filter }}">
     <input type="hidden" name="since" value="{{ since_filter }}">
+    <input type="hidden" name="kad" value="{{ kad_filter }}">
     <input type="hidden" name="mode" value="selected" id="sendMode">
 
     <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
@@ -142,104 +153,16 @@
         <span>Σελίδα {{ page_obj.number }} από {{ page_obj.paginator.num_pages }}</span>
         <div class="flex gap-2">
           {% if page_obj.has_previous %}
-          <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&prefecture={{ prefecture_filter }}&legal_type={{ legal_type_filter }}&since={{ since_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
+          <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&prefecture={{ prefecture_filter }}&legal_type={{ legal_type_filter }}&since={{ since_filter }}&kad={{ kad_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
           {% endif %}
           {% if page_obj.has_next %}
-          <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&prefecture={{ prefecture_filter }}&legal_type={{ legal_type_filter }}&since={{ since_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
+          <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&prefecture={{ prefecture_filter }}&legal_type={{ legal_type_filter }}&since={{ since_filter }}&kad={{ kad_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
           {% endif %}
         </div>
       </div>
       {% endif %}
     </div>
   </form>
-
-  <!-- Sent History -->
-  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-    <div class="mb-4 flex items-center justify-between">
-      <h3 class="font-extrabold text-navy-950">Ιστορικό Αποστολών</h3>
-    </div>
-
-    <form method="get" class="mb-4 grid gap-3 md:grid-cols-3">
-      <input type="hidden" name="q" value="{{ search }}">
-      <input type="hidden" name="prefecture" value="{{ prefecture_filter }}">
-      <input type="hidden" name="legal_type" value="{{ legal_type_filter }}">
-      <input type="hidden" name="since" value="{{ since_filter }}">
-      <input type="text" name="hq" value="{{ history_search }}" placeholder="Επωνυμία, ΓΕΜΗ, email..." class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
-      <select name="hstatus" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
-        <option value="">Όλα τα statuses</option>
-        <option value="sent" {% if history_status_filter == 'sent' %}selected{% endif %}>Εστάλη</option>
-        <option value="pending" {% if history_status_filter == 'pending' %}selected{% endif %}>Σε ουρά</option>
-        <option value="failed" {% if history_status_filter == 'failed' %}selected{% endif %}>Απέτυχε</option>
-      </select>
-      <button class="rounded-xl bg-navy-950 px-4 py-2.5 font-bold text-white text-sm hover:bg-navy-800 transition">Φιλτράρισμα</button>
-    </form>
-
-    <div class="overflow-x-auto">
-      <table class="w-full text-left text-sm">
-        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
-          <tr>
-            <th class="p-3">Επιχείρηση</th>
-            <th class="p-3">Προς</th>
-            <th class="p-3">Status</th>
-            <th class="p-3">Ημερομηνία</th>
-            <th class="p-3">Engagement (Brevo)</th>
-            <th class="p-3">Λεπτομέρειες</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-navy-900/5">
-          {% for o in history_page_obj %}
-          <tr class="hover:bg-sand-50/50 transition">
-            <td class="p-3">
-              <span class="block font-bold text-navy-950">{{ o.company.name }}</span>
-              <span class="text-xs text-navy-700/50">ΓΕΜΗ: {{ o.company.gemi_number }}</span>
-            </td>
-            <td class="p-3 text-xs text-navy-700/80 font-medium">{{ o.sent_to }}</td>
-            <td class="p-3">
-              <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-bold {% if o.status == 'sent' %}bg-emerald-50 text-emerald-700{% elif o.status == 'failed' %}bg-red-50 text-red-700{% else %}bg-sand-100 text-navy-700/60{% endif %}">
-                {{ o.get_status_display }}
-              </span>
-            </td>
-            <td class="p-3 text-xs text-navy-700/70">{{ o.created_at|date:"d/m/Y H:i:s" }}</td>
-            <td class="p-3 text-xs">
-              {% if o.status == 'sent' %}
-              <div class="flex flex-wrap gap-1.5">
-                <span class="inline-block rounded-full bg-blue-50 px-2 py-0.5 font-bold text-blue-700" title="Delivered">📬 {{ o.engagement.delivered|default:0 }}</span>
-                <span class="inline-block rounded-full bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700" title="Opened">👀 {{ o.engagement.opened|default:0 }}</span>
-                <span class="inline-block rounded-full bg-purple-50 px-2 py-0.5 font-bold text-purple-700" title="Clicked">🖱️ {{ o.engagement.clicked|default:0 }}</span>
-                {% if o.engagement.unsubscribed %}
-                <span class="inline-block rounded-full bg-red-50 px-2 py-0.5 font-bold text-red-700" title="Unsubscribed">🚫 {{ o.engagement.unsubscribed }}</span>
-                {% endif %}
-                {% if o.engagement.bounced %}
-                <span class="inline-block rounded-full bg-amber-50 px-2 py-0.5 font-bold text-amber-700" title="Bounced">⚠️ {{ o.engagement.bounced }}</span>
-                {% endif %}
-              </div>
-              {% else %}
-              <span class="text-navy-700/30">—</span>
-              {% endif %}
-            </td>
-            <td class="p-3 text-xs text-navy-700/60 font-mono">{{ o.error_message|default:"—" }}</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="6" class="p-8 text-center text-navy-700/50">Δεν υπάρχει ακόμη ιστορικό αποστολών.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    {% if history_page_obj.has_other_pages %}
-    <div class="mt-6 flex items-center justify-between border-t border-navy-900/5 pt-4 text-xs font-bold text-navy-700/60">
-      <span>Σελίδα {{ history_page_obj.number }} από {{ history_page_obj.paginator.num_pages }}</span>
-      <div class="flex gap-2">
-        {% if history_page_obj.has_previous %}
-        <a href="?history_page={{ history_page_obj.previous_page_number }}&hq={{ history_search }}&hstatus={{ history_status_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
-        {% endif %}
-        {% if history_page_obj.has_next %}
-        <a href="?history_page={{ history_page_obj.next_page_number }}&hq={{ history_search }}&hstatus={{ history_status_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
-  </div>
 </div>
 
 <script>
