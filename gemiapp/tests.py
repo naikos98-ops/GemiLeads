@@ -930,9 +930,10 @@ class SuperadminTests(TestCase):
         mail.outbox.clear()
 
         # The unsubscribe link opts the address out for good.
-        from django.core.signing import TimestampSigner
-        from gemiapp.views import OUTREACH_UNSUBSCRIBE_SALT
-        token = TimestampSigner(salt=OUTREACH_UNSUBSCRIBE_SALT).sign("later@co.gr")
+        from gemiapp.views import make_outreach_unsubscribe_token
+        token = make_outreach_unsubscribe_token("later@co.gr")
+        # Token must be fully URL-safe -- no "@"/"." that a CDN would mangle in the path.
+        self.assertNotIn("@", token)
         res_unsub = self.client.get(reverse("outreach_unsubscribe", kwargs={"token": token}))
         self.assertEqual(res_unsub.status_code, 200)
         from gemiapp.models import OutreachSuppression
@@ -2560,6 +2561,33 @@ class OutreachEngagementTests(TestCase):
         message = self.build_email(self.company)
         self.assertEqual(message.extra_headers.get("X-Mailin-Tag"), f"outreach:{self.company.pk}")
 
+    def test_unsubscribe_token_is_url_safe_and_round_trips(self):
+        from gemiapp.models import OutreachSuppression
+        from gemiapp.views import make_outreach_unsubscribe_token
+
+        token = make_outreach_unsubscribe_token("E.Karathodorou@Zeya.com")
+        self.assertNotIn("@", token)
+        self.assertNotIn(".", token)
+        res = self.client.get(reverse("outreach_unsubscribe", kwargs={"token": token}))
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(OutreachSuppression.is_suppressed("e.karathodorou@zeya.com"))
+
+    def test_legacy_bare_signed_unsubscribe_token_still_works(self):
+        """Links in already-delivered emails carry the old bare TimestampSigner output."""
+        from django.core.signing import TimestampSigner
+        from gemiapp.models import OutreachSuppression
+        from gemiapp.views import OUTREACH_UNSUBSCRIBE_SALT
+
+        legacy = TimestampSigner(salt=OUTREACH_UNSUBSCRIBE_SALT).sign("old@co.gr")
+        res = self.client.get(reverse("outreach_unsubscribe", kwargs={"token": legacy}))
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(OutreachSuppression.is_suppressed("old@co.gr"))
+
+    def test_tampered_unsubscribe_token_is_rejected(self):
+        res = self.client.get(reverse("outreach_unsubscribe", kwargs={"token": "not-a-real-token"}))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "άκυρος")
+
     def test_test_send_on_an_unsaved_company_has_no_tag(self):
         """send_outreach_test_email builds the email against an in-memory, unsaved Company (no
         pk, no CompanyOutreach row could ever exist to match a tag against)."""
@@ -2596,6 +2624,59 @@ class OutreachEngagementTests(TestCase):
         EmailEngagementEvent.objects.create(event_type="soft_bounce", email="a@tagtest.gr", tag=tag, payload={})
         (annotated,) = self.attach([outreach])
         self.assertEqual(annotated.engagement.get("bounced"), 2)
+
+
+class OutreachEngagementDetailTests(TestCase):
+    """The history page must show WHICH url each click hit and WHO opted out -- the same
+    breakdown Brevo's own activity log gives, plus the app's own OutreachSuppression table."""
+
+    def setUp(self):
+        from gemiapp.models import Company, CompanyOutreach, OutreachSuppression
+        from gemiapp.superadmin.services import attach_outreach_engagement_detail
+        self.Company = Company
+        self.CompanyOutreach = CompanyOutreach
+        self.OutreachSuppression = OutreachSuppression
+        self.attach = attach_outreach_engagement_detail
+        self.company = Company.objects.create(
+            gemi_number="900020", name="Detail ΑΕ", incorporation_date=date(2026, 8, 1), email="d@detail.gr",
+        )
+        self.outreach = CompanyOutreach.objects.create(
+            company=self.company, status="sent", sent_to="d@detail.gr",
+        )
+        self.tag = f"outreach:{self.company.id}"
+
+    def _click(self, url, key="URL"):
+        EmailEngagementEvent.objects.create(
+            event_type="click", email="d@detail.gr", tag=self.tag, payload={key: url},
+        )
+
+    def test_clicks_are_grouped_by_url_with_counts(self):
+        self._click("https://gemileads.gr/signup")
+        self._click("https://gemileads.gr/signup")
+        self._click("https://gemileads.gr/pricing")
+        (row,) = self.attach([self.outreach])
+        clicks = row.engagement_detail["clicks"]
+        self.assertEqual(clicks[0], {"url": "https://gemileads.gr/signup", "count": 2, "last_at": clicks[0]["last_at"]})
+        self.assertEqual(clicks[1]["url"], "https://gemileads.gr/pricing")
+        self.assertEqual(row.engagement.get("clicked"), 3)
+
+    def test_click_url_read_from_alternative_payload_keys(self):
+        self._click("https://x.gr/a", key="link")
+        (row,) = self.attach([self.outreach])
+        self.assertEqual(row.engagement_detail["clicks"][0]["url"], "https://x.gr/a")
+
+    def test_app_side_suppression_shows_as_an_unsubscribe(self):
+        self.OutreachSuppression.objects.create(email="d@detail.gr")
+        (row,) = self.attach([self.outreach])
+        self.assertEqual([u["email"] for u in row.engagement_detail["unsubscribes"]], ["d@detail.gr"])
+        self.assertEqual(row.engagement.get("unsubscribed"), 1)
+
+    def test_brevo_unsubscribed_event_is_also_listed(self):
+        EmailEngagementEvent.objects.create(
+            event_type="unsubscribed", email="d@detail.gr", tag=self.tag, payload={"email": "d@detail.gr"},
+        )
+        (row,) = self.attach([self.outreach])
+        self.assertEqual(len(row.engagement_detail["unsubscribes"]), 1)
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")

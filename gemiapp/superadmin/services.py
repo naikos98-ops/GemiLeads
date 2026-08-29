@@ -311,6 +311,95 @@ def attach_outreach_engagement_stats(outreach_rows):
     return _attach_engagement_stats(outreach_rows, lambda o: f"outreach:{o.company_id}")
 
 
+# Brevo puts the clicked link under different keys depending on the webhook flavour
+# (transactional vs marketing) and account age; check them in order.
+_BREVO_CLICK_URL_KEYS = ("URL", "url", "link", "Link")
+_BREVO_EVENT_TS_KEYS = ("date", "ts_event", "ts", "date_event")
+
+
+def _brevo_click_url(payload):
+    for key in _BREVO_CLICK_URL_KEYS:
+        val = payload.get(key)
+        if val:
+            return str(val)
+    return "(άγνωστο URL)"
+
+
+def _brevo_event_ts(payload):
+    for key in _BREVO_EVENT_TS_KEYS:
+        val = payload.get(key)
+        if val:
+            return str(val)
+    return ""
+
+
+def attach_outreach_engagement_detail(outreach_rows):
+    """Annotates each CompanyOutreach with `.engagement` (bucketed counts, as
+    attach_outreach_engagement_stats) AND `.engagement_detail`:
+
+        {
+          "unsubscribes": [{"email": ..., "at": ...}, ...],
+          "clicks":       [{"url": ..., "count": N, "last_at": ...}, ...],  # sorted, most clicks first
+        }
+
+    Reads the individual EmailEngagementEvent rows (not just aggregates) so the history page can
+    show *who* unsubscribed and *which URL* each click hit -- the same breakdown Brevo's own
+    activity log gives. One extra query for the whole page.
+    """
+    rows = _attach_engagement_stats(outreach_rows, lambda o: f"outreach:{o.company_id}")
+    tag_by_pk = {o.pk: f"outreach:{o.company_id}" for o in rows}
+    tags = list(tag_by_pk.values())
+
+    # The outreach email's unsubscribe link goes through our own outreach_unsubscribe view
+    # (-> OutreachSuppression), NOT Brevo's list-unsubscribe -- so that table, keyed by the
+    # normalised recipient address, is the real "who opted out" source, not a Brevo event.
+    sent_addrs = {OutreachSuppression.normalize(o.sent_to) for o in rows if o.sent_to}
+    suppressed_at = {}
+    if sent_addrs:
+        suppressed_at = dict(
+            OutreachSuppression.objects.filter(email__in=sent_addrs)
+            .values_list("email", "created_at")
+        )
+
+    detail_by_tag = {}
+    if tags:
+        events = EmailEngagementEvent.objects.filter(
+            tag__in=tags, event_type__in=("click", "unsubscribed"),
+        ).order_by("received_at").values("tag", "event_type", "email", "payload", "received_at")
+
+        for ev in events:
+            d = detail_by_tag.setdefault(ev["tag"], {"unsubscribes": [], "_clicks": {}})
+            payload = ev["payload"] or {}
+            when = _brevo_event_ts(payload) or ev["received_at"].strftime("%Y-%m-%d %H:%M")
+            if ev["event_type"] == "unsubscribed":
+                d["unsubscribes"].append({"email": ev["email"] or payload.get("email", ""), "at": when})
+            else:  # click
+                url = _brevo_click_url(payload)
+                slot = d["_clicks"].setdefault(url, {"url": url, "count": 0, "last_at": when})
+                slot["count"] += 1
+                slot["last_at"] = when
+
+    for o in rows:
+        d = detail_by_tag.get(tag_by_pk[o.pk], {"unsubscribes": [], "_clicks": {}})
+        clicks = sorted(d["_clicks"].values(), key=lambda c: c["count"], reverse=True)
+
+        unsubscribes = list(d["unsubscribes"])
+        addr = OutreachSuppression.normalize(o.sent_to) if o.sent_to else ""
+        if addr in suppressed_at:
+            when = suppressed_at[addr]
+            unsubscribes.append({
+                "email": o.sent_to,
+                "at": when.strftime("%Y-%m-%d %H:%M") if when else "",
+            })
+
+        o.engagement_detail = {"unsubscribes": unsubscribes, "clicks": clicks}
+        # Keep the badge honest: OutreachSuppression opt-outs never produced a Brevo
+        # "unsubscribed" event, so the bucket count would otherwise show 0 for them.
+        if addr in suppressed_at and not o.engagement.get("unsubscribed"):
+            o.engagement = {**o.engagement, "unsubscribed": 1}
+    return rows
+
+
 def grant_complimentary_access(admin_user, target_user, tier, until_datetime=None):
     """
     Grants complimentary Pro or Business access to a user without modifying Stripe state.
@@ -432,20 +521,19 @@ def build_outreach_email(company, to_email=None):
     ``to_email`` overrides the recipient (used for test sends); otherwise the company's
     own published address is used.
     """
-    from django.core.signing import TimestampSigner
     from django.urls import reverse
 
-    from ..views import OUTREACH_UNSUBSCRIBE_SALT
+    from ..views import make_outreach_unsubscribe_token
 
     recipient = to_email or company.email
-    signer = TimestampSigner(salt=OUTREACH_UNSUBSCRIBE_SALT)
     people = company.people if company.pk else []
+    unsub_token = make_outreach_unsubscribe_token(recipient)
     context = {
         "company": company,
         "contact_name": people[0]["name"] if people else "",
         "signup_url": f"{settings.BASE_URL}{reverse('signup')}",
         "site_url": settings.BASE_URL,
-        "unsubscribe_url": f"{settings.BASE_URL}{reverse('outreach_unsubscribe', kwargs={'token': signer.sign(recipient)})}",
+        "unsubscribe_url": f"{settings.BASE_URL}{reverse('outreach_unsubscribe', kwargs={'token': unsub_token})}",
     }
     # No tag on a test send (company.pk is None for the in-memory representative company used
     # by send_outreach_test_email) -- there is no CompanyOutreach row to ever match it against.

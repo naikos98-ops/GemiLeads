@@ -7,9 +7,9 @@
 <div class="space-y-6">
 
   <div class="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 text-xs text-navy-700/70">
-    Το Brevo engagement tracking (delivered/opened/click/unsubscribed) ενεργοποιήθηκε πρόσφατα.
-    Αποστολές που έγιναν πριν από αυτό δεν έχουν engagement δεδομένα — δεν είναι bug, το Brevo
-    απλά δεν είχε πού να τα στείλει τη στιγμή εκείνη.
+    Engagement (Brevo): 📬 delivered · 👀 opened · 🖱️ clicked · 🚫 unsubscribed · ⚠️ bounced.
+    Πάτα «Ανάλυση» σε μια γραμμή για να δεις σε ποιο URL έγινε κάθε click και ποιοι έκαναν
+    απεγγραφή. Αποστολές πριν την ενεργοποίηση του tracking ενδέχεται να μην έχουν πλήρη δεδομένα.
   </div>
 
   <div class="flex justify-end">
@@ -80,6 +80,40 @@
                 <span class="inline-block rounded-full bg-amber-50 px-2 py-0.5 font-bold text-amber-700" title="Bounced">⚠️ {{ o.engagement.bounced }}</span>
                 {% endif %}
               </div>
+              {% if o.engagement_detail.clicks or o.engagement_detail.unsubscribes %}
+              <details class="mt-1.5">
+                <summary class="cursor-pointer text-[11px] font-bold text-blue-700 hover:underline">Ανάλυση ▾</summary>
+                <div class="mt-1.5 space-y-2 rounded-lg bg-sand-50 p-2">
+                  {% if o.engagement_detail.clicks %}
+                  <div>
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-navy-700/40">Clicks ανά URL</p>
+                    <ul class="mt-1 space-y-0.5">
+                      {% for c in o.engagement_detail.clicks %}
+                      <li class="flex items-baseline gap-1.5">
+                        <span class="font-bold text-purple-700">{{ c.count }}×</span>
+                        <a href="{{ c.url }}" target="_blank" rel="noopener" class="break-all font-mono text-[11px] text-navy-700/70 hover:text-blue-700 hover:underline">{{ c.url }}</a>
+                        <span class="whitespace-nowrap text-[10px] text-navy-700/40">{{ c.last_at }}</span>
+                      </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                  {% endif %}
+                  {% if o.engagement_detail.unsubscribes %}
+                  <div>
+                    <p class="text-[10px] font-bold uppercase tracking-wider text-navy-700/40">Απεγγραφές</p>
+                    <ul class="mt-1 space-y-0.5">
+                      {% for u in o.engagement_detail.unsubscribes %}
+                      <li class="flex items-baseline gap-1.5">
+                        <span class="font-medium text-red-700">{{ u.email|default:"(χωρίς email)" }}</span>
+                        <span class="whitespace-nowrap text-[10px] text-navy-700/40">{{ u.at }}</span>
+                      </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                  {% endif %}
+                </div>
+              </details>
+              {% endif %}
               {% else %}
               <span class="text-navy-700/30">—</span>
               {% endif %}

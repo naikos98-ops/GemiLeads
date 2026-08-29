@@ -18,6 +18,7 @@ from .forms import AdminUserCreateForm
 from .services import (
     OUTREACH_BATCH_LIMIT,
     attach_email_engagement_stats,
+    attach_outreach_engagement_detail,
     attach_outreach_engagement_stats,
     get_chart_data_last_30_days,
     get_saas_overview_metrics,
@@ -301,14 +302,18 @@ def outreach_history(request):
     sort = request.GET.get("sort", "recent")
     if sort in ("opens", "clicks"):
         bucket = "opened" if sort == "opens" else "clicked"
+        # Sort needs every row's counts; detail (per-URL clicks, unsubscriber emails) is only
+        # ever shown for the 25 on the visible page, so attach the cheap stats to the full set,
+        # then the full detail to just the page slice.
         rows = attach_outreach_engagement_stats(history_qs[:_OUTREACH_HISTORY_ENGAGEMENT_SORT_LIMIT])
         rows.sort(key=lambda o: o.engagement.get(bucket, 0), reverse=True)
         paginator = Paginator(rows, 25)
         page_obj = paginator.get_page(request.GET.get("history_page"))
+        page_obj.object_list = attach_outreach_engagement_detail(page_obj.object_list)
     else:
         paginator = Paginator(history_qs, 25)
         page_obj = paginator.get_page(request.GET.get("history_page"))
-        page_obj.object_list = attach_outreach_engagement_stats(page_obj.object_list)
+        page_obj.object_list = attach_outreach_engagement_detail(page_obj.object_list)
 
     return render(request, "superadmin/outreach_history/list.html", {
         "history_page_obj": page_obj,

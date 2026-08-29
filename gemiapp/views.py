@@ -1,4 +1,5 @@
 import csv
+import logging
 from datetime import timedelta
 from django.contrib import messages
 from django.contrib.auth import login
@@ -37,6 +38,8 @@ from .models import (
 )
 from .billing import PENDING_TIER_SESSION_KEY
 from .services import filter_companies_for_radar
+
+logger = logging.getLogger(__name__)
 
 
 # Anonymized, static sample rows for the public "δείγμα leads" section on the homepage. Not real
@@ -228,14 +231,44 @@ def unsubscribe(request, token):
 OUTREACH_UNSUBSCRIBE_SALT = "outreach-unsubscribe"
 
 
+def make_outreach_unsubscribe_token(email):
+    """Signed, fully URL-safe token for the outreach unsubscribe link.
+
+    The signed value is the raw recipient address, which contains "@" and "." -- and a bare
+    "@" in a URL path is mangled or rejected by some CDNs/proxies (it looks like userinfo),
+    which showed up as a blank page when the real link was clicked. Base64-wrapping the whole
+    signed string keeps the path segment to [A-Za-z0-9_=-] so it survives any hop.
+    """
+    signed = TimestampSigner(salt=OUTREACH_UNSUBSCRIBE_SALT).sign(email)
+    return urlsafe_base64_encode(force_bytes(signed))
+
+
 def outreach_unsubscribe(request, token):
     signer = TimestampSigner(salt=OUTREACH_UNSUBSCRIBE_SALT)
+
+    # New tokens are base64(signed). Fall back to treating the token as the bare signed
+    # string so links in already-delivered emails keep working.
+    candidates = []
     try:
-        email = signer.unsign(token, max_age=timedelta(days=365))
-    except (BadSignature, SignatureExpired):
+        candidates.append(force_str(urlsafe_base64_decode(token)))
+    except (ValueError, TypeError):
+        pass
+    candidates.append(token)
+
+    email = None
+    for candidate in candidates:
+        try:
+            email = signer.unsign(candidate, max_age=timedelta(days=365))
+            break
+        except (BadSignature, SignatureExpired):
+            continue
+
+    if email is None:
+        logger.warning("outreach_unsubscribe: unusable token (len=%s)", len(token or ""))
         return render(request, "unsubscribed.html", {"error": "Ο σύνδεσμος είναι άκυρος ή έχει λήξει."})
 
-    OutreachSuppression.objects.get_or_create(email=OutreachSuppression.normalize(email))
+    _, created = OutreachSuppression.objects.get_or_create(email=OutreachSuppression.normalize(email))
+    logger.info("outreach_unsubscribe: %s (%s)", email, "new" if created else "already suppressed")
     return render(request, "unsubscribed.html", {
         "message": "Η διεύθυνσή σας αφαιρέθηκε. Δεν θα λαμβάνετε άλλα ενημερωτικά emails από το Gemi Leads.",
     })
