@@ -170,6 +170,13 @@ EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "info@gemileads.gr")
 # Default recipient for the "Δοκιμαστική αποστολή" button on the Εύρεση Πελατών page.
 OUTREACH_TEST_EMAIL = os.getenv("OUTREACH_TEST_EMAIL", "naikos98@gmail.com")
 
+# Max cold-outreach emails per rolling 24h. Past the Brevo plan's daily quota the SMTP relay
+# accepts the message (250 OK) and silently drops it, so send() succeeds and the row would be
+# wrongly marked "sent". process_pending_outreach stops here and leaves the rest "pending"
+# for a follow-up run 24h later. Kept below the plan quota with headroom for digest emails,
+# which draw on the same quota.
+OUTREACH_DAILY_SEND_CAP = int(os.getenv("OUTREACH_DAILY_SEND_CAP", "250"))
+
 # Shared secret Brevo sends back with every outbound webhook call (Brevo's own "Token-based
 # authentication" option, not an HMAC signature) -- checked with a constant-time comparison in
 # gemiapp.email_tracking.brevo_webhook. Empty means the endpoint refuses every delivery, the

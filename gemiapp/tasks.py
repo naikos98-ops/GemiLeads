@@ -47,11 +47,31 @@ def send_company_outreach_task(company_ids):
     The web request only claims the rows (status="pending"); this worker does the SMTP
     round-trips, which are what used to time out the gunicorn worker.
     """
+    from django_q.tasks import schedule
+    from django_q.models import Schedule
+
     from gemiapp.superadmin.services import process_pending_outreach
 
-    sent, failed = process_pending_outreach(company_ids)
-    logger.info("Client outreach: %s sent, %s failed (of %s queued)", sent, failed, len(company_ids))
-    return {"sent": sent, "failed": failed}
+    sent, failed, skipped = process_pending_outreach(company_ids)
+    logger.info(
+        "Client outreach: %s sent, %s failed, %s skipped (daily cap) of %s queued",
+        sent, failed, skipped, len(company_ids),
+    )
+
+    if skipped:
+        # The rows are still "pending"; come back in 24h to drain them once the Brevo
+        # quota resets. ONCE schedules delete themselves after firing.
+        drain_name = f"outreach-drain-{min(company_ids)}-{max(company_ids)}"
+        Schedule.objects.filter(name=drain_name).delete()
+        schedule(
+            "gemiapp.tasks.send_company_outreach_task",
+            company_ids,
+            schedule_type=Schedule.ONCE,
+            next_run=timezone.now() + timedelta(hours=24, minutes=5),
+            name=drain_name,
+        )
+
+    return {"sent": sent, "failed": failed, "skipped": skipped}
 
 
 def run_intraday_pipeline_task():

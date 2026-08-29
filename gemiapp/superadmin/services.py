@@ -253,9 +253,18 @@ _ENGAGEMENT_BUCKETS = {
     "opened": "opened",
     "click": "clicked",
     "unsubscribed": "unsubscribed",
+    # Brevo's SMTP relay emits snake_case event names ("hard_bounce"); the transactional
+    # API emits camelCase ("hardBounce"). Map both so the source doesn't change the count.
     "hardBounce": "bounced",
+    "hard_bounce": "bounced",
     "softBounce": "bounced",
+    "soft_bounce": "bounced",
+    "blocked": "bounced",
     "spam": "spam",
+    # "request" fires once per accepted message -- the closest thing to "we handed it to
+    # Brevo". Kept separate from "delivered" (which fires only after the receiving MX
+    # accepts it) so the gap between the two stays visible.
+    "request": "sent",
 }
 
 
@@ -376,6 +385,22 @@ def toggle_user_active_state(admin_user, target_user, active_state):
 # The web request only claims rows and enqueues; a django-q worker does the sending.
 # The cap bounds how much one enqueue can hand a single worker.
 OUTREACH_BATCH_LIMIT = 500
+
+# Brevo's plan allows a fixed number of emails per rolling 24h. Past that limit the SMTP
+# relay still returns 250 OK and then silently drops the message, so send() succeeds and we
+# would wrongly mark the row "sent". Stop well below the real ceiling and leave the rest
+# "pending" for the next worker run. Every transactional email the app sends (digests
+# included) counts against the same quota, so this is deliberately conservative.
+OUTREACH_DAILY_SEND_CAP_DEFAULT = 250
+
+
+def _outreach_daily_send_cap():
+    return int(getattr(settings, "OUTREACH_DAILY_SEND_CAP", OUTREACH_DAILY_SEND_CAP_DEFAULT))
+
+
+def _outreach_sent_last_24h():
+    cutoff = timezone.now() - timedelta(hours=24)
+    return CompanyOutreach.objects.filter(status="sent", created_at__gte=cutoff).count()
 
 
 def uncontacted_companies_qs():
@@ -504,13 +529,18 @@ def queue_company_outreach(admin_user, company_ids):
 def process_pending_outreach(company_ids):
     """Send the email for each pending CompanyOutreach row. Runs in a django-q worker.
 
-    Returns (sent, failed). A suppressed address or a missing email marks the row failed
-    rather than deleting it, so the company is not re-queued and the reason is visible.
+    Returns (sent, failed, skipped). A suppressed address or a missing email marks the row
+    failed rather than deleting it, so the company is not re-queued and the reason is
+    visible. Rows left unsent because the daily Brevo quota (OUTREACH_DAILY_SEND_CAP) is
+    exhausted stay "pending" and are counted as skipped -- a later run sends them.
     """
-    sent = failed = 0
+    sent = failed = skipped = 0
     rows = CompanyOutreach.objects.filter(
         company_id__in=company_ids, status="pending"
     ).select_related("company")
+
+    # Rows sent earlier today (this run or a previous one) already spent quota.
+    budget = _outreach_daily_send_cap() - _outreach_sent_last_24h()
 
     for row in rows:
         company = row.company
@@ -520,12 +550,17 @@ def process_pending_outreach(company_ids):
             row.save(update_fields=["status", "error_message"])
             failed += 1
             continue
+        if budget <= 0:
+            # Leave "pending" -- the next worker run picks it up once quota resets.
+            skipped += 1
+            continue
         try:
             build_outreach_email(company).send()
             row.status = "sent"
             row.error_message = ""
             row.save(update_fields=["status", "error_message"])
             sent += 1
+            budget -= 1
         except Exception as exc:
             logger.exception("Failed sending outreach to company %s", company.pk)
             row.status = "failed"
@@ -533,7 +568,7 @@ def process_pending_outreach(company_ids):
             row.save(update_fields=["status", "error_message"])
             failed += 1
 
-    return sent, failed
+    return sent, failed, skipped
 
 
 def get_system_health():

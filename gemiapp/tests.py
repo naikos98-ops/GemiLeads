@@ -2480,6 +2480,14 @@ class BrevoWebhookTests(TestCase):
         event = EmailEngagementEvent.objects.get()
         self.assertEqual(event.tag, "")
 
+    def test_json_array_wrapped_tag_from_smtp_relay_is_unwrapped(self):
+        """Brevo's SMTP relay wraps the X-Mailin-Tag value in a JSON array before the webhook
+        sees it: a message sent with "outreach:17" arrives as the literal '["outreach:17"]'.
+        It must be stored as the bare tag so the dashboard's tag__in lookup matches."""
+        payload = {"event": "delivered", "email": "a@example.com", "tag": '["outreach:17"]'}
+        self._post("test-token-123", json.dumps(payload).encode())
+        self.assertEqual(EmailEngagementEvent.objects.get().tag, "outreach:17")
+
 
 class EmailEngagementStatsTests(TestCase):
     """Aggregation must key strictly on the (user, date, frequency) tag -- an event tagged for
@@ -2580,6 +2588,55 @@ class OutreachEngagementTests(TestCase):
 
         (annotated,) = self.attach([outreach])
         self.assertEqual(annotated.engagement, {})
+
+    def test_snake_case_bounce_events_from_smtp_relay_are_bucketed(self):
+        outreach = self.CompanyOutreach.objects.create(company=self.company, status="sent", sent_to="a@tagtest.gr")
+        tag = f"outreach:{self.company.id}"
+        EmailEngagementEvent.objects.create(event_type="hard_bounce", email="a@tagtest.gr", tag=tag, payload={})
+        EmailEngagementEvent.objects.create(event_type="soft_bounce", email="a@tagtest.gr", tag=tag, payload={})
+        (annotated,) = self.attach([outreach])
+        self.assertEqual(annotated.engagement.get("bounced"), 2)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class OutreachDailyCapTests(TestCase):
+    """Past the Brevo daily quota the SMTP relay returns 250 OK and drops the message, so
+    send() succeeds and the row would be wrongly marked "sent". process_pending_outreach
+    must stop at OUTREACH_DAILY_SEND_CAP and leave the rest "pending"."""
+
+    def setUp(self):
+        from gemiapp.models import Company, CompanyOutreach
+        from gemiapp.superadmin.services import process_pending_outreach
+        self.Company = Company
+        self.CompanyOutreach = CompanyOutreach
+        self.process = process_pending_outreach
+        self.companies = [
+            Company.objects.create(
+                gemi_number=f"9100{i:02d}", name=f"Cap {i} ΑΕ",
+                incorporation_date=date(2026, 8, 1), email=f"cap{i}@x.gr",
+            )
+            for i in range(5)
+        ]
+        for c in self.companies:
+            CompanyOutreach.objects.create(company=c, status="pending", sent_to=c.email)
+
+    @override_settings(OUTREACH_DAILY_SEND_CAP=3)
+    def test_stops_at_cap_and_leaves_the_rest_pending(self):
+        ids = [c.id for c in self.companies]
+        sent, failed, skipped = self.process(ids)
+        self.assertEqual((sent, failed, skipped), (3, 0, 2))
+        self.assertEqual(self.CompanyOutreach.objects.filter(status="sent").count(), 3)
+        self.assertEqual(self.CompanyOutreach.objects.filter(status="pending").count(), 2)
+        self.assertEqual(len(mail.outbox), 3)
+
+    @override_settings(OUTREACH_DAILY_SEND_CAP=3)
+    def test_earlier_sends_in_the_window_count_against_the_cap(self):
+        # Two already sent in the last 24h -> only one slot left this run.
+        for c in self.companies[:2]:
+            self.CompanyOutreach.objects.filter(company=c).update(status="sent")
+        remaining = [c.id for c in self.companies[2:]]
+        sent, failed, skipped = self.process(remaining)
+        self.assertEqual((sent, failed, skipped), (1, 0, 2))
 
 
 class SchedulerHealthCheckTests(TestCase):

@@ -32,16 +32,37 @@ def _token_is_valid(token):
     return hmac.compare_digest(token.encode("utf-8"), configured.encode("utf-8"))
 
 
+def _normalize_tag(raw):
+    """Return a single bare tag string from whatever Brevo sent.
+
+    The SMTP relay wraps the ``X-Mailin-Tag`` header value in a JSON array before it
+    reaches the webhook, so a message sent with tag ``outreach:17`` arrives as the
+    literal string ``'["outreach:17"]'`` in the payload's ``tag`` field. Unwrap that
+    (and the transactional ``tags`` list form) down to ``outreach:17`` so it matches
+    the bare tag the superadmin dashboard looks it up by.
+    """
+    if isinstance(raw, list):
+        return (raw[0] or "") if raw else ""
+    if not raw:
+        return ""
+    text = str(raw).strip()
+    if text.startswith("["):
+        try:
+            parsed = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            return text
+        if isinstance(parsed, list):
+            return (parsed[0] or "") if parsed else ""
+        return str(parsed)
+    return text
+
+
 def _record_event(item):
     if not isinstance(item, dict):
         return
     event_type = item.get("event", "")
     email = item.get("email", "") or ""
-    tag = item.get("tag") or ""
-    if not tag:
-        tags = item.get("tags")
-        if isinstance(tags, list) and tags:
-            tag = tags[0] or ""
+    tag = _normalize_tag(item.get("tag")) or _normalize_tag(item.get("tags"))
     EmailEngagementEvent.objects.create(
         event_type=event_type, email=email, tag=tag, payload=item,
     )
