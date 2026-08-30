@@ -489,7 +489,9 @@ def _outreach_daily_send_cap():
 
 def _outreach_sent_last_24h():
     cutoff = timezone.now() - timedelta(hours=24)
-    return CompanyOutreach.objects.filter(status="sent", created_at__gte=cutoff).count()
+    # Key on sent_at (when the mail left), not created_at (when the row was made): a row can be
+    # queued today for a company created weeks ago, or requeued long after its first attempt.
+    return CompanyOutreach.objects.filter(status="sent", sent_at__gte=cutoff).count()
 
 
 def uncontacted_companies_qs():
@@ -646,7 +648,8 @@ def process_pending_outreach(company_ids):
             build_outreach_email(company).send()
             row.status = "sent"
             row.error_message = ""
-            row.save(update_fields=["status", "error_message"])
+            row.sent_at = timezone.now()
+            row.save(update_fields=["status", "error_message", "sent_at"])
             sent += 1
             budget -= 1
         except Exception as exc:

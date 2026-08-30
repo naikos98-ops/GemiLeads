@@ -36,6 +36,8 @@ services:
         value: info@gemileads.gr
       - key: BREVO_WEBHOOK_TOKEN
         sync: false
+      - key: OUTREACH_DAILY_SEND_CAP
+        value: "250"
       - key: LEGAL_CONTROLLER_NAME
         sync: false
       - key: LEGAL_VAT

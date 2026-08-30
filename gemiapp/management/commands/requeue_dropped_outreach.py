@@ -79,6 +79,7 @@ class Command(BaseCommand):
             company_id__in=company_ids, status="sent"
         ).update(
             status="pending",
+            sent_at=None,
             error_message="Ξαναμπήκε σε ουρά: είχε μαρκαριστεί sent χωρίς παράδοση από Brevo.",
         )
         self.stdout.write(self.style.SUCCESS(f"{updated} rows → pending."))

@@ -494,15 +494,41 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
             body_text = render_to_string(txt_tmpl, context)
             body_html = render_to_string(html_tmpl, context)
             tag = digest_email_tag(user.id, target_date, frequency)
-            _send_digest_email(user, subject, body_text, body_html, tag)
 
             if frequency == "intraday" and subscription is not None:
+                # Intraday has no per-send DigestDelivery row to dedupe against (the unique
+                # constraint allows only one row per user per day, but the alert fires up to
+                # six times daily). Its only guard is subscription.last_sent_company_id -- and
+                # a timed-out task that django-q retries would otherwise read the stale value,
+                # rebuild the identical email and send it again (this is the "3 identical
+                # emails" bug). Make the check-and-advance atomic: lock the row, and only send
+                # if no concurrent/retried run has already moved the marker past what THIS
+                # run built its email from.
+                from .models import UserSubscription
+
                 all_sent_ids = [c.id for c in general_companies] + list(radar_company_ids)
-                if all_sent_ids:
-                    max_sent_id = max(all_sent_ids)
-                    if max_sent_id > last_sent_id:
-                        subscription.last_sent_company_id = max_sent_id
-                        subscription.save(update_fields=["last_sent_company_id"])
+                max_sent_id = max(all_sent_ids) if all_sent_ids else last_sent_id
+                with transaction.atomic():
+                    locked = (
+                        UserSubscription.objects.select_for_update()
+                        .filter(pk=subscription.pk)
+                        .first()
+                    )
+                    current_marker = (locked.last_sent_company_id or 0) if locked else 0
+                    if current_marker != last_sent_id:
+                        logger.info(
+                            "Intraday digest for %s already sent by a concurrent run "
+                            "(marker moved %s -> %s); skipping duplicate.",
+                            user.email, last_sent_id, current_marker,
+                        )
+                        skipped += 1
+                        continue
+                    _send_digest_email(user, subject, body_text, body_html, tag)
+                    if max_sent_id > current_marker:
+                        locked.last_sent_company_id = max_sent_id
+                        locked.save(update_fields=["last_sent_company_id"])
+            else:
+                _send_digest_email(user, subject, body_text, body_html, tag)
 
             DigestDelivery.objects.update_or_create(
                 user=user, digest_date=target_date, frequency=frequency,

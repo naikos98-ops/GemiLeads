@@ -490,6 +490,10 @@ class CompanyOutreach(models.Model):
     error_message = models.TextField(blank=True)
     sent_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="company_outreach")
     created_at = models.DateTimeField(auto_now_add=True)
+    # When the email actually went out. created_at is the row's birth (it can sit "pending" for
+    # a day, or be flipped back to "pending" by requeue_dropped_outreach long after creation),
+    # so the daily-cap accounting keys on this instead. Null while pending/failed.
+    sent_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

@@ -1,11 +1,27 @@
 import logging
 from datetime import timedelta
 
+from django.core.cache import cache
 from django.utils import timezone
 
 from gemiapp.services import import_for_date, send_digests
 
 logger = logging.getLogger(__name__)
+
+
+def _claim_pipeline_slot(name, ttl_seconds):
+    """Atomically claim a per-slot lock in the shared (database) cache.
+
+    Returns True for the one caller that got the slot, False for the rest. django-q's
+    scheduler is not safe to run in more than one process against the same database -- and
+    the web service runs the cluster on every instance via honcho, so scaling web to 2
+    instances meant two schedulers each firing the intraday cron, i.e. two identical digest
+    emails. This lock makes the pipeline body run once per slot no matter how many clusters
+    are live. cache.add() is atomic and only succeeds when the key is absent.
+    """
+    slot = timezone.now().strftime("%Y%m%d%H")
+    key = f"pipeline-slot:{name}:{slot}"
+    return cache.add(key, "1", ttl_seconds)
 
 
 def _pipeline_is_already_running(target_date):
@@ -26,6 +42,10 @@ def _pipeline_is_already_running(target_date):
 
 def run_daily_pipeline_task():
     try:
+        # 23h TTL: the slot key must outlive this run but be gone before tomorrow's slot.
+        if not _claim_pipeline_slot("daily", 23 * 3600):
+            logger.info("Daily pipeline slot already claimed by another cluster; skipping.")
+            return
         target = timezone.localdate() - timedelta(days=1)
         if _pipeline_is_already_running(target):
             logger.warning("Skipping daily pipeline: a run for %s is still in progress", target)
@@ -83,6 +103,12 @@ def run_intraday_pipeline_task():
     current_hour = timezone.localtime().hour
     if not 8 <= current_hour <= 23:
         logger.info("Skipping intraday task outside the 08:00-23:00 window (hour=%s)", current_hour)
+        return
+
+    # One slot = one clock hour. TTL 2h so a slow run can't collide with the next slot but the
+    # key is always gone well before the same slot comes round tomorrow.
+    if not _claim_pipeline_slot("intraday", 2 * 3600):
+        logger.info("Intraday pipeline slot already claimed by another cluster; skipping.")
         return
 
     try:

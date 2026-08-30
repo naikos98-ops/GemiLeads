@@ -158,6 +158,16 @@ def resolve_email_backend(debug: bool, override: str | None) -> str:
     return "django.core.mail.backends.console.EmailBackend" if debug else "django.core.mail.backends.smtp.EmailBackend"
 
 
+# Django encodes a non-ASCII email body as Content-Transfer-Encoding: 8bit (see
+# django.core.mail.message.utf8_charset). When a hop in the delivery path does not honour
+# 8BITMIME -- some Brevo SMTP-relay routes do not -- the raw UTF-8 bytes get their high bit
+# stripped and every Greek character arrives as "?". Django already ships a quoted-printable
+# UTF-8 charset (utf8_charset_qp) but only uses it for over-long lines; point the default at
+# it so every body is 7-bit-safe end to end. Must run before the first email is built.
+from django.core.mail import message as _dj_mail_message
+
+_dj_mail_message.utf8_charset = _dj_mail_message.utf8_charset_qp
+
 EMAIL_BACKEND = resolve_email_backend(DEBUG, os.getenv("EMAIL_BACKEND"))
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))

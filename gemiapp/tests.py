@@ -1361,6 +1361,12 @@ class DuplicateScheduleRepairTests(TestCase):
 class PipelineOverlapGuardTests(TestCase):
     """A second pipeline for the same date must not start while the first is still running."""
 
+    def setUp(self):
+        # DatabaseCache rows are raw SQL, not covered by the test transaction rollback -- a
+        # slot lock claimed by one test would otherwise leak into the next.
+        from django.core.cache import cache
+        cache.clear()
+
     def test_running_import_blocks_a_second_daily_pipeline(self):
         from gemiapp.tasks import _pipeline_is_already_running, run_daily_pipeline_task
 
@@ -1394,6 +1400,33 @@ class PipelineOverlapGuardTests(TestCase):
         from django.conf import settings
 
         self.assertGreater(settings.Q_CLUSTER["retry"], settings.Q_CLUSTER["timeout"])
+
+    def test_only_one_cluster_runs_the_intraday_pipeline_per_slot(self):
+        """The web service runs the django-q cluster on every instance (honcho), so at 2
+        instances two schedulers each fired the intraday cron -> two identical digest emails.
+        The shared-cache slot lock must let exactly one caller through per slot."""
+        from django.core.cache import cache
+        from gemiapp.tasks import run_intraday_pipeline_task
+
+        cache.clear()
+        eleven = timezone.localtime().replace(hour=11, minute=0, second=0, microsecond=0)
+        with patch("gemiapp.tasks.timezone.localtime", return_value=eleven), \
+             patch("gemiapp.tasks.import_for_date") as imported, \
+             patch("gemiapp.tasks.send_digests", return_value=(0, 0)):
+            run_intraday_pipeline_task()   # first cluster: claims the slot, runs
+            run_intraday_pipeline_task()   # second cluster, same slot: must no-op
+        self.assertEqual(imported.call_count, 1)
+
+    def test_only_one_cluster_runs_the_daily_pipeline_per_slot(self):
+        from django.core.cache import cache
+        from gemiapp.tasks import run_daily_pipeline_task
+
+        cache.clear()
+        with patch("gemiapp.tasks.import_for_date") as imported, \
+             patch("gemiapp.tasks.send_digests", return_value=(0, 0)):
+            run_daily_pipeline_task()
+            run_daily_pipeline_task()
+        self.assertEqual(imported.call_count, 1)
 
 
 class DigestRecipientTests(TestCase):
@@ -1710,6 +1743,36 @@ class IntradayIncrementalTests(TestCase):
         sent, _ = send_digests(self.today, frequency="daily")
         self.assertEqual(sent, 1)
         self.assertIn("ΗΜΕΡΗΣΙΑ ΜΑΤΣ ΙΚΕ", self._bodies())
+
+    def test_a_retried_run_reading_the_stale_pointer_does_not_resend(self):
+        """The "3 identical emails" bug: a timed-out intraday task that django-q retries
+        re-enters send_digests, reads the same last_sent_company_id, rebuilds the identical
+        email. The atomic marker check must recognise the marker already moved and skip."""
+        from gemiapp import services as _services
+
+        self._matched_company("800000000040", "ΜΙΑ ΦΟΡΑ ΙΚΕ")
+
+        real_send = _services.EmailMultiAlternatives.send
+
+        def send_then_simulate_concurrent_advance(self_msg):
+            real_send(self_msg)
+            # While this run was between "read marker" and "commit marker", another
+            # (already-finished) run advanced it. Only fire this once.
+            sub = UserSubscription.objects.get(user__email="inc@example.com")
+            if sub.last_sent_company_id == 0:
+                sub.last_sent_company_id = 999999
+                sub.save(update_fields=["last_sent_company_id"])
+
+        # First run: sends once, then a concurrent run bumps the marker underneath it.
+        with patch.object(_services.EmailMultiAlternatives, "send", send_then_simulate_concurrent_advance):
+            sent, _ = send_digests(self.today, frequency="intraday")
+        self.assertEqual(sent, 1)
+        mail.outbox.clear()
+
+        # The retry now sees marker=999999 != stale 0 it would compute from, and skips.
+        sent, skipped = send_digests(self.today, frequency="intraday")
+        self.assertEqual(sent, 0, "the retried run resent the identical email")
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_pointer_is_not_advanced_when_sending_fails(self):
         self._matched_company("800000000030", "ΑΠΟΤΥΧΙΑ ΙΚΕ")
@@ -2714,10 +2777,21 @@ class OutreachDailyCapTests(TestCase):
     def test_earlier_sends_in_the_window_count_against_the_cap(self):
         # Two already sent in the last 24h -> only one slot left this run.
         for c in self.companies[:2]:
-            self.CompanyOutreach.objects.filter(company=c).update(status="sent")
+            self.CompanyOutreach.objects.filter(company=c).update(
+                status="sent", sent_at=timezone.now()
+            )
         remaining = [c.id for c in self.companies[2:]]
         sent, failed, skipped = self.process(remaining)
         self.assertEqual((sent, failed, skipped), (1, 0, 2))
+
+    def test_old_sends_outside_the_window_do_not_count(self):
+        # A burst from three days ago (e.g. the pre-cap send) must not keep blocking today.
+        old = timezone.now() - timedelta(days=3)
+        for c in self.companies[:4]:
+            self.CompanyOutreach.objects.filter(company=c).update(status="sent", sent_at=old)
+        remaining = [c.id for c in self.companies[4:]]
+        sent, failed, skipped = self.process(remaining)
+        self.assertEqual((sent, failed, skipped), (1, 0, 0))
 
 
 class SchedulerHealthCheckTests(TestCase):
