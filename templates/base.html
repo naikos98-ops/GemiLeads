@@ -5,9 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#081a2c">
-  {# The site has one carefully-set light palette. Opting in here stops mobile browsers
-     (Chrome/Brave "auto dark", iOS Smart Invert) from force-darkening it, which turned the
-     cream background into a muddy mustard and broke contrast on the cards. #}
+  {# Opt in to the single light palette so mobile browsers' forced dark mode does not muddy it. #}
   <meta name="color-scheme" content="light">
   <link rel="icon" type="image/png" href="{% static 'images/favicon.png' %}">
   <title>{% block title %}Gemi Leads{% endblock %}</title>
