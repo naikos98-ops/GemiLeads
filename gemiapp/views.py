@@ -402,6 +402,16 @@ def dashboard(request):
         "latest_delivery": DigestDelivery.objects.filter(user=request.user).first(),
         "chart_data": list(Company.objects.filter(incorporation_date__gte=today - timedelta(days=6), incorporation_date__lte=today).values("incorporation_date").annotate(total=Count("id")).order_by("incorporation_date")),
         "selected_kads": _catalog_entries(selected_codes),
+        # The filter panel is collapsed by default (it's tall and rarely touched); open it
+        # when the current view is already filtered so the active criteria stay visible.
+        "filters_active": any([
+            request.GET.get("q", "").strip(),
+            request.GET.get("prefecture", "").strip(),
+            request.GET.get("legal_type", "").strip(),
+            request.GET.get("date_from", "").strip(),
+            request.GET.get("date_to", "").strip(),
+            selected_codes,
+        ]),
         "date_range_error": bool(date_from and date_to and date_from > date_to),
         "lead_count": user_leads.count(),
         "unread_lead_count": user_leads.filter(status="new").count(),

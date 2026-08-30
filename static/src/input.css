@@ -2,24 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
-/* The design is a light palette. color-scheme:light tells Safari/Chrome auto-dark to leave
-   it alone. Brave's "Force Dark" flag ignores that, and inverting the cream background gives
-   a muddy mustard. So for a dark-preference viewer we ship a real (minimal) dark surface set:
-   the page ground, the card ground and the muted text. It is deliberately small -- just
-   enough that the page reads as an intentional dark rather than a broken invert. */
+/* The design is a light palette everywhere. On PHONES ONLY (<= 900px), a dark-preference
+   viewer's browser force-darkens the cream background into a muddy mustard (Brave "Force
+   Dark", iOS Smart Invert), so there we ship a small real dark surface set instead. Desktop
+   is never touched -- it stays light regardless of OS theme. */
 :root { color-scheme: light; }
 
-@media (prefers-color-scheme: dark) {
+@media (max-width: 900px) and (prefers-color-scheme: dark) {
   :root { color-scheme: light dark; }
 
   /* Page + section grounds */
   body,
   .bg-sand-50 { background-color: #0a1a2b !important; }
   .bg-sand-100 { background-color: #0e2135 !important; }
+  .bg-sand-200 { background-color: #143050 !important; }
   .noise { background-image: none; }
 
   /* Cards / panels */
   .bg-white { background-color: #10263c !important; }
+
+  /* Gradients that fade into white (e.g. the Priority Alerts banner) go opaque dark,
+     otherwise the lightened body text sits on a white gradient stop and vanishes. */
+  [class*="bg-gradient-to-"][class*="to-white"],
+  [class*="from-blue-50"],
+  [class*="from-sand-50"] {
+    background-image: none !important;
+    background-color: #10263c !important;
+  }
 
   /* Borders that were dark-on-light become light-on-dark */
   [class*="border-navy-900/10"],
@@ -111,10 +120,14 @@
     margin: 0.75rem;
     background: #fff;
   }
-  @media (prefers-color-scheme: dark) {
-    .company-archive tbody tr { background: #10263c; border-color: rgb(255 255 255 / 0.08); }
-  }
   .company-archive tbody td { display: block; padding: 0 !important; }
+}
+
+@media (max-width: 640px) and (prefers-color-scheme: dark) {
+  .company-archive tbody tr { background: #10263c; border-color: rgb(255 255 255 / 0.08); }
+}
+
+@media (max-width: 640px) {
   /* Name row */
   .company-archive tbody td:nth-child(1) { margin-bottom: 0.5rem; }
   /* Date, legal type, region, status: inline label + value on their own lines */
