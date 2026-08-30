@@ -1,7 +1,7 @@
 import logging
 from datetime import timedelta
 
-from django.core.cache import cache
+from django.core.cache import caches
 from django.utils import timezone
 
 from gemiapp.services import import_for_date, send_digests
@@ -21,7 +21,9 @@ def _claim_pipeline_slot(name, ttl_seconds):
     """
     slot = timezone.now().strftime("%Y%m%d%H")
     key = f"pipeline-slot:{name}:{slot}"
-    return cache.add(key, "1", ttl_seconds)
+    # The shared (database) cache, not the per-process LocMem "default" -- the whole point is
+    # that a second cluster on another instance sees the claim.
+    return caches["shared"].add(key, "1", ttl_seconds)
 
 
 def _pipeline_is_already_running(target_date):

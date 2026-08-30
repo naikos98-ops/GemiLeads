@@ -47,6 +47,16 @@ class Company(models.Model):
     class Meta:
         ordering = ["-incorporation_date", "-gemi_number"]
         verbose_name_plural = "Επιχειρήσεις"
+        indexes = [
+            # Matches the default ordering exactly. The per-column indexes on
+            # incorporation_date and gemi_number don't compose for a two-key sort, so every
+            # unfiltered or date-filtered listing (home's [:6], the dashboard paginator) was
+            # doing a full sort. This makes those an index scan.
+            models.Index(
+                fields=["-incorporation_date", "-gemi_number"],
+                name="company_recent_order_idx",
+            ),
+        ]
 
     def save(self, *args, **kwargs):
         from .kad import normalize_kad_search

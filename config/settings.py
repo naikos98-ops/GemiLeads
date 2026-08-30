@@ -13,8 +13,10 @@ if SENTRY_DSN:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         integrations=[DjangoIntegration()],
-        traces_sample_rate=1.0,
-        send_default_pii=True
+        # 1.0 traced every request and every span within it -- measurable per-request latency
+        # on a small instance. 5% is plenty to spot a regression; override via env if needed.
+        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.05")),
+        send_default_pii=True,
     )
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-change-me-gemi-leads")
@@ -89,19 +91,28 @@ DATABASES = {
     )
 }
 
-# The default LocMemCache is per-process. Under gunicorn that silently multiplies every
-# rate limit by the worker count, because django-ratelimit counts attempts in the cache:
-# with N workers an attacker gets N times the allowance. The database cache is consistent
-# across workers, needs no extra service, and the volume here is a handful of counters and
-# three cached aggregates. Swap in Redis if write contention ever shows up; it will not at
-# this scale. Requires: python manage.py createcachetable (run by the deploy).
+# Two backends by workload:
+#  - "default" is LocMemCache: per-process and lost on restart, but a read is a dict lookup
+#    (~microseconds) instead of a ~300ms round-trip to an overloaded Postgres. Everything on
+#    the request path -- the site-wide company count, the dashboard filter lists, the home
+#    aggregates -- reads through here. A per-worker copy going slightly stale for up to the
+#    TTL is fine for marketing figures and filter dropdowns.
+#  - "shared" is the database cache: consistent across every worker and instance, which the
+#    rate limiter needs (an attacker must not get N times the allowance from N workers) and
+#    the pipeline slot lock needs (one cluster per cron slot). Slow, but off the hot path.
 CACHES = {
     "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "gemi-inproc",
+        "TIMEOUT": 900,
+        "OPTIONS": {"MAX_ENTRIES": 2000},
+    },
+    "shared": {
         "BACKEND": "django.core.cache.backends.db.DatabaseCache",
         "LOCATION": "gemi_cache",
-        "TIMEOUT": 300,
-        "OPTIONS": {"MAX_ENTRIES": 5000, "CULL_FREQUENCY": 3},
-    }
+        "TIMEOUT": 900,
+        "OPTIONS": {"MAX_ENTRIES": 50000, "CULL_FREQUENCY": 20},
+    },
 }
 
 # The only accounts allowed to hold superuser rights. Enforced on every superadmin
@@ -116,8 +127,10 @@ SUPERADMIN_EMAILS = [
     if email.strip()
 ]
 
-# Fail closed: if the cache is unreachable the limiter must refuse, never wave traffic through.
-RATELIMIT_USE_CACHE = "default"
+# The limiter must count across every worker and instance (LocMem would give an attacker N
+# times the allowance from N workers), so it uses the shared database cache. Fail closed: if
+# that cache is unreachable the limiter refuses rather than waving traffic through.
+RATELIMIT_USE_CACHE = "shared"
 RATELIMIT_FAIL_OPEN = False
 
 AUTH_PASSWORD_VALIDATORS = [

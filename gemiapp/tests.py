@@ -1362,10 +1362,10 @@ class PipelineOverlapGuardTests(TestCase):
     """A second pipeline for the same date must not start while the first is still running."""
 
     def setUp(self):
-        # DatabaseCache rows are raw SQL, not covered by the test transaction rollback -- a
-        # slot lock claimed by one test would otherwise leak into the next.
-        from django.core.cache import cache
-        cache.clear()
+        # The slot lock lives in the "shared" (database) cache; its rows are raw SQL, not
+        # covered by the test transaction rollback, so a claim from one test would leak.
+        from django.core.cache import caches
+        caches["shared"].clear()
 
     def test_running_import_blocks_a_second_daily_pipeline(self):
         from gemiapp.tasks import _pipeline_is_already_running, run_daily_pipeline_task
@@ -1405,10 +1405,10 @@ class PipelineOverlapGuardTests(TestCase):
         """The web service runs the django-q cluster on every instance (honcho), so at 2
         instances two schedulers each fired the intraday cron -> two identical digest emails.
         The shared-cache slot lock must let exactly one caller through per slot."""
-        from django.core.cache import cache
+        from django.core.cache import caches
         from gemiapp.tasks import run_intraday_pipeline_task
 
-        cache.clear()
+        caches["shared"].clear()
         eleven = timezone.localtime().replace(hour=11, minute=0, second=0, microsecond=0)
         with patch("gemiapp.tasks.timezone.localtime", return_value=eleven), \
              patch("gemiapp.tasks.import_for_date") as imported, \
@@ -1418,10 +1418,10 @@ class PipelineOverlapGuardTests(TestCase):
         self.assertEqual(imported.call_count, 1)
 
     def test_only_one_cluster_runs_the_daily_pipeline_per_slot(self):
-        from django.core.cache import cache
+        from django.core.cache import caches
         from gemiapp.tasks import run_daily_pipeline_task
 
-        cache.clear()
+        caches["shared"].clear()
         with patch("gemiapp.tasks.import_for_date") as imported, \
              patch("gemiapp.tasks.send_digests", return_value=(0, 0)):
             run_daily_pipeline_task()
@@ -2038,9 +2038,9 @@ class ResendVerificationRateLimitTests(TestCase):
     """The resend endpoint sends mail to an address the caller supplies, so it must stay limited."""
 
     def setUp(self):
-        from django.core.cache import cache
+        from django.core.cache import caches
 
-        cache.clear()
+        caches["shared"].clear()
 
     def test_repeated_requests_are_blocked(self):
         url = reverse("resend_verification")
@@ -2212,7 +2212,9 @@ class CachedAggregateTests(TestCase):
     """P1-2: an uncached COUNT(*) ran on every request site-wide."""
 
     def setUp(self):
-        cache.clear()
+        from django.core.cache import caches
+        caches["default"].clear()
+        caches["shared"].clear()
         Company.objects.bulk_create([
             Company(gemi_number=f"6660000{i:05d}", name=f"ΕΤΑΙΡΕΙΑ {i}",
                     incorporation_date=timezone.localdate(), prefecture="ΑΤΤΙΚΗΣ")
@@ -2234,9 +2236,9 @@ class CachedAggregateTests(TestCase):
         counts = [q for q in warm.captured_queries if "COUNT(" in q["sql"].upper().replace(" ", "")]
         self.assertEqual(counts, [], "a COUNT query still runs on a warm request")
 
-    def test_a_warm_request_replaces_scans_with_key_lookups(self):
-        """The database cache turns each hit into a query of its own. That is the trade:
-        three indexed single-key reads instead of three COUNT(*) over every company."""
+    def test_a_warm_request_runs_no_aggregate_and_no_cache_query(self):
+        """The hot-path aggregates read through the in-process LocMem cache, so a warm
+        request touches neither a COUNT(*) nor the cache table -- it is a dict lookup."""
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
 
@@ -2245,8 +2247,10 @@ class CachedAggregateTests(TestCase):
             self.client.get(reverse("home"))
 
         sql = [q["sql"] for q in warm.captured_queries]
-        self.assertTrue(any("gemi_cache" in q for q in sql), "cache was not consulted")
-        self.assertFalse([q for q in sql if "COUNT(" in q.upper().replace(" ", "")])
+        self.assertFalse([q for q in sql if "COUNT(" in q.upper().replace(" ", "")],
+                         "a COUNT query still runs on a warm request")
+        self.assertFalse([q for q in sql if "gemi_cache" in q],
+                         "the hot path should not hit the database cache table")
 
     def test_values_are_still_correct(self):
         response = self.client.get(reverse("home"))
@@ -3666,13 +3670,15 @@ class PersonSuppressionTests(TestCase):
 
 @override_settings(RATELIMIT_ENABLE=True)
 class RateLimitTests(TestCase):
-    """The limiter counts in the cache, so these also prove the cache is wired up."""
+    """The limiter counts in the shared cache, so these also prove it is wired up."""
 
     def setUp(self):
-        cache.clear()
+        from django.core.cache import caches
+        caches["shared"].clear()
 
     def tearDown(self):
-        cache.clear()
+        from django.core.cache import caches
+        caches["shared"].clear()
 
     def _post(self, url, data, times):
         return [self.client.post(url, data).status_code for _ in range(times)]
@@ -3705,29 +3711,33 @@ class RateLimitTests(TestCase):
 
 
 class CacheBackendTests(TestCase):
-    """The default LocMemCache is per-process, which silently multiplies every rate
-    limit by the gunicorn worker count."""
+    """Two backends: "default" is per-process LocMem for hot-path aggregates; "shared" is the
+    database cache the rate limiter and pipeline slot lock rely on for cross-worker consistency."""
 
-    def test_the_cache_is_not_per_process(self):
+    def test_the_shared_cache_is_not_per_process(self):
+        """The limiter counts here -- LocMem would give N workers N times the allowance."""
         from django.conf import settings
 
-        self.assertNotIn("locmem", settings.CACHES["default"]["BACKEND"].lower())
+        self.assertNotIn("locmem", settings.CACHES["shared"]["BACKEND"].lower())
 
-    def test_the_limiter_fails_closed(self):
-        """If the cache is unreachable the limiter must refuse, not wave traffic through."""
+    def test_the_limiter_uses_the_shared_cache_and_fails_closed(self):
         from django.conf import settings
 
         self.assertFalse(getattr(settings, "RATELIMIT_FAIL_OPEN", False))
-        self.assertEqual(getattr(settings, "RATELIMIT_USE_CACHE", None), "default")
+        self.assertEqual(getattr(settings, "RATELIMIT_USE_CACHE", None), "shared")
 
-    def test_the_cache_round_trips(self):
-        cache.set("probe", {"a": 1}, 30)
-        self.assertEqual(cache.get("probe"), {"a": 1})
-        cache.delete("probe")
-        self.assertIsNone(cache.get("probe"))
+    def test_both_caches_round_trip(self):
+        from django.core.cache import caches
 
-    def test_the_cache_table_exists(self):
-        """Without the table every cached view raises and the limiter locks everyone out."""
+        for name in ("default", "shared"):
+            c = caches[name]
+            c.set("probe", {"a": 1}, 30)
+            self.assertEqual(c.get("probe"), {"a": 1}, name)
+            c.delete("probe")
+            self.assertIsNone(c.get("probe"), name)
+
+    def test_the_shared_cache_table_exists(self):
+        """Without the table the limiter locks everyone out (fail-closed)."""
         from django.db import connection
 
         self.assertIn("gemi_cache", connection.introspection.table_names())
