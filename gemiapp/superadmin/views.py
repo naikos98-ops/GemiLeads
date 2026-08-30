@@ -17,6 +17,7 @@ from .decorators import is_superadmin, superadmin_required
 from .forms import AdminUserCreateForm
 from .services import (
     OUTREACH_BATCH_LIMIT,
+    _outreach_daily_send_cap,
     attach_email_engagement_stats,
     attach_outreach_engagement_detail,
     attach_outreach_engagement_stats,
@@ -259,6 +260,7 @@ def client_finder(request):
         "page_obj": page_obj,
         "total_matching": total_matching,
         "batch_limit": OUTREACH_BATCH_LIMIT,
+        "daily_send_cap": _outreach_daily_send_cap(),
         "sent_total": sent_total,
         "failed_total": failed_total,
         "pending_total": pending_total,

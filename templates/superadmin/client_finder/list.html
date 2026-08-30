@@ -99,7 +99,9 @@
     <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
       <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p class="text-sm font-bold text-navy-700/70">
-          Τα email μπαίνουν σε ουρά (έως <strong>{{ batch_limit }}</strong> ανά φορά) και στέλνονται στο παρασκήνιο. Προσωποποιημένο ανά επιχείρηση.
+          Μπαίνουν σε ουρά έως <strong>{{ batch_limit }}</strong> ανά ενέργεια και στέλνονται στο παρασκήνιο,
+          <strong>{{ daily_send_cap }}</strong> την ημέρα (όριο Brevo). Τα υπόλοιπα μένουν σε ουρά για την επόμενη μέρα.
+          Προσωποποιημένο ανά επιχείρηση.
         </p>
         <div class="flex gap-2">
           <button type="submit"

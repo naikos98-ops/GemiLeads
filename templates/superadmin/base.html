@@ -5,6 +5,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#071725">
+  {# Opt in to the light palette so mobile browsers' forced dark mode / iOS Smart Invert
+     don't muddy the background and wreck contrast on the panels. #}
+  <meta name="color-scheme" content="light">
   <title>{% block title %}Superadmin Control Center · Gemi Leads{% endblock %}</title>
   {# Same compiled Tailwind build as the public site. The old cdn.tailwindcss.com JIT #}
   {# script failed to load on some mobile networks / content blockers, leaving every #}

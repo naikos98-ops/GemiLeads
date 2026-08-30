@@ -494,6 +494,47 @@ def _outreach_sent_last_24h():
     return CompanyOutreach.objects.filter(status="sent", sent_at__gte=cutoff).count()
 
 
+def brevo_email_credits_remaining():
+    """Emails left in the Brevo account's current allowance, or None if it can't be read.
+
+    Needs settings.BREVO_API_KEY (a v3 "xkeysib-..." key, not the SMTP key). Returns None when
+    the key is unset or the call fails -- callers treat that as "unknown", never as "zero".
+    The SMTP relay accepts a message over-quota with 250 OK and then drops it, so this is the
+    only way to tell before sending that a send will be a no-op.
+    """
+    api_key = getattr(settings, "BREVO_API_KEY", "")
+    if not api_key:
+        return None
+    import json
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(
+        "https://api.brevo.com/v3/account",
+        headers={"api-key": api_key, "accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+    except (urllib.error.URLError, ValueError, TimeoutError):
+        logger.warning("Could not read Brevo account credits", exc_info=True)
+        return None
+
+    # plan is a list of blocks; the transactional email block carries "credits".
+    for block in data.get("plan", []):
+        if block.get("type") in ("free", "payAsYouGo", "sms", "reseller"):
+            continue
+        credits = block.get("credits")
+        if isinstance(credits, (int, float)):
+            return int(credits)
+    # Free plan reports the daily allowance under a "free" block.
+    for block in data.get("plan", []):
+        credits = block.get("credits")
+        if isinstance(credits, (int, float)):
+            return int(credits)
+    return None
+
+
 def uncontacted_companies_qs():
     """Companies eligible for a first outreach email.
 
@@ -560,6 +601,15 @@ def send_outreach_test_email(admin_user, to_email):
     """
     from datetime import date
 
+    # The SMTP relay returns 250 OK for a send that is over the daily quota and then drops it,
+    # so without this the button reports success for an email that never left Brevo.
+    credits = brevo_email_credits_remaining()
+    if credits is not None and credits <= 0:
+        raise ValueError(
+            "Το ημερήσιο όριο email του Brevo έχει εξαντληθεί (0 διαθέσιμα). "
+            "Το μήνυμα δεν θα σταλεί — περίμενε την ανανέωση του ορίου ή αναβάθμισε το πλάνο."
+        )
+
     sample = Company(
         gemi_number="000000000000",
         name="ΠΑΡΑΔΕΙΓΜΑ ΕΜΠΟΡΙΚΗ ΜΟΝΟΠΡΟΣΩΠΗ ΙΚΕ",
@@ -621,8 +671,14 @@ def process_pending_outreach(company_ids):
 
     Returns (sent, failed, skipped). A suppressed address or a missing email marks the row
     failed rather than deleting it, so the company is not re-queued and the reason is
-    visible. Rows left unsent because the daily Brevo quota (OUTREACH_DAILY_SEND_CAP) is
-    exhausted stay "pending" and are counted as skipped -- a later run sends them.
+    visible. Rows left unsent because the daily Brevo quota is exhausted stay "pending" and
+    are counted as skipped -- a later run sends them.
+
+    Budget is the smaller of our own OUTREACH_DAILY_SEND_CAP (which reserves headroom for
+    digests) and, when a BREVO_API_KEY is configured, Brevo's actual remaining allowance --
+    because that quota is shared with digests, earlier days, and manual sends, so our local
+    count alone can say "180 left" while Brevo is really at zero and every send is a silent
+    250-OK-then-drop.
     """
     sent = failed = skipped = 0
     rows = CompanyOutreach.objects.filter(
@@ -631,6 +687,11 @@ def process_pending_outreach(company_ids):
 
     # Rows sent earlier today (this run or a previous one) already spent quota.
     budget = _outreach_daily_send_cap() - _outreach_sent_last_24h()
+    brevo_left = brevo_email_credits_remaining()
+    if brevo_left is not None:
+        budget = min(budget, brevo_left)
+        if brevo_left <= 0:
+            logger.warning("Brevo quota exhausted; leaving %s outreach rows pending.", len(rows))
 
     for row in rows:
         company = row.company
@@ -690,7 +751,19 @@ def get_system_health():
     email_user = getattr(settings, "EMAIL_HOST_USER", "")
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "")
     if email_host and email_user and from_email:
-        checks["brevo_email"] = {"name": "Brevo Email / Sender", "status": "Operational", "details": f"Configured sender: {from_email}"}
+        details = f"Configured sender: {from_email}"
+        status = "Operational"
+        # If a v3 API key is available, surface the real remaining quota -- an exhausted
+        # allowance means every send is accepted (250 OK) and silently dropped.
+        credits = brevo_email_credits_remaining()
+        if credits is not None:
+            details += f" · {credits} email διαθέσιμα σήμερα"
+            if credits <= 0:
+                status = "Error"
+                details += " — ΕΞΑΝΤΛΗΘΗΚΕ, δεν φεύγει κανένα email"
+            elif credits < 50:
+                status = "Warning"
+        checks["brevo_email"] = {"name": "Brevo Email / Sender", "status": status, "details": details}
     else:
         checks["brevo_email"] = {"name": "Brevo Email / Sender", "status": "Warning", "details": "SMTP credentials incomplete."}
 

@@ -2813,6 +2813,21 @@ class OutreachDailyCapTests(TestCase):
         sent, failed, skipped = self.process(remaining)
         self.assertEqual((sent, failed, skipped), (1, 0, 0))
 
+    def test_brevos_real_remaining_quota_caps_the_send(self):
+        """Our local cap can say "plenty left" while Brevo's shared quota is really near zero.
+        When a key is configured, the smaller of the two wins."""
+        ids = [c.id for c in self.companies]
+        with patch("gemiapp.superadmin.services.brevo_email_credits_remaining", return_value=2):
+            sent, failed, skipped = self.process(ids)
+        self.assertEqual((sent, failed, skipped), (2, 0, 3))
+
+    def test_a_zero_brevo_quota_sends_nothing(self):
+        ids = [c.id for c in self.companies]
+        with patch("gemiapp.superadmin.services.brevo_email_credits_remaining", return_value=0):
+            sent, failed, skipped = self.process(ids)
+        self.assertEqual((sent, failed, skipped), (0, 0, 5))
+        self.assertEqual(len(mail.outbox), 0)
+
 
 class SchedulerHealthCheckTests(TestCase):
     """The check counted every failure ever recorded, so it pinned itself to Warning forever.

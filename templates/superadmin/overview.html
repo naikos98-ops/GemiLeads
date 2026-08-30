@@ -103,8 +103,8 @@
         {% for day in chart_data %}
         <div class="flex flex-1 flex-col items-center gap-1 group relative">
           <div class="w-full flex items-end justify-center gap-0.5 h-32">
-            <div class="w-1.5 rounded-t bg-blue-500 transition-all" style="height: {{ day.users_height }}px;"></div>
-            <div class="w-1.5 rounded-t bg-emerald-500 transition-all" style="height: {{ day.leads_height }}px;"></div>
+            <div class="w-1.5 rounded-t bg-blue-500 transition-all" style="height: {{ day.users_height }}px; min-height: 2px;"></div>
+            <div class="w-1.5 rounded-t bg-emerald-500 transition-all" style="height: {{ day.leads_height }}px; min-height: 2px;"></div>
           </div>
           <!-- Tooltip -->
           <div class="absolute bottom-full mb-2 hidden group-hover:block z-20 rounded-lg bg-navy-950 px-3 py-1.5 text-[11px] text-white whitespace-nowrap shadow-xl">

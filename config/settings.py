@@ -216,6 +216,13 @@ OUTREACH_DAILY_SEND_CAP = int(os.getenv("OUTREACH_DAILY_SEND_CAP", "250"))
 # same fail-closed default as STRIPE_WEBHOOK_SECRET.
 BREVO_WEBHOOK_TOKEN = os.getenv("BREVO_WEBHOOK_TOKEN", "")
 
+# Optional. A Brevo v3 API key ("xkeysib-...") -- distinct from the SMTP key used to send.
+# When set, the app can read the account's remaining daily email allowance, so the test-send
+# button and the system-health panel can warn "quota exhausted" instead of reporting a
+# success for a message the relay accepted (250 OK) and then silently dropped. Unset = the
+# checks are skipped, sending still works.
+BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
+
 # Stripe settings
 STRIPE_PUBLIC_KEY = os.getenv("STRIPE_PUBLIC_KEY")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")

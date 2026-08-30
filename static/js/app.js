@@ -20,7 +20,10 @@
     let data = []; try { data = JSON.parse(root.dataset.chart || '[]'); } catch (_) {}
     const max = Math.max(...data.map(x => x.total), 1);
     if (!data.length) { root.innerHTML = '<p class="m-auto text-sm text-navy-700/40">Τα δεδομένα του γραφήματος θα εμφανιστούν μετά την πρώτη εισαγωγή.</p>'; return; }
-    root.innerHTML = data.map((x, i) => `<div class="group flex h-full flex-1 flex-col justify-end gap-2"><div class="relative flex-1"><div class="absolute bottom-0 w-full rounded-t-xl bg-gradient-to-t from-blue-600 to-blue-400 transition-all duration-700 group-hover:from-navy-800 group-hover:to-blue-500" style="height:${Math.max(x.total / max * 100, 6)}%;transition-delay:${i*70}ms"><span class="absolute -top-7 left-1/2 -translate-x-1/2 text-xs font-bold opacity-0 transition group-hover:opacity-100">${x.total}</span></div></div><span class="text-center text-[10px] text-navy-700/45">${x.date}</span></div>`).join('');
+    // The bar track has an explicit height (h-32 = 128px). The previous version put the bars
+    // in a `flex-1` div whose only child was absolutely positioned, so it collapsed to 0px
+    // and every bar rendered at height:X% of 0 -- i.e. invisible.
+    root.innerHTML = data.map((x, i) => `<div class="group flex h-full flex-1 flex-col justify-end gap-2"><div class="relative h-32 w-full"><div class="absolute bottom-0 w-full rounded-t-xl bg-gradient-to-t from-blue-600 to-blue-400 transition-all duration-700 group-hover:from-navy-800 group-hover:to-blue-500" style="height:${Math.max(x.total / max * 100, 4)}%;transition-delay:${i*70}ms"><span class="absolute -top-7 left-1/2 -translate-x-1/2 text-xs font-bold opacity-0 transition group-hover:opacity-100">${x.total}</span></div></div><span class="text-center text-[10px] text-navy-700/45">${x.date}</span></div>`).join('');
   };
   const sizeCompanyTable = () => {
     const scroller = document.querySelector('[data-company-scroll]'); if (!scroller) return;

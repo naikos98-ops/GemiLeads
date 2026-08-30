@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The design is a single light palette. Declaring it here (alongside the <meta> tag) tells
+   the engine not to auto-darken form controls, scrollbars and the canvas, and blunts
+   Chrome/Brave "auto dark for web contents". */
+:root { color-scheme: light; }
+
 /* Previously inlined in base.html; kept here so it ships in the compiled stylesheet. */
 @layer utilities {
   [data-reveal] {
@@ -45,3 +50,37 @@
 
 /* A table inside its own scroller must never widen the page itself. */
 .overflow-auto, .overflow-x-auto { max-width: 100%; -webkit-overflow-scrolling: touch; }
+
+/* Company archive table -> stacked cards on phones. The table is min-w-[900px] so a phone
+   would otherwise scroll sideways and clip the date / VAT columns off-screen. Scoped to
+   .company-archive so no other table is affected. */
+@media (max-width: 640px) {
+  .company-archive table { min-width: 0 !important; width: 100%; }
+  .company-archive thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .company-archive tbody { display: block; }
+  .company-archive tbody tr {
+    display: block;
+    padding: 1rem 1.25rem;
+    border: 1px solid rgb(7 23 37 / 0.08);
+    border-radius: 1rem;
+    margin: 0.75rem;
+    background: #fff;
+  }
+  .company-archive tbody td { display: block; padding: 0 !important; }
+  /* Name row */
+  .company-archive tbody td:nth-child(1) { margin-bottom: 0.5rem; }
+  /* Date, legal type, region, status: inline label + value on their own lines */
+  .company-archive tbody td:nth-child(2),
+  .company-archive tbody td:nth-child(3),
+  .company-archive tbody td:nth-child(4) {
+    font-size: 0.8125rem;
+    color: rgb(27 73 108 / 0.7);
+    margin-top: 0.25rem;
+  }
+  .company-archive tbody td:nth-child(2)::before { content: "Σύσταση: "; font-weight: 700; color: rgb(27 73 108 / 0.45); }
+  .company-archive tbody td:nth-child(3)::before { content: "Μορφή: "; font-weight: 700; color: rgb(27 73 108 / 0.45); }
+  .company-archive tbody td:nth-child(4)::before { content: "Περιοχή: "; font-weight: 700; color: rgb(27 73 108 / 0.45); }
+  .company-archive tbody td:nth-child(5) { margin-top: 0.625rem; }
+  /* The "open" arrow button is redundant on a card whose name is already a link */
+  .company-archive tbody td:nth-child(6) { display: none !important; }
+}
