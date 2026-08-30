@@ -2,6 +2,12 @@ services:
   - type: web
     name: gemileads_web
     runtime: python
+    # Co-located with the Supabase database (Frankfurt / eu-central-1). Running from Oregon
+    # meant every SQL query crossed the Atlantic (~160ms round-trip); a page doing ~12 queries
+    # took multiple seconds regardless of how small the database is. Also closer to the users
+    # (Greek businesses). Render cannot move an existing service's region -- this needs a new
+    # service in frankfurt, then repoint the gemileads.gr DNS to it and delete the old one.
+    region: frankfurt
     buildCommand: "./scripts/build_render.sh"
     preDeployCommand: "python manage.py migrate"
     startCommand: "honcho start"
