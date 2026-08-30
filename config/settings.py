@@ -22,6 +22,12 @@ if SENTRY_DSN:
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-change-me-gemi-leads")
 DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if h.strip()]
+# Render injects the service's own *.onrender.com hostname here. Adding it automatically means
+# a freshly created service (e.g. after a region move) answers on its Render URL without
+# hand-editing DJANGO_ALLOWED_HOSTS first -- which otherwise 400s every request.
+_render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
+if _render_host and _render_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(_render_host)
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
 
 CSRF_TRUSTED_ORIGINS = [
@@ -32,6 +38,10 @@ CSRF_TRUSTED_ORIGINS = [
     ).split(",")
     if origin.strip()
 ]
+if _render_host:
+    _render_origin = f"https://{_render_host}"
+    if _render_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(_render_origin)
 
 # Serving over HTTPS is assumed in production; everything here is a no-op while DEBUG is on.
 if not DEBUG:
