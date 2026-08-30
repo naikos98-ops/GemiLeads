@@ -929,12 +929,12 @@ class SuperadminTests(TestCase):
         self.assertTrue(CompanyOutreach.objects.filter(company=with_email, status="sent").exists())
         mail.outbox.clear()
 
-        # The unsubscribe link opts the address out for good.
+        # The unsubscribe link opts the address out for good (POST -- a GET only confirms).
         from gemiapp.views import make_outreach_unsubscribe_token
         token = make_outreach_unsubscribe_token("later@co.gr")
         # Token must be fully URL-safe -- no "@"/"." that a CDN would mangle in the path.
         self.assertNotIn("@", token)
-        res_unsub = self.client.get(reverse("outreach_unsubscribe", kwargs={"token": token}))
+        res_unsub = self.client.post(reverse("outreach_unsubscribe", kwargs={"token": token}))
         self.assertEqual(res_unsub.status_code, 200)
         from gemiapp.models import OutreachSuppression
         self.assertTrue(OutreachSuppression.is_suppressed("later@co.gr"))
@@ -2624,26 +2624,42 @@ class OutreachEngagementTests(TestCase):
         message = self.build_email(self.company)
         self.assertEqual(message.extra_headers.get("X-Mailin-Tag"), f"outreach:{self.company.pk}")
 
-    def test_unsubscribe_token_is_url_safe_and_round_trips(self):
-        from gemiapp.models import OutreachSuppression
+    def test_unsubscribe_token_is_url_safe(self):
         from gemiapp.views import make_outreach_unsubscribe_token
 
         token = make_outreach_unsubscribe_token("E.Karathodorou@Zeya.com")
         self.assertNotIn("@", token)
         self.assertNotIn(".", token)
+
+    def test_get_shows_a_confirm_page_and_does_not_unsubscribe(self):
+        """A GET must not opt anyone out -- email security scanners fetch every link and were
+        unsubscribing recipients who never clicked."""
+        from gemiapp.models import OutreachSuppression
+        from gemiapp.views import make_outreach_unsubscribe_token
+
+        token = make_outreach_unsubscribe_token("scanned@co.gr")
         res = self.client.get(reverse("outreach_unsubscribe", kwargs={"token": token}))
         self.assertEqual(res.status_code, 200)
-        self.assertTrue(OutreachSuppression.is_suppressed("e.karathodorou@zeya.com"))
+        self.assertContains(res, "Επιβεβαίωση")
+        self.assertFalse(OutreachSuppression.is_suppressed("scanned@co.gr"))
 
-    def test_legacy_bare_signed_unsubscribe_token_still_works(self):
+    def test_post_actually_unsubscribes(self):
+        from gemiapp.models import OutreachSuppression
+        from gemiapp.views import make_outreach_unsubscribe_token
+
+        token = make_outreach_unsubscribe_token("person@co.gr")
+        res = self.client.post(reverse("outreach_unsubscribe", kwargs={"token": token}))
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(OutreachSuppression.is_suppressed("person@co.gr"))
+
+    def test_legacy_bare_signed_token_still_works_on_post(self):
         """Links in already-delivered emails carry the old bare TimestampSigner output."""
         from django.core.signing import TimestampSigner
         from gemiapp.models import OutreachSuppression
         from gemiapp.views import OUTREACH_UNSUBSCRIBE_SALT
 
         legacy = TimestampSigner(salt=OUTREACH_UNSUBSCRIBE_SALT).sign("old@co.gr")
-        res = self.client.get(reverse("outreach_unsubscribe", kwargs={"token": legacy}))
-        self.assertEqual(res.status_code, 200)
+        self.client.post(reverse("outreach_unsubscribe", kwargs={"token": legacy}))
         self.assertTrue(OutreachSuppression.is_suppressed("old@co.gr"))
 
     def test_tampered_unsubscribe_token_is_rejected(self):

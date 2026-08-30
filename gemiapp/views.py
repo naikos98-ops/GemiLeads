@@ -243,29 +243,47 @@ def make_outreach_unsubscribe_token(email):
     return urlsafe_base64_encode(force_bytes(signed))
 
 
-def outreach_unsubscribe(request, token):
+def _outreach_unsubscribe_email(token):
+    """Return the address a valid outreach-unsubscribe token signs, or None."""
     signer = TimestampSigner(salt=OUTREACH_UNSUBSCRIBE_SALT)
-
-    # New tokens are base64(signed). Fall back to treating the token as the bare signed
-    # string so links in already-delivered emails keep working.
+    # New tokens are base64(signed). Fall back to the bare signed string so links in
+    # already-delivered emails keep working.
     candidates = []
     try:
         candidates.append(force_str(urlsafe_base64_decode(token)))
     except (ValueError, TypeError):
         pass
     candidates.append(token)
-
-    email = None
     for candidate in candidates:
         try:
-            email = signer.unsign(candidate, max_age=timedelta(days=365))
-            break
+            return signer.unsign(candidate, max_age=timedelta(days=365))
         except (BadSignature, SignatureExpired):
             continue
+    return None
 
+
+def outreach_unsubscribe(request, token):
+    """Two-step opt-out. A GET only renders a confirmation page with a POST button; the
+    suppression is written only on POST.
+
+    Why: email security scanners (Outlook Defender Safe Links, corporate proxies, Brevo's own
+    link pre-fetch) issue a GET against every link in a delivered email. A one-click GET
+    unsubscribe therefore opted out ~20 recipients who never touched the link -- their
+    CompanyOutreach rows then failed with "στη λίστα απεγγραφών". A scanner will not submit a
+    form, so gating the write behind POST stops the accidental opt-outs.
+
+    Standard CSRF applies: the GET render sets the cookie and the confirm form carries the
+    token. A cross-site forged POST at worst unsubscribes the address the URL token already
+    names -- no escalation -- so this is not sensitive, but keeping CSRF on costs nothing.
+    """
+    email = _outreach_unsubscribe_email(token)
     if email is None:
         logger.warning("outreach_unsubscribe: unusable token (len=%s)", len(token or ""))
         return render(request, "unsubscribed.html", {"error": "Ο σύνδεσμος είναι άκυρος ή έχει λήξει."})
+
+    if request.method != "POST":
+        # Confirmation page. The button posts back to this same URL.
+        return render(request, "unsubscribe_confirm.html", {"email": email})
 
     _, created = OutreachSuppression.objects.get_or_create(email=OutreachSuppression.normalize(email))
     logger.info("outreach_unsubscribe: %s (%s)", email, "new" if created else "already suppressed")
