@@ -2,24 +2,228 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   TEXT COLOR TOKENS
+   ---------------------------------------------------------------------------
+   Every text colour in the app resolves through one of these tiers instead of a
+   raw Tailwind shade. Each tier is validated to >= 4.5:1 (WCAG AA for normal
+   text) against the WORST surface it can land on in its own mode -- sand-200 in
+   light, #143050 in dark -- so a token is safe on any card, panel or section
+   ground without per-surface tuning.
+
+   Tiers are opaque on purpose. The previous scheme leaned on alpha
+   (text-navy-700/65 and friends); alpha re-composites against whatever sits
+   behind it, so the same class measured 3.69:1 on white and 3.17:1 on sand-200
+   -- both below AA -- and inverted to 1.36:1 once the card went dark.
+
+   Measured worst-case ratios (light / dark):
+     strong  12.93 / 12.42    body     8.23 / 9.50     muted   5.42 / 6.43
+     faint    4.65 / 5.10     link     5.69 / 6.19     hover   7.05 / 8.13
+     success  4.59 / 7.23     warning  4.51 / 8.04     danger  4.61 / 6.62
+     accent   5.07 / 6.86
+   --------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  /* Text hierarchy */
+  --text-strong: #071725;   /* headings, primary emphasis */
+  --text-body:   #233b52;   /* paragraph / body copy */
+  --text-muted:  #3d5670;   /* secondary labels, captions */
+  --text-faint:  #47607a;   /* de-emphasised: placeholders, empty-state dashes */
+
+  /* Interactive */
+  --text-link:       #1a45bd;
+  --text-link-hover: #123a9e;
+
+  /* Semantic status */
+  --text-success: #046c4e;
+  --text-warning: #8a5300;
+  --text-danger:  #b91c1c;
+  --text-accent:  #6d28d9;
+
+  /* Surfaces (light) */
+  --surface-page:   #fbf8f1;
+  --surface-card:   #ffffff;
+  --surface-sunk:   #f3ecdf;
+  --surface-raised: #e6d8c3;
+  --surface-tint:   rgb(7 23 37 / 0.04);   /* badge / callout wash */
+  --border-subtle:  rgb(7 23 37 / 0.10);
+  --border-field:   rgb(7 23 37 / 0.16);   /* input / select / textarea outline */
+
+  /* Text that sits on the always-dark navy chrome (navbar, dark CTA panels).
+     Those surfaces do not flip between modes, so this stays white in both. */
+  --text-on-navy:       #ffffff;
+  --text-on-navy-muted: rgb(255 255 255 / 0.78);
+
+  /* Accents used ONLY on the always-dark navy chrome (hero, dark CTA panels,
+     navbar, the mock "radar inbox" card). These are light-on-dark by design and
+     must keep their value in BOTH modes -- binding them to --text-link would
+     darken them to ~1.6:1 against the navy they sit on.
+     Worst case on #0b2239: link 8.94, success 8.39, accent 9.12. */
+  --text-on-navy-link:    #93c5fd;
+  --text-on-navy-success: #34d399;
+  --text-on-navy-accent:  #d8b4fe;
+}
+
 /* The design is a light palette everywhere. On PHONES ONLY (<= 900px), a dark-preference
    viewer's browser force-darkens the cream background into a muddy mustard (Brave "Force
    Dark", iOS Smart Invert), so there we ship a small real dark surface set instead. Desktop
-   is never touched -- it stays light regardless of OS theme. */
-:root { color-scheme: light; }
+   is never touched -- it stays light regardless of OS theme.
 
+   Only the token VALUES are redefined here; every rule below the token block is
+   written against the tokens, so the dark theme is this one map and nothing else. */
 @media (max-width: 900px) and (prefers-color-scheme: dark) {
-  :root { color-scheme: light dark; }
+  :root {
+    color-scheme: light dark;
 
+    /* Deliberately NOT pure white: #f2f7fc for headings, then a descending
+       slate ramp for body / muted / faint. Pure #fff on a dark navy ground
+       haloes on OLED phones and flattens the hierarchy. */
+    --text-strong: #f2f7fc;
+    --text-body:   #cddbe9;
+    --text-muted:  #a3b6c9;
+    --text-faint:  #8ea2b6;
+
+    --text-link:       #7fb2ff;
+    --text-link-hover: #a8ccff;
+
+    --text-success: #5fd3a3;
+    --text-warning: #f5c065;
+    --text-danger:  #ff9b96;
+    --text-accent:  #d3a9f5;
+
+    --surface-page:   #0a1a2b;
+    --surface-card:   #10263c;
+    --surface-sunk:   #0e2135;
+    --surface-raised: #143050;
+    --surface-tint:   rgb(255 255 255 / 0.06);
+    --border-subtle:  rgb(255 255 255 / 0.10);
+    --border-field:   rgb(255 255 255 / 0.14);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   TOKEN BINDINGS
+   ---------------------------------------------------------------------------
+   The templates carry Tailwind colour utilities. Rather than rewrite ~700 class
+   occurrences across 49 templates, each utility is bound to the token matching
+   its semantic role. The mapping holds in BOTH modes, so light mode is lifted to
+   AA at the same time -- most of these shades failed AA on the cream surfaces
+   even before dark mode existed.
+
+   !important is required: these compete with Tailwind's own utility output at
+   equal specificity, and the utilities win on source order otherwise.
+   --------------------------------------------------------------------------- */
+
+/* --- Headings / primary emphasis --- */
+.text-navy-950,
+.text-navy-900 { color: var(--text-strong) !important; }
+
+/* --- Body copy --------------------------------------------------------------
+   text-navy-700/65 is the dominant paragraph class on the landing page and the
+   direct cause of the reported bug: 1.36:1 on a dark card (invisible), and only
+   3.69:1 on white. --- */
+.text-navy-800,
+.text-navy-700,
+.text-navy-900\/80,
+.text-navy-900\/75,
+.text-navy-900\/70,
+.text-navy-700\/80,
+.text-navy-700\/70,
+.text-navy-700\/65 { color: var(--text-body) !important; }
+
+/* --- Muted / secondary --- */
+.text-navy-900\/60,
+.text-navy-700\/60,
+.text-navy-700\/55,
+.text-navy-700\/50 { color: var(--text-muted) !important; }
+
+/* --- Faint: em-dashes, "not provided" placeholders, fine print. Raised to the
+   faint token rather than left near-transparent; at /35 these measured 1.77:1
+   in light mode, unreadable in either theme. --- */
+.text-navy-700\/45,
+.text-navy-700\/40,
+.text-navy-700\/35,
+.text-navy-700\/30 { color: var(--text-faint) !important; }
+
+/* --- Links & blue accents --- */
+.text-blue-900,
+.text-blue-800,
+.text-blue-700,
+.text-blue-600,
+.text-signal { color: var(--text-link) !important; }
+
+/* The light-blue shades are authored for the always-dark navy chrome, where they
+   already pass (6.3-12.8:1). They must NOT be pulled toward --text-link in
+   either mode -- the surface under them is dark in both themes. */
+.text-blue-400,
+.text-blue-300,
+.text-blue-200,
+.text-blue-100 { color: var(--text-on-navy-link) !important; }
+
+/* --- Semantic status --- */
+.text-emerald-900,
+.text-emerald-700,
+.text-emerald-600 { color: var(--text-success) !important; }
+/* emerald-400 is the "Live Feed" pip inside the dark hero mock. */
+.text-emerald-400 { color: var(--text-on-navy-success) !important; }
+
+.text-amber-900,
+.text-amber-800,
+.text-amber-700,
+.text-amber-600,
+.text-amber-500 { color: var(--text-warning) !important; }
+
+.text-red-900,
+.text-red-700,
+.text-red-600 { color: var(--text-danger) !important; }
+
+.text-purple-950,
+.text-purple-900,
+.text-purple-700 { color: var(--text-accent) !important; }
+/* The light purples are the Superadmin badge/link on the dark navbar. */
+.text-purple-400,
+.text-purple-300,
+.text-purple-200 { color: var(--text-on-navy-accent) !important; }
+
+/* Alpha variants resolve to the same tier -- the opacity suffix was only ever a
+   de-emphasis hint, and the tier already encodes that. */
+.text-navy-900\/65,
+.text-blue-900\/65 { color: var(--text-body) !important; }
+.text-amber-900\/80,
+.text-amber-800\/80 { color: var(--text-muted) !important; }
+/* on-navy alpha variants keep the on-navy accents */
+.text-blue-200\/70 { color: var(--text-on-navy-link) !important; }
+.text-purple-200\/80 { color: var(--text-on-navy-accent) !important; }
+
+/* --- Text on the always-dark navy chrome (navbar, mobile menu, dark CTA panels,
+   toasts). These surfaces are dark in BOTH modes, so white text stays correct
+   and must never be flipped by the dark block. --- */
+.text-white { color: var(--text-on-navy) !important; }
+.text-white\/90,
+.text-white\/80,
+.text-white\/70 { color: var(--text-on-navy-muted) !important; }
+/* /60 and below were decorative-only on navy; floor them at the muted value so
+   nav links and footnotes on dark chrome stay legible. */
+.text-white\/60,
+.text-white\/50,
+.text-white\/45,
+.text-white\/40 { color: var(--text-on-navy-muted) !important; }
+
+/* ---------------------------------------------------------------------------
+   DARK-MODE SURFACES
+   ---------------------------------------------------------------------------
+   Backgrounds only -- all text above is already token-driven and mode-aware. */
+@media (max-width: 900px) and (prefers-color-scheme: dark) {
   /* Page + section grounds */
   body,
-  .bg-sand-50 { background-color: #0a1a2b !important; }
-  .bg-sand-100 { background-color: #0e2135 !important; }
-  .bg-sand-200 { background-color: #143050 !important; }
+  .bg-sand-50 { background-color: var(--surface-page) !important; }
+  .bg-sand-100 { background-color: var(--surface-sunk) !important; }
+  .bg-sand-200 { background-color: var(--surface-raised) !important; }
   .noise { background-image: none; }
 
   /* Cards / panels */
-  .bg-white { background-color: #10263c !important; }
+  .bg-white { background-color: var(--surface-card) !important; }
 
   /* Gradients that fade into white (e.g. the Priority Alerts banner) go opaque dark,
      otherwise the lightened body text sits on a white gradient stop and vanishes. */
@@ -27,39 +231,38 @@
   [class*="from-blue-50"],
   [class*="from-sand-50"] {
     background-image: none !important;
-    background-color: #10263c !important;
+    background-color: var(--surface-card) !important;
   }
 
   /* Borders that were dark-on-light become light-on-dark */
   [class*="border-navy-900/10"],
-  [class*="border-navy-900/5"] { border-color: rgb(255 255 255 / 0.08) !important; }
+  [class*="border-navy-900/5"] { border-color: var(--border-subtle) !important; }
 
-  /* Text: the near-black body copy and headings need lifting */
-  .text-navy-950 { color: #eef4fa !important; }
-  .text-navy-900\/80 { color: rgb(238 244 250 / 0.82) !important; }
-  .text-navy-900\/60,
-  .text-navy-700\/70,
-  .text-navy-700\/60,
-  .text-navy-700\/55 { color: rgb(238 244 250 / 0.62) !important; }
-  .text-navy-700\/50,
-  .text-navy-700\/45,
-  .text-navy-700\/40 { color: rgb(238 244 250 / 0.42) !important; }
-
-  /* Faint tinted surfaces used for inline callouts */
+  /* Faint tinted surfaces used for badges and inline callouts. The coloured text
+     on these is remapped to the semantic tokens above, which clear 5.99:1 on
+     this wash. */
   .bg-sand-50\/60,
   .bg-blue-50,
   .bg-emerald-50,
   .bg-amber-50,
   .bg-red-50,
-  .bg-purple-50 { background-color: rgb(255 255 255 / 0.06) !important; }
+  .bg-purple-50 { background-color: var(--surface-tint) !important; }
 
   /* Form fields */
   input, select, textarea {
-    background-color: #0e2135 !important;
-    color: #eef4fa !important;
-    border-color: rgb(255 255 255 / 0.14) !important;
+    background-color: var(--surface-sunk) !important;
+    color: var(--text-body) !important;
+    border-color: var(--border-field) !important;
   }
 }
+
+/* Placeholders had no explicit colour and inherited the browser default, which
+   renders near-black on a dark field. Bound in both modes. */
+input::placeholder,
+textarea::placeholder { color: var(--text-faint) !important; opacity: 1; }
+
+/* Keyboard focus must be visible on both grounds. */
+:focus-visible { outline: 2px solid var(--text-link); outline-offset: 2px; }
 
 /* Previously inlined in base.html; kept here so it ships in the compiled stylesheet. */
 @layer utilities {
@@ -115,16 +318,12 @@
   .company-archive tbody tr {
     display: block;
     padding: 1rem 1.25rem;
-    border: 1px solid rgb(7 23 37 / 0.08);
+    border: 1px solid var(--border-subtle);
     border-radius: 1rem;
     margin: 0.75rem;
-    background: #fff;
+    background: var(--surface-card);
   }
   .company-archive tbody td { display: block; padding: 0 !important; }
-}
-
-@media (max-width: 640px) and (prefers-color-scheme: dark) {
-  .company-archive tbody tr { background: #10263c; border-color: rgb(255 255 255 / 0.08); }
 }
 
 @media (max-width: 640px) {
@@ -135,12 +334,12 @@
   .company-archive tbody td:nth-child(3),
   .company-archive tbody td:nth-child(4) {
     font-size: 0.8125rem;
-    color: rgb(27 73 108 / 0.7);
+    color: var(--text-muted);
     margin-top: 0.25rem;
   }
-  .company-archive tbody td:nth-child(2)::before { content: "Σύσταση: "; font-weight: 700; color: rgb(27 73 108 / 0.45); }
-  .company-archive tbody td:nth-child(3)::before { content: "Μορφή: "; font-weight: 700; color: rgb(27 73 108 / 0.45); }
-  .company-archive tbody td:nth-child(4)::before { content: "Περιοχή: "; font-weight: 700; color: rgb(27 73 108 / 0.45); }
+  .company-archive tbody td:nth-child(2)::before { content: "Σύσταση: "; font-weight: 700; color: var(--text-faint); }
+  .company-archive tbody td:nth-child(3)::before { content: "Μορφή: "; font-weight: 700; color: var(--text-faint); }
+  .company-archive tbody td:nth-child(4)::before { content: "Περιοχή: "; font-weight: 700; color: var(--text-faint); }
   .company-archive tbody td:nth-child(5) { margin-top: 0.625rem; }
   /* The "open" arrow button is redundant on a card whose name is already a link */
   .company-archive tbody td:nth-child(6) { display: none !important; }
