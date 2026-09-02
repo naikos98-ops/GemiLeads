@@ -32,7 +32,10 @@ from .models import (
     UserCompanyLead,
     UserSubscription,
 )
-from .services import digest_email_tag, import_for_date, match_imported_companies, send_digests
+from .services import (
+    digest_email_tag, import_for_date, match_imported_companies, send_digests,
+    send_verification_email_now,
+)
 
 
 SAMPLE = {
@@ -614,6 +617,18 @@ class PaidOnlyModelTests(TestCase):
         self.assertTrue(lead.is_favorite)
 
 
+# Signup and the resend view hand the verification email to a django-q worker, so under the
+# test runner (no worker process) the mail would sit in the queue and never reach
+# mail.outbox. Applied per-class rather than globally: the outreach and scheduler tests
+# assert the opposite -- that their work is queued and *not* run inline.
+#
+# Patches django_q.conf.Conf.SYNC rather than overriding the Q_CLUSTER setting: django-q
+# reads its config once at import time into that class attribute, so override_settings on
+# Q_CLUSTER is silently ignored.
+SYNC_Q = patch("django_q.conf.Conf.SYNC", True)
+
+
+@SYNC_Q
 class AuthFlowTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="testauth@example.com", password="password123", first_name="AuthUser")
@@ -1253,7 +1268,11 @@ class ScheduleRegistrationTests(TestCase):
         schedules = {s.func: s for s in Schedule.objects.all()}
         self.assertEqual(
             set(schedules),
-            {"gemiapp.tasks.run_daily_pipeline_task", "gemiapp.tasks.run_intraday_pipeline_task"},
+            {
+                "gemiapp.tasks.run_daily_pipeline_task",
+                "gemiapp.tasks.run_intraday_pipeline_task",
+                "gemiapp.tasks.drain_pending_outreach_task",
+            },
         )
         for schedule in schedules.values():
             self.assertEqual(schedule.schedule_type, Schedule.CRON)
@@ -1280,12 +1299,16 @@ class ScheduleRegistrationTests(TestCase):
         scheduler(broker=broker)
 
         queued = OrmQ.objects.count()
-        self.assertEqual(queued, 2, "the scheduler produced no task - check the cron dependency")
+        self.assertEqual(queued, 3, "the scheduler produced no task - check the cron dependency")
 
         funcs = {entry.task["func"] for entry in OrmQ.objects.all()}
         self.assertEqual(
             funcs,
-            {"gemiapp.tasks.run_daily_pipeline_task", "gemiapp.tasks.run_intraday_pipeline_task"},
+            {
+                "gemiapp.tasks.run_daily_pipeline_task",
+                "gemiapp.tasks.run_intraday_pipeline_task",
+                "gemiapp.tasks.drain_pending_outreach_task",
+            },
         )
 
         # Every schedule must have moved on, otherwise the same run repeats every tick.
@@ -1307,7 +1330,10 @@ class ScheduleRegistrationTests(TestCase):
         stale.refresh_from_db()
         self.assertEqual(stale.cron, "0 8,11,14,17,20,23 * * *")
         self.assertEqual(stale.name, "Intraday 3-Hour GEMI Pipeline (Top Tier)")
-        self.assertEqual(Schedule.objects.count(), 2)
+        # Re-registering updates in place; it must never add a row.
+        from gemiapp.apps import SCHEDULES
+
+        self.assertEqual(Schedule.objects.count(), len(SCHEDULES))
         # An existing row keeps its next_run; only creation seeds it.
         self.assertEqual(stale.next_run, kept_next_run)
 
@@ -1351,11 +1377,11 @@ class DuplicateScheduleRepairTests(TestCase):
 
     def test_repair_is_idempotent(self):
         from django_q.models import Schedule
-        from gemiapp.apps import setup_daily_pipeline_schedule
+        from gemiapp.apps import SCHEDULES, setup_daily_pipeline_schedule
 
         setup_daily_pipeline_schedule(None)
         setup_daily_pipeline_schedule(None)
-        self.assertEqual(Schedule.objects.count(), 2)
+        self.assertEqual(Schedule.objects.count(), len(SCHEDULES))
 
 
 class PipelineOverlapGuardTests(TestCase):
@@ -1916,6 +1942,7 @@ class ExportBoundsTests(TestCase):
         self.assertRedirects(response, reverse("pricing"))
 
 
+@SYNC_Q
 @override_settings(RATELIMIT_ENABLE=False)
 class UnverifiedAccountRecoveryTests(TestCase):
     """An account stuck unverified used to have no way back in.
@@ -2507,6 +2534,144 @@ class DigestEmailTagTests(TestCase):
         self.assertEqual(message.alternatives[0][1], "text/html")
 
 
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class PendingOutreachDrainTests(TestCase):
+    """Outreach past the daily cap stays "pending" and has to be picked up later.
+
+    That follow-up used to be a ONCE schedule the sending task created for its own batch,
+    which stranded rows two ways -- it only ever retried the ids of the batch that created
+    it, and it was only created when that batch itself overflowed. In practice a backlog sat
+    untouched until some later, unrelated batch hit the cap and dragged part of it along.
+    Both failure modes are asserted here against the daily sweep that replaced it.
+    """
+
+    def _company(self, n, **kwargs):
+        from datetime import date
+        from .models import Company
+
+        return Company.objects.create(
+            gemi_number=f"95{n:04d}", name=f"Εταιρεία {n}",
+            incorporation_date=date.today(), email=f"c{n}@example.gr", **kwargs,
+        )
+
+    def _pending(self, company):
+        from .models import CompanyOutreach
+
+        return CompanyOutreach.objects.create(
+            company=company, status="pending", sent_to=company.email,
+        )
+
+    @override_settings(OUTREACH_DAILY_SEND_CAP=10)
+    def test_drain_sends_rows_from_batches_it_was_never_told_about(self):
+        """The bug that stranded the backlog: the old follow-up carried a fixed id list."""
+        from .models import CompanyOutreach
+        from gemiapp.tasks import drain_pending_outreach_task
+
+        older = self._pending(self._company(1))
+        newer = self._pending(self._company(2))
+
+        drain_pending_outreach_task()
+
+        older.refresh_from_db()
+        newer.refresh_from_db()
+        self.assertEqual(older.status, "sent")
+        self.assertEqual(newer.status, "sent")
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertEqual(CompanyOutreach.objects.filter(status="pending").count(), 0)
+
+    @override_settings(OUTREACH_DAILY_SEND_CAP=1)
+    def test_drain_respects_the_cap_and_leaves_the_rest_pending(self):
+        from .models import CompanyOutreach
+        from gemiapp.tasks import drain_pending_outreach_task
+
+        for n in range(3, 6):
+            self._pending(self._company(n))
+
+        result = drain_pending_outreach_task()
+
+        self.assertEqual(result["sent"], 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(CompanyOutreach.objects.filter(status="pending").count(), 2)
+
+    @override_settings(OUTREACH_DAILY_SEND_CAP=10)
+    def test_drain_is_a_no_op_with_an_empty_backlog(self):
+        from gemiapp.tasks import drain_pending_outreach_task
+
+        result = drain_pending_outreach_task()
+
+        self.assertEqual(result, {"sent": 0, "failed": 0, "skipped": 0})
+        self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(OUTREACH_DAILY_SEND_CAP=10)
+    def test_sending_a_batch_no_longer_schedules_a_per_batch_follow_up(self):
+        """The batch task must not create ONCE schedules of its own any more -- the daily
+        sweep owns the retry, and a stray per-batch schedule would double-send."""
+        from django_q.models import Schedule
+        from gemiapp.tasks import send_company_outreach_task
+
+        company = self._company(9)
+        self._pending(company)
+        before = Schedule.objects.count()
+
+        send_company_outreach_task([company.id])
+
+        self.assertEqual(Schedule.objects.count(), before)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", RATELIMIT_ENABLE=False)
+class VerificationEmailDeliveryTests(TestCase):
+    """Signup used to do the SMTP round-trip inline. Django passes timeout=None to smtplib
+    unless EMAIL_TIMEOUT is set, so a stalled Brevo relay hung the gunicorn worker on the
+    OS-level TCP timeout: a signup on 2026-09-01 at 22:42 only reached Brevo at 04:51 the
+    next morning, with the account unusable in between. Two defences, both asserted here --
+    the send is queued rather than inline, and the socket is bounded.
+    """
+
+    SIGNUP = {
+        "username": "queued@example.com", "email": "queued@example.com",
+        "password1": "StrongPass123", "password2": "StrongPass123",
+    }
+
+    def test_signup_does_not_do_smtp_in_the_request(self):
+        with patch("django_q.tasks.async_task") as queued:
+            response = self.client.post(reverse("signup"), self.SIGNUP)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(mail.outbox), 0, "signup must not block on the SMTP round-trip")
+        queued.assert_called_once()
+        self.assertEqual(queued.call_args[0][0], "gemiapp.tasks.send_verification_email_task")
+
+    def test_send_falls_back_to_inline_when_the_queue_is_unreachable(self):
+        """A late verification email is recoverable; one that was never sent is a dead end."""
+        with patch("django_q.tasks.async_task", side_effect=Exception("broker down")):
+            self.client.post(reverse("signup"), self.SIGNUP)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["queued@example.com"])
+
+    def test_verification_email_carries_a_tag(self):
+        """Without X-Mailin-Tag a verification message is invisible in EmailEngagementEvent,
+        so "the customer never got it" has to be chased through the Brevo UI by hand."""
+        user = User.objects.create_user("tagged@example.com", "tagged@example.com", "StrongPass123")
+        user.is_active = False
+        user.save()
+
+        self.assertTrue(send_verification_email_now(user.pk))
+        self.assertEqual(
+            mail.outbox[0].extra_headers.get("X-Mailin-Tag"), f"verification:{user.pk}"
+        )
+
+    def test_nothing_is_sent_for_an_already_verified_account(self):
+        user = User.objects.create_user("live@example.com", "live@example.com", "StrongPass123")
+        self.assertFalse(send_verification_email_now(user.pk))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_smtp_socket_is_bounded(self):
+        """The setting that actually caps the hang. A None here is the original bug."""
+        from django.conf import settings
+
+        self.assertIsNotNone(settings.EMAIL_TIMEOUT)
+        self.assertLessEqual(settings.EMAIL_TIMEOUT, 60)
+
+
 @override_settings(BREVO_WEBHOOK_TOKEN="test-token-123")
 class BrevoWebhookTests(TestCase):
     """The webhook has no signature to verify (Brevo's own "token-based authentication" just
@@ -3011,6 +3176,7 @@ class PurgeFailedTasksCommandTests(TestCase):
         self.assertTrue(Task.objects.filter(id="ok").exists())
 
 
+@SYNC_Q
 @override_settings(
     STRIPE_PRICE_PRO="price_pro", STRIPE_PRICE_BUSINESS="price_biz",
     STRIPE_PRICE_ENTERPRISE="price_ent", RATELIMIT_ENABLE=False,

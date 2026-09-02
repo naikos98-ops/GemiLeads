@@ -379,6 +379,52 @@ def _send_digest_email(user, subject, body_text, body_html, tag):
     message.send()
 
 
+def verification_email_tag(user_id: int) -> str:
+    """The `X-Mailin-Tag` an account-verification email is sent with.
+
+    Same purpose as digest_email_tag: without it a verification message is invisible in
+    EmailEngagementEvent and every "the customer never got the email" report has to be
+    chased through the Brevo dashboard by hand.
+    """
+    return f"verification:{user_id}"
+
+
+def send_verification_email_now(user_id: int) -> bool:
+    """Build and send the verification link for ``user_id``. Returns False when there is
+    nothing to send (user gone, already verified, no address).
+
+    The link is built from settings.BASE_URL rather than the signup request's Host header so
+    this is callable from a worker, a management command or a view alike.
+    """
+    from django.contrib.auth.models import User
+    from django.contrib.auth.tokens import default_token_generator
+    from django.urls import reverse
+    from django.utils.encoding import force_bytes
+    from django.utils.http import urlsafe_base64_encode
+
+    user = User.objects.filter(pk=user_id).first()
+    if user is None or user.is_active or not user.email:
+        logger.info("Skipping verification email for user %s: nothing to send.", user_id)
+        return False
+
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    verify_url = f"{settings.BASE_URL.rstrip('/')}{reverse('verify_email', kwargs={'uidb64': uid, 'token': token})}"
+    context = {"verify_url": verify_url, "user": user}
+
+    message = EmailMultiAlternatives(
+        "Επιβεβαίωση email στο Gemi Leads",
+        render_to_string("emails/verification.txt", context),
+        settings.DEFAULT_FROM_EMAIL,
+        [user.email],
+        headers={"X-Mailin-Tag": verification_email_tag(user.pk)},
+    )
+    message.attach_alternative(render_to_string("emails/verification.html", context), "text/html")
+    message.send()
+    logger.info("Verification email sent to user %s.", user.pk)
+    return True
+
+
 def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]:
     if frequency == "weekly":
         raise ValueError("Το εβδομαδιαίο digest έχει καταργηθεί.")

@@ -21,6 +21,17 @@ SCHEDULES = [
         "name": "Intraday 3-Hour GEMI Pipeline (Top Tier)",
         "cron": "0 8,11,14,17,20,23 * * *",
     },
+    # Outreach left "pending" by the daily cap used to be drained by a ONCE schedule the
+    # sending task created for its own batch. That stranded rows two ways: the follow-up only
+    # ever retried the ids of the batch that scheduled it, and it was only created when that
+    # batch itself hit the cap -- so a backlog sat untouched until some *later* batch
+    # overflowed and dragged part of it along. This sweeps every pending row, no matter which
+    # batch it came from. Runs before the outreach working day so a full cap is available.
+    {
+        "func": "gemiapp.tasks.drain_pending_outreach_task",
+        "name": "Drain Pending Outreach",
+        "cron": "37 7 * * *",
+    },
 ]
 
 

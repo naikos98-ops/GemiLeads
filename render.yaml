@@ -36,6 +36,10 @@ services:
         value: "587"
       - key: EMAIL_USE_TLS
         value: "1"
+      # Bound the SMTP socket. Unset, Django passes timeout=None to smtplib and a stalled
+      # Brevo relay hangs the sending process on the OS-level TCP timeout -- hours.
+      - key: EMAIL_TIMEOUT
+        value: "20"
       - key: DEFAULT_FROM_EMAIL
         value: Gemi Leads <notifications@send.gemileads.gr>
       - key: EMAIL_REPLY_TO
@@ -43,7 +47,7 @@ services:
       - key: BREVO_WEBHOOK_TOKEN
         sync: false
       - key: OUTREACH_DAILY_SEND_CAP
-        value: "250"
+        value: "180"
       - key: LEGAL_CONTROLLER_NAME
         sync: false
       - key: LEGAL_VAT

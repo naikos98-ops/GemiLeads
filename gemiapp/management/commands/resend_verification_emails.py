@@ -1,12 +1,7 @@
-from django.conf import settings
 from django.contrib.auth.models import User
-from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import send_mail
 from django.core.management.base import BaseCommand
-from django.template.loader import render_to_string
-from django.urls import reverse
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_encode
+
+from gemiapp.services import send_verification_email_now
 
 
 class Command(BaseCommand):
@@ -39,26 +34,16 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("Δεν βρέθηκε ανενεργός λογαριασμός με email."))
             return
 
-        base_url = settings.BASE_URL.rstrip("/")
         sent = 0
         for user in users:
             if options["dry_run"]:
                 self.stdout.write(f"[dry-run] θα σταλεί σε #{user.id} {user.email}")
                 continue
 
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            token = default_token_generator.make_token(user)
-            verify_url = f"{base_url}{reverse('verify_email', kwargs={'uidb64': uid, 'token': token})}"
-            context = {"verify_url": verify_url, "user": user}
-
+            # Sent inline, not queued: this command is run by hand to unblock specific
+            # accounts, so a failure has to surface here rather than in a worker log.
             try:
-                send_mail(
-                    "Επιβεβαίωση email στο Gemi Leads",
-                    render_to_string("emails/verification.txt", context),
-                    settings.DEFAULT_FROM_EMAIL,
-                    [user.email],
-                    html_message=render_to_string("emails/verification.html", context),
-                )
+                send_verification_email_now(user.pk)
             except Exception as exc:
                 self.stdout.write(self.style.ERROR(f"Απέτυχε για {user.email}: {exc}"))
                 continue

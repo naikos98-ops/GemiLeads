@@ -197,6 +197,14 @@ EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+
+# Django's SMTP backend passes timeout=None to smtplib by default, which means the socket
+# falls back to the OS-level TCP timeout -- hours, not seconds. A verification email sent
+# synchronously inside the signup request then hangs the gunicorn worker for as long as the
+# relay takes to answer: on 2026-09-01 a signup at 22:42 only reached Brevo at 04:51 the next
+# morning, six hours later, and the account stayed is_active=False the whole time. Bound every
+# SMTP conversation so a stalled relay fails fast and loudly instead of hanging.
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Gemi Leads <notifications@send.gemileads.gr>")
 EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "info@gemileads.gr")
 
@@ -206,9 +214,10 @@ OUTREACH_TEST_EMAIL = os.getenv("OUTREACH_TEST_EMAIL", "naikos98@gmail.com")
 # Max cold-outreach emails per rolling 24h. Past the Brevo plan's daily quota the SMTP relay
 # accepts the message (250 OK) and silently drops it, so send() succeeds and the row would be
 # wrongly marked "sent". process_pending_outreach stops here and leaves the rest "pending"
-# for a follow-up run 24h later. Kept below the plan quota with headroom for digest emails,
-# which draw on the same quota.
-OUTREACH_DAILY_SEND_CAP = int(os.getenv("OUTREACH_DAILY_SEND_CAP", "250"))
+# for drain_pending_outreach_task to pick up. Kept below the plan quota (300/day) with
+# headroom for the digests AND the transactional mail -- verification and password reset --
+# that draw on the same quota and, unlike outreach, cannot wait for tomorrow.
+OUTREACH_DAILY_SEND_CAP = int(os.getenv("OUTREACH_DAILY_SEND_CAP", "180"))
 
 # Shared secret Brevo sends back with every outbound webhook call (Brevo's own "Token-based
 # authentication" option, not an HMAC signature) -- checked with a constant-time comparison in

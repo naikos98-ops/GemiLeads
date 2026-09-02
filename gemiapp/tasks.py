@@ -69,9 +69,6 @@ def send_company_outreach_task(company_ids):
     The web request only claims the rows (status="pending"); this worker does the SMTP
     round-trips, which are what used to time out the gunicorn worker.
     """
-    from django_q.tasks import schedule
-    from django_q.models import Schedule
-
     from gemiapp.superadmin.services import process_pending_outreach
 
     sent, failed, skipped = process_pending_outreach(company_ids)
@@ -79,20 +76,41 @@ def send_company_outreach_task(company_ids):
         "Client outreach: %s sent, %s failed, %s skipped (daily cap) of %s queued",
         sent, failed, skipped, len(company_ids),
     )
+    # Anything skipped stays "pending" and is picked up by drain_pending_outreach_task, the
+    # daily sweep registered in apps.py. This task deliberately schedules no follow-up of its
+    # own: the per-batch ONCE schedule it used to create only retried its own company_ids and
+    # was only created when that batch overflowed, so a backlog could sit for days.
+    return {"sent": sent, "failed": failed, "skipped": skipped}
 
-    if skipped:
-        # The rows are still "pending"; come back in 24h to drain them once the Brevo
-        # quota resets. ONCE schedules delete themselves after firing.
-        drain_name = f"outreach-drain-{min(company_ids)}-{max(company_ids)}"
-        Schedule.objects.filter(name=drain_name).delete()
-        schedule(
-            "gemiapp.tasks.send_company_outreach_task",
-            company_ids,
-            schedule_type=Schedule.ONCE,
-            next_run=timezone.now() + timedelta(hours=24, minutes=5),
-            name=drain_name,
-        )
 
+def drain_pending_outreach_task():
+    """Send outreach rows left "pending" by the daily cap, oldest first. Runs daily.
+
+    Batch-agnostic on purpose: it asks the database which rows are still pending rather than
+    carrying a list of ids from whoever queued them, so a row cannot be stranded by the batch
+    it happened to arrive in.
+    """
+    from gemiapp.models import CompanyOutreach
+    from gemiapp.superadmin.services import process_pending_outreach
+
+    if not _claim_pipeline_slot("outreach-drain", 23 * 3600):
+        logger.info("Outreach drain slot already claimed by another cluster; skipping.")
+        return
+
+    company_ids = list(
+        CompanyOutreach.objects.filter(status="pending")
+        .order_by("created_at")
+        .values_list("company_id", flat=True)
+    )
+    if not company_ids:
+        logger.info("Outreach drain: nothing pending.")
+        return {"sent": 0, "failed": 0, "skipped": 0}
+
+    sent, failed, skipped = process_pending_outreach(company_ids)
+    logger.info(
+        "Outreach drain: %s sent, %s failed, %s still pending of %s backlog.",
+        sent, failed, skipped, len(company_ids),
+    )
     return {"sent": sent, "failed": failed, "skipped": skipped}
 
 
@@ -125,3 +143,21 @@ def run_intraday_pipeline_task():
     except Exception as exc:
         logger.error(f"Intraday pipeline error: {exc}", exc_info=True)
         raise
+
+
+def send_verification_email_task(user_id):
+    """Send one account-verification email. Enqueued by signup and by the resend view.
+
+    Lives in a worker rather than the web request because send_mail() opens an SMTP
+    connection to Brevo inline: before EMAIL_TIMEOUT was set a stalled relay hung the
+    gunicorn worker for hours (see the 2026-09-01 signup that reached Brevo six hours
+    late), and even with the timeout a slow handshake is seconds the signup response
+    should not be waiting on. The user sees "check your inbox" immediately either way.
+
+    Takes a user id, not a request: the worker has no request to read get_host() from, so
+    the link is built against settings.BASE_URL like the resend_verification_emails
+    management command already does.
+    """
+    from gemiapp.services import send_verification_email_now
+
+    send_verification_email_now(user_id)

@@ -13,7 +13,6 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.views import LoginView, PasswordResetView
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import send_mail
 from django.core.paginator import Paginator
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.conf import settings
@@ -140,21 +139,30 @@ def signup(request):
 
 
 def send_verification_email(request, user):
-    """Build and send the account verification link for ``user``."""
-    domain = request.get_host()
-    protocol = "https" if request.is_secure() else "http"
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = default_token_generator.make_token(user)
-    verify_url = f"{protocol}://{domain}{reverse('verify_email', kwargs={'uidb64': uid, 'token': token})}"
+    """Hand the account-verification email to a background worker.
 
-    context = {"verify_url": verify_url, "user": user}
-    send_mail(
-        "Επιβεβαίωση email στο Gemi Leads",
-        render_to_string("emails/verification.txt", context),
-        settings.DEFAULT_FROM_EMAIL,
-        [user.email],
-        html_message=render_to_string("emails/verification.html", context),
-    )
+    ``request`` is unused -- the link is built from settings.BASE_URL because the worker has
+    no request to read the Host header from -- but is kept in the signature so both call
+    sites (signup and resend_verification) read the same.
+
+    Deliberately does not send inline. send_mail() opens an SMTP connection to Brevo, and a
+    slow or stalled relay used to hang the signup request for as long as the handshake took
+    -- a signup on 2026-09-01 at 22:42 only reached Brevo at 04:51, six hours later, with the
+    account unusable until then. Queueing means signup answers at once and a slow relay
+    delays only the email.
+
+    Falls back to sending inline when the queue cannot be reached: a verification email that
+    is late is recoverable, one that was never sent leaves the user in a dead end.
+    """
+    from django_q.tasks import async_task
+
+    from .services import send_verification_email_now
+
+    try:
+        async_task("gemiapp.tasks.send_verification_email_task", user.pk)
+    except Exception:
+        logger.exception("Could not queue verification email for user %s; sending inline.", user.pk)
+        send_verification_email_now(user.pk)
 
 
 @ratelimit(key="ip", rate="5/h", block=True)

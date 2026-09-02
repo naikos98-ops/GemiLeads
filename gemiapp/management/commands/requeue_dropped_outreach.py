@@ -88,6 +88,6 @@ class Command(BaseCommand):
 
         async_task("gemiapp.tasks.send_company_outreach_task", company_ids)
         self.stdout.write(
-            "Έγινε enqueue το send_company_outreach_task. Θα στείλει μέχρι το daily cap "
-            "και θα προγραμματίσει το υπόλοιπο για +24h."
+            "Έγινε enqueue το send_company_outreach_task. Θα στείλει μέχρι το daily cap· "
+            "ό,τι περισσέψει μένει pending και το παίρνει το ημερήσιο drain_pending_outreach_task."
         )
