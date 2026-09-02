@@ -2254,8 +2254,33 @@ class CachedAggregateTests(TestCase):
 
     def test_values_are_still_correct(self):
         response = self.client.get(reverse("home"))
-        self.assertEqual(response.context["today_count"], 15)
         self.assertEqual(response.context["global_company_count"], 15)
+
+    def test_the_landing_page_carries_no_database_derived_figure(self):
+        """The redesign removed today_count / recent_count / latest_companies from the
+        home view: they were fetched on every hit and never rendered, and a hero whose
+        numbers move with the day's import volume is weaker on a quiet week. Every
+        figure on the page now traces to a source constant or schedule instead.
+
+        today_count is still built by the dashboard view, which does render it.
+        """
+        context = self.client.get(reverse("home")).context
+        for key in ("today_count", "recent_count", "latest_companies"):
+            self.assertNotIn(
+                key, context,
+                "%s is back in the home context -- if the page needs it again, render "
+                "it behind a guard so a quiet period cannot leave a bare 0 on screen" % key,
+            )
+
+    def test_the_landing_page_renders_without_any_company(self):
+        """It must look identical on an empty database or a stale import."""
+        Company.objects.all().delete()
+        cache.clear()
+        response = self.client.get(reverse("home"))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        for figure in ("9.651", "09:00", "Καθημερινά"):
+            self.assertIn(figure, html)
 
     def test_cache_failure_does_not_break_the_page(self):
         """global_stats must degrade gracefully, as it did before."""

@@ -5,11 +5,11 @@ resolved first. Settings is the one canonical place to resolve either (Phase 5g 
 this links there rather than duplicating a second mutation control on the pricing page.
 {% endcomment %}
 {% if user.subscription.active_until %}
-<a href="{% url 'settings' %}" class="block w-full rounded-xl bg-sand-100 py-3 text-center text-xs font-bold leading-4 text-navy-700/70 transition hover:bg-sand-200">
+<a href="{% url 'settings' %}" class="block w-full rounded-panel bg-sand-100 py-3 text-center text-xs font-bold leading-4 text-navy-700/70 transition hover:bg-sand-200">
   Η συνδρομή θα λήξει στις {{ user.subscription.active_until|date:"d/m/Y" }}<br>Διαχείριση από τις ρυθμίσεις
 </a>
 {% else %}
-<a href="{% url 'settings' %}" class="block w-full rounded-xl bg-sand-100 py-3 text-center text-xs font-bold leading-4 text-navy-700/70 transition hover:bg-sand-200">
+<a href="{% url 'settings' %}" class="block w-full rounded-panel bg-sand-100 py-3 text-center text-xs font-bold leading-4 text-navy-700/70 transition hover:bg-sand-200">
   Προγραμματισμένη αλλαγή &rarr; {{ user.subscription.get_scheduled_tier_display }} στις {{ user.subscription.scheduled_change_at|date:"d/m/Y" }}<br>Διαχείριση από τις ρυθμίσεις
 </a>
 {% endif %}

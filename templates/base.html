@@ -78,22 +78,21 @@
   <nav class="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-navy-950/90 text-white glass">
     <div class="mx-auto flex h-18 max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
       <a href="{% url 'home' %}" class="group flex items-center gap-3">
-        <div class="relative flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-navy-900 p-2 shadow-glow transition duration-300 group-hover:scale-105">
+        <div class="relative flex h-9 w-9 items-center justify-center rounded-panel bg-gradient-to-br from-blue-500 to-navy-900 p-2 transition duration-300 group-hover:scale-105">
           <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="9" class="opacity-30" />
             <circle cx="12" cy="12" r="5" class="opacity-60" />
             <circle cx="12" cy="12" r="1.5" fill="currentColor" />
             <path d="M12 3a9 9 0 0 1 9 9" class="text-blue-400 stroke-blue-400" />
           </svg>
-          <span class="absolute -right-0.5 -top-0.5 h-2 w-2 animate-ping rounded-full bg-blue-400"></span>
         </div>
         <span class="text-xl font-extrabold tracking-tight text-white">Gemi <span class="text-blue-400">Leads</span></span>
-        {% if beta_mode %}<span class="rounded-full border border-blue-400/40 bg-blue-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-300">Beta</span>{% endif %}
+        {% if beta_mode %}<span class="rounded-full border border-blue-400/40 bg-blue-400/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-blue-300">Beta</span>{% endif %}
       </a>
       <div class="hidden items-center gap-7 text-sm font-medium md:flex">
         {% if user.is_authenticated %}
           {% if user.is_staff or user.is_superuser %}
-            <a href="{% url 'superadmin:overview' %}" class="flex items-center gap-1.5 rounded-full bg-purple-600 px-4 py-1.5 text-xs font-bold text-white shadow-glow transition hover:bg-purple-500 hover:scale-105">
+            <a href="{% url 'superadmin:overview' %}" class="flex items-center gap-1.5 rounded-full bg-purple-600 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-purple-500">
               👑 Superadmin
             </a>
           {% endif %}
@@ -103,19 +102,50 @@
           <a href="{% url 'settings' %}" class="text-white/70 transition hover:text-white">Ρυθμίσεις</a>
           <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="rounded-full border border-white/15 px-5 py-2 transition hover:bg-white/10">Έξοδος</button></form>
         {% else %}
+          {% comment %} "Δυνατότητες" pointed at #features, a section whose content merely restated
+             How it works. Rather than leave two labels resolving to one target, the slot
+             now goes to the sample-leads table -- the page's strongest asset and the thing
+             a visitor most wants to jump to. Order mirrors the page's own scroll: proof,
+             mechanism, price. {% endcomment %}
+          <a href="{% url 'home' %}#sample-leads" class="text-white/70 transition hover:text-white">Δείγμα leads</a>
           <a href="{% url 'home' %}#how-it-works" class="text-white/70 transition hover:text-white">Πώς λειτουργεί</a>
-          <a href="{% url 'home' %}#features" class="text-white/70 transition hover:text-white">Δυνατότητες</a>
           <a href="{% url 'pricing' %}" class="text-white/70 transition hover:text-white">Τιμές</a><a href="{% url 'login' %}" class="text-white/70 transition hover:text-white">Σύνδεση</a>
           <a href="{% url 'signup' %}" class="rounded-full bg-sand-100 px-5 py-2 font-bold text-navy-950 shadow-sm transition hover:-translate-y-0.5 hover:bg-white">Ξεκίνα τώρα</a>
         {% endif %}
       </div>
-      <button id="menuButton" class="rounded-xl border border-white/15 p-2 md:hidden" aria-label="Μενού"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+      <button id="menuButton" class="rounded-panel border border-white/15 p-2 md:hidden" aria-label="Μενού"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </div>
-    <div id="mobileMenu" class="hidden border-t border-white/10 px-5 py-4 md:hidden">
-      <div class="flex flex-col gap-4 text-sm">{% if user.is_authenticated %}{% if user.is_staff or user.is_superuser %}<a href="{% url 'superadmin:overview' %}" class="font-extrabold text-purple-400">👑 Superadmin Control Center</a>{% endif %}<a href="{% url 'dashboard' %}">Dashboard</a><a href="{% url 'lead_list' %}">Leads</a><a href="{% url 'radar_list' %}">Radars</a><a href="{% url 'settings' %}">Ρυθμίσεις</a>{% else %}<a href="{% url 'home' %}#how-it-works">Πώς λειτουργεί</a><a href="{% url 'home' %}#features">Δυνατότητες</a><a href="{% url 'pricing' %}">Τιμές</a><a href="{% url 'login' %}">Σύνδεση</a><a href="{% url 'signup' %}" class="font-bold text-blue-400">Ξεκίνα τώρα →</a>{% endif %}</div>
+    {% comment %} Not a stacked copy of the desktop bar: rows are full-width 44px touch targets
+       (see the pointer:coarse rule in input.css), browsing is separated from account
+       actions by a rule, and the primary CTA is a full-width button rather than an
+       inline pill. app.js closes the menu on selection, so an in-page anchor no longer
+       leaves the panel covering the section it just scrolled to. {% endcomment %}
+    <div id="mobileMenu" class="hidden border-t border-white/10 px-5 py-3 md:hidden">
+      <div class="flex flex-col text-sm">
+        {% if user.is_authenticated %}
+          {% if user.is_staff or user.is_superuser %}<a href="{% url 'superadmin:overview' %}" class="font-bold text-purple-400">👑 Superadmin Control Center</a>{% endif %}
+          <a href="{% url 'dashboard' %}">Dashboard</a>
+          <a href="{% url 'lead_list' %}">Leads</a>
+          <a href="{% url 'radar_list' %}">Radars</a>
+          <a href="{% url 'settings' %}">Ρυθμίσεις</a>
+        {% else %}
+          <a href="{% url 'home' %}#sample-leads">Δείγμα leads</a>
+          <a href="{% url 'home' %}#how-it-works">Πώς λειτουργεί</a>
+          <a href="{% url 'pricing' %}">Τιμές</a>
+          <div class="my-2 border-t border-white/10"></div>
+          <a href="{% url 'login' %}">Σύνδεση</a>
+          {% comment %}
+          bg-white, not bg-sand-100: the navbar is always-dark chrome in both modes, but
+          bg-sand-100 is remapped to the dark sunk surface by the phone dark theme, which
+          turned this primary CTA into a dark button on a dark panel. bg-white is remapped
+          too -- to --surface-card -- so it is pinned below with a rule scoped to the menu.
+          {% endcomment %}
+          <a href="{% url 'signup' %}" data-menu-cta class="mt-2 justify-center rounded-full bg-white px-5 py-3 text-center font-bold text-navy-950">Ξεκίνα τώρα →</a>
+        {% endif %}
+      </div>
     </div>
   </nav>
-  {% if messages %}<div class="fixed right-5 top-24 z-50 space-y-2">{% for message in messages %}<div data-toast class="rounded-2xl bg-navy-900 px-5 py-4 text-sm text-white shadow-soft">{{ message }}</div>{% endfor %}</div>{% endif %}
+  {% if messages %}<div class="fixed right-5 top-24 z-50 space-y-2">{% for message in messages %}<div data-toast class="rounded-control bg-navy-900 px-5 py-4 text-sm text-white shadow-soft">{{ message }}</div>{% endfor %}</div>{% endif %}
   <main class="pt-18">{% block content %}{% endblock %}</main>
   <footer class="border-t border-navy-900/10 bg-sand-100 px-5 py-10">
     <div class="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-sm text-navy-900/60 sm:flex-row">

@@ -101,26 +101,15 @@ def _radar_companies(form, activity_codes):
 
 
 def home(request):
-    from django.core.cache import cache
-
-    today = timezone.localdate()
-    # Public landing page: these aggregates change at most once per daily import, so a short
-    # cache keeps three COUNT queries off the critical path without affecting correctness.
-    context = {
-        "today_count": cache.get_or_set(
-            f"home_today_count_{today}",
-            lambda: Company.objects.filter(incorporation_date=today).count(),
-            600,
-        ),
-        "latest_companies": Company.objects.all()[:6],
-        "recent_count": cache.get_or_set(
-            f"home_recent_count_{today}",
-            lambda: Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).count(),
-            600,
-        ),
-        "sample_leads": SAMPLE_LEADS,
-    }
-    return render(request, "home.html", context)
+    # today_count, recent_count and latest_companies were fetched here but never rendered
+    # by home.html -- three queries per landing-page hit, one of them an unbounded slice,
+    # all discarded. today_count is still built by the dashboard view, which does use it.
+    #
+    # The landing page is now deliberately free of database-derived figures: every number
+    # on it traces to a source constant or schedule (9.651 to kad_2025.json, 09:00 and
+    # "Καθημερινά" to apps.py SCHEDULES), so it renders identically on a quiet week, a
+    # busy one, or an empty database. A live activity metric can be revisited separately.
+    return render(request, "home.html", {"sample_leads": SAMPLE_LEADS})
 
 
 @method_decorator(ratelimit(key="ip", rate="5/m", block=True), name="dispatch")

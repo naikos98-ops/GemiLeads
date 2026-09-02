@@ -6,7 +6,7 @@
   </td>
   <td class="px-5 py-5 text-sm font-medium">
     {{ company.incorporation_date|date:'d/m/Y' }}
-    {% if company.incorporation_date == today %}<span class="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-blue-700">Σήμερα</span>{% endif %}
+    {% if company.incorporation_date == today %}<span class="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-blue-700">Σήμερα</span>{% endif %}
   </td>
   <td class="px-5 py-5 text-sm text-navy-700/60">{{ company.legal_type|default:'—' }}</td>
   <td class="px-5 py-5 text-sm text-navy-700/60">{{ company.city|default:company.prefecture|default:'—' }}</td>

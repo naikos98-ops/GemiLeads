@@ -7,7 +7,7 @@
   <div class="mx-auto max-w-7xl">
     <div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-end" data-reveal>
       <div>
-        <p class="text-sm font-bold uppercase tracking-[.2em] text-blue-600">Market pulse</p>
+        <p class="text-sm font-bold uppercase tracking-[.12em] text-blue-600">Επισκόπηση</p>
         <h1 class="mt-2 text-4xl font-extrabold tracking-tight">Καλημέρα, {{ user.first_name|default:'εκεί' }}.</h1>
         <p class="mt-2 text-navy-700/55">Η καθημερινή εικόνα των νέων επιχειρήσεων.</p>
       </div>
@@ -17,40 +17,40 @@
     </div>
 
     {% if not has_active_paid_subscription %}
-    <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border-2 border-signal bg-white p-6 shadow-glow sm:flex-row sm:items-center" data-reveal>
+    <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border-2 border-signal bg-white p-6 sm:flex-row sm:items-center" data-reveal>
       <div>
-        <h3 class="text-xl font-extrabold text-navy-950">Απαιτείται ενεργή συνδρομή</h3>
+        <h3 class="text-xl font-bold text-navy-950">Απαιτείται ενεργή συνδρομή</h3>
         <p class="mt-1 text-sm text-navy-700/65 font-medium">Επίλεξε πλάνο για να ενεργοποιήσεις τα Ραντάρ σου και να αρχίσεις να λαμβάνεις νέα leads στο inbox σου.</p>
       </div>
-      <a href="{% url 'pricing' %}" class="rounded-full bg-signal px-7 py-3 font-extrabold text-white shadow-glow transition hover:bg-blue-600 whitespace-nowrap">Επιλογή Πλάνου →</a>
+      <a href="{% url 'pricing' %}" class="rounded-full bg-signal px-7 py-3 font-bold text-white transition hover:bg-blue-600 whitespace-nowrap">Επιλογή Πλάνου →</a>
     </div>
     {% endif %}
 
     <!-- Stat Cards Bar -->
     <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <a href="{% url 'lead_list' %}?status=new" data-reveal class="rounded-[1.6rem] bg-navy-950 p-6 text-white shadow-soft">
+      <a href="{% url 'lead_list' %}?status=new" data-reveal class="rounded-card bg-navy-950 p-6 text-white shadow-soft">
         <p class="text-xs font-semibold uppercase tracking-widest text-white/45">Νέα leads</p>
         <div class="mt-3 flex items-end justify-between">
           <p class="text-4xl font-extrabold" data-counter="{{ unread_lead_count }}">0</p>
           <span class="rounded-full bg-blue-500/20 px-2 py-1 text-xs text-blue-200">αδιάβαστα</span>
         </div>
       </a>
-      <a href="{% url 'radar_list' %}" data-reveal class="rounded-[1.6rem] border border-navy-900/10 bg-white p-6">
+      <a href="{% url 'radar_list' %}" data-reveal class="rounded-card border border-navy-900/10 bg-white p-6">
         <p class="text-xs font-semibold uppercase tracking-widest text-navy-700/45">Ενεργά Radars</p>
         <p class="mt-3 text-4xl font-extrabold" data-counter="{{ active_radar_count }}">0</p>
       </a>
-      <a href="{% url 'lead_list' %}?status=interested" data-reveal class="rounded-[1.6rem] border border-navy-900/10 bg-white p-6">
+      <a href="{% url 'lead_list' %}?status=interested" data-reveal class="rounded-card border border-navy-900/10 bg-white p-6">
         <p class="text-xs font-semibold uppercase tracking-widest text-navy-700/45">Ενδιαφέρονται</p>
         <p class="mt-3 text-4xl font-extrabold" data-counter="{{ interested_lead_count }}">0</p>
       </a>
-      <a href="{% url 'lead_list' %}" data-reveal class="rounded-[1.6rem] bg-sand-200 p-6">
+      <a href="{% url 'lead_list' %}" data-reveal class="rounded-card bg-sand-200 p-6">
         <p class="text-xs font-semibold uppercase tracking-widest text-navy-700/45">Σύνολο leads</p>
         <p class="mt-3 text-4xl font-extrabold" data-counter="{{ lead_count }}">0</p>
       </a>
     </div>
 
     {% if is_realtime_tier %}
-    <div data-reveal class="mt-6 rounded-[2rem] border border-blue-500/20 bg-gradient-to-r from-blue-50 to-white p-6 shadow-soft">
+    <div data-reveal class="mt-6 rounded-card border border-blue-500/20 bg-gradient-to-r from-blue-50 to-white p-6 shadow-soft">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div class="flex items-center gap-2">
@@ -58,14 +58,14 @@
               <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-500 opacity-60"></span>
               <span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-600"></span>
             </span>
-            <h2 class="font-extrabold text-navy-950">Priority Alerts · σημερινές εγγραφές ΓΕΜΗ</h2>
+            <h2 class="font-bold text-navy-950">Priority Alerts · σημερινές εγγραφές ΓΕΜΗ</h2>
           </div>
           <p class="mt-1 text-xs text-navy-700/50">
             Το ΓΕΜΗ API καλείται κάθε 3 ώρες (08:00–23:00) και οι νέες σημερινές επιχειρήσεις εμφανίζονται αμέσως εδώ.
             {% if last_intraday_run %}Τελευταία ενημέρωση: <b>{{ last_intraday_run.finished_at|date:'H:i' }}</b>.{% else %}Δεν έχει ολοκληρωθεί ακόμη κλήση για σήμερα.{% endif %}
           </p>
         </div>
-        <a href="?date_from={{ today|date:'Y-m-d' }}&date_to={{ today|date:'Y-m-d' }}" class="rounded-2xl bg-navy-950 px-5 py-3 text-xs font-bold text-white transition hover:-translate-y-0.5">
+        <a href="?date_from={{ today|date:'Y-m-d' }}&date_to={{ today|date:'Y-m-d' }}" class="rounded-control bg-navy-950 px-5 py-3 text-xs font-bold text-white transition hover:-translate-y-0.5">
           Δες μόνο τις σημερινές ({{ today_count }})
         </a>
       </div>
@@ -74,19 +74,19 @@
 
     <!-- Chart & Pipeline Row -->
     <div class="mt-6 grid gap-6 lg:grid-cols-[1fr_300px]">
-      <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft" data-reveal>
+      <div class="rounded-card border border-navy-900/10 bg-white p-6 shadow-soft" data-reveal>
         <div class="flex items-center justify-between">
           <div>
-            <h2 class="font-extrabold">Ρυθμός νέων εγγραφών</h2>
+            <h2 class="font-bold">Ρυθμός νέων εγγραφών</h2>
             <p class="text-xs text-navy-700/45">Τελευταίες 7 ημέρες</p>
           </div>
           <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">Live data</span>
         </div>
         <div id="chart" class="mt-8 flex h-40 items-end gap-3" data-chart='[{% for item in chart_data %}{"date":"{{ item.incorporation_date|date:'d/m' }}","total":{{ item.total }}}{% if not forloop.last %},{% endif %}{% endfor %}]'></div>
       </div>
-      <div class="rounded-[2rem] bg-navy-900 p-6 text-white shadow-soft" data-reveal>
+      <div class="rounded-card bg-navy-900 p-6 text-white shadow-soft" data-reveal>
         <p class="text-xs font-bold uppercase tracking-widest text-blue-300">Pipeline</p>
-        <h3 class="mt-3 text-lg font-extrabold">{% if latest_run %}{{ latest_run.get_status_display }}{% else %}Αναμονή πρώτης εισαγωγής{% endif %}</h3>
+        <h3 class="mt-3 text-lg font-bold">{% if latest_run %}{{ latest_run.get_status_display }}{% else %}Αναμονή πρώτης εισαγωγής{% endif %}</h3>
         {% if latest_run %}
         <p class="mt-2 text-sm text-white/50">{{ latest_run.target_date|date:'d/m/Y' }} · {{ latest_run.fetched_count }} εγγραφές</p>
         <div class="mt-6 h-2 overflow-hidden rounded-full bg-white/10">
@@ -99,10 +99,10 @@
     </div>
 
     <!-- Lead Inbox Section -->
-    <div class="mt-6 overflow-hidden rounded-[2rem] border border-navy-900/10 bg-white shadow-soft" data-reveal>
+    <div class="mt-6 overflow-hidden rounded-card border border-navy-900/10 bg-white shadow-soft" data-reveal>
       <div class="flex items-center justify-between border-b border-navy-900/10 px-6 py-5">
         <div>
-          <h2 class="font-extrabold">Lead inbox</h2>
+          <h2 class="font-bold">Lead inbox</h2>
           <p class="text-xs text-navy-700/45">Τα πιο πρόσφατα προσωπικά matches</p>
         </div>
         <a href="{% url 'lead_list' %}" class="text-sm font-bold text-blue-700">Όλα τα leads →</a>
@@ -123,23 +123,23 @@
     </div>
 
     <!-- Filter Form (collapsed by default; opens when a filter is active) -->
-    <details class="group mt-8 rounded-[2rem] border border-navy-900/10 bg-white shadow-soft" data-reveal {% if filters_active %}open{% endif %}>
+    <details class="group mt-8 rounded-card border border-navy-900/10 bg-white shadow-soft" data-reveal {% if filters_active %}open{% endif %}>
       <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-bold text-navy-700 [&::-webkit-details-marker]:hidden">
         <span class="flex items-center gap-2">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          Αναζήτηση &amp; φίλτρα{% if filters_active %} <span class="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-extrabold text-blue-700">ενεργά</span>{% endif %}
+          Αναζήτηση &amp; φίλτρα{% if filters_active %} <span class="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">ενεργά</span>{% endif %}
         </span>
         <svg class="h-4 w-4 transition-transform group-open:rotate-180" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
       </summary>
       <form method="get" class="grid gap-3 border-t border-navy-900/10 p-5 lg:grid-cols-6">
-      <input name="q" value="{{ request.GET.q }}" placeholder="Επωνυμία, ΑΦΜ ή ΓΕΜΗ" class="rounded-2xl border border-navy-900/10 bg-sand-50 px-4 py-3 text-sm outline-none focus:border-blue-500 lg:col-span-2">
-      <select name="prefecture" class="rounded-2xl border border-navy-900/10 bg-sand-50 px-4 py-3 text-sm outline-none">
+      <input name="q" value="{{ request.GET.q }}" placeholder="Επωνυμία, ΑΦΜ ή ΓΕΜΗ" class="rounded-control border border-navy-900/10 bg-sand-50 px-4 py-3 text-sm outline-none focus:border-blue-500 lg:col-span-2">
+      <select name="prefecture" class="rounded-control border border-navy-900/10 bg-sand-50 px-4 py-3 text-sm outline-none">
         <option value="">Όλες οι περιοχές</option>
         {% for value in prefectures %}
         <option {% if request.GET.prefecture == value %}selected{% endif %}>{{ value }}</option>
         {% endfor %}
       </select>
-      <select name="legal_type" class="rounded-2xl border border-navy-900/10 bg-sand-50 px-4 py-3 text-sm outline-none">
+      <select name="legal_type" class="rounded-control border border-navy-900/10 bg-sand-50 px-4 py-3 text-sm outline-none">
         <option value="">Όλες οι μορφές</option>
         {% for value in legal_types %}
         <option {% if request.GET.legal_type == value %}selected{% endif %}>{{ value }}</option>
@@ -147,28 +147,28 @@
       </select>
       <label class="flex flex-col gap-1.5 text-xs font-bold text-navy-700/55">
         <span class="px-1">Από ημερομηνία</span>
-        <input name="date_from" value="{{ request.GET.date_from }}" type="date" class="rounded-2xl border border-navy-900/10 bg-sand-50 px-4 py-3 text-sm font-normal text-navy-950 outline-none focus:border-blue-500">
+        <input name="date_from" value="{{ request.GET.date_from }}" type="date" class="rounded-control border border-navy-900/10 bg-sand-50 px-4 py-3 text-sm font-normal text-navy-950 outline-none focus:border-blue-500">
       </label>
       <label class="flex flex-col gap-1.5 text-xs font-bold text-navy-700/55">
         <span class="px-1">Έως ημερομηνία</span>
-        <input name="date_to" value="{{ request.GET.date_to }}" type="date" class="rounded-2xl border border-navy-900/10 bg-sand-50 px-4 py-3 text-sm font-normal text-navy-950 outline-none focus:border-blue-500">
+        <input name="date_to" value="{{ request.GET.date_to }}" type="date" class="rounded-control border border-navy-900/10 bg-sand-50 px-4 py-3 text-sm font-normal text-navy-950 outline-none focus:border-blue-500">
       </label>
       {% include 'includes/kad_picker.html' with kad_picker_id='dashboard-kads' kad_input_name='kad' kad_label='Φίλτρο ΚΑΔ' kad_help='Βρες έναν ή περισσότερους ΚΑΔ. Τα αποτελέσματα θα περιλαμβάνουν εταιρείες που έχουν τουλάχιστον έναν από αυτούς.' kad_wrapper_class='lg:col-span-6' %}
       {% if date_range_error %}
-      <p class="rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 lg:col-span-6">Η ημερομηνία «Από» πρέπει να είναι πριν ή ίδια με την ημερομηνία «Έως».</p>
+      <p class="rounded-control bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 lg:col-span-6">Η ημερομηνία «Από» πρέπει να είναι πριν ή ίδια με την ημερομηνία «Έως».</p>
       {% endif %}
       <div class="flex flex-wrap justify-end gap-3 lg:col-span-6">
-        <a href="{% url 'dashboard' %}" class="rounded-2xl border border-navy-900/10 px-5 py-3 text-sm font-bold text-navy-700 transition hover:bg-sand-100">Καθαρισμός φίλτρων</a>
-        <button class="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-700">Εφαρμογή φίλτρων</button>
+        <a href="{% url 'dashboard' %}" class="rounded-control border border-navy-900/10 px-5 py-3 text-sm font-bold text-navy-700 transition hover:bg-sand-100">Καθαρισμός φίλτρων</a>
+        <button class="rounded-control bg-blue-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-700">Εφαρμογή φίλτρων</button>
       </div>
       </form>
     </details>
 
     <!-- Company Archive Table -->
-    <div class="mt-5 overflow-hidden rounded-[2rem] border border-navy-900/10 bg-white shadow-soft" data-reveal>
+    <div class="mt-5 overflow-hidden rounded-card border border-navy-900/10 bg-white shadow-soft" data-reveal>
       <div class="flex items-center justify-between border-b border-navy-900/10 px-6 py-5">
         <div>
-          <h2 class="font-extrabold">Αρχείο επιχειρήσεων</h2>
+          <h2 class="font-bold">Αρχείο επιχειρήσεων</h2>
           <p class="text-xs text-navy-700/45">{{ result_count }} αποτελέσματα · κύλιση μετά τις πρώτες 20 εγγραφές</p>
         </div>
       </div>

@@ -24,10 +24,10 @@ class StaticViewSitemap(Sitemap):
     protocol = "https"
 
     LAST_MODIFIED = {
-        "home": date(2026, 8, 27),     # conversion pass: new hero, sample-leads & use-cases sections
-        "pricing": date(2026, 8, 27),  # Real-Time tier renamed to Priority Alerts
-        "signup": date(2026, 8, 22),
-        "login": date(2026, 8, 22),
+        "home": date(2026, 9, 1),      # redesign: product-led hero, Features + trust strip removed
+        "pricing": date(2026, 9, 1),   # headline rewrite, dark-mode + radius pass
+        "signup": date(2026, 9, 1),    # headline rewrite, dark-mode fix on the help panel
+        "login": date(2026, 9, 1),     # password-row markup fix
     }
 
     def items(self):

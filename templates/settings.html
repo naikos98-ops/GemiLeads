@@ -8,7 +8,7 @@
     <!-- Subscription Section -->
     {% with sub=user.subscription state=user.subscription|billing_state %}
     <div data-reveal class="mb-10">
-      <p class="text-sm font-bold uppercase tracking-[.2em] text-blue-600">ΛΟΓΑΡΙΑΣΜΟΣ</p>
+      <p class="text-sm font-bold uppercase tracking-[.12em] text-blue-600">ΛΟΓΑΡΙΑΣΜΟΣ</p>
       <h1 class="mt-2 text-4xl font-extrabold">Το πλάνο σου.</h1>
 
       {% comment %}
@@ -21,7 +21,7 @@
       {% endcomment %}
 
       {% if state == "payment_problem" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border-2 border-amber-400/60 bg-amber-50 p-6 shadow-soft sm:flex-row sm:items-center">
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border-2 border-amber-400/60 bg-amber-50 p-6 shadow-soft sm:flex-row sm:items-center">
         <div>
           <h3 class="text-lg font-bold text-navy-950">{{ sub.get_tier_display }} Πλάνο</h3>
           <p class="text-sm font-semibold text-amber-800 mt-1">⚠️ Χρειάζεται ενέργεια για την πληρωμή σας ({{ sub.status|stripe_status_label }}).</p>
@@ -29,13 +29,13 @@
         <div class="flex-shrink-0">
           <form action="{% url 'customer_portal' %}" method="post">
             {% csrf_token %}
-            <button class="w-full rounded-xl bg-amber-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-amber-700">Διαχείριση Χρέωσης</button>
+            <button class="w-full rounded-panel bg-amber-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-amber-700">Διαχείριση Χρέωσης</button>
           </form>
         </div>
       </div>
 
       {% elif state == "scheduled_cancellation" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
         <div>
           <h3 class="text-lg font-bold text-navy-950">{{ sub.get_tier_display }} Πλάνο</h3>
           <p class="text-sm text-navy-700/60 mt-1">
@@ -46,7 +46,7 @@
         <div class="flex flex-shrink-0 flex-col items-stretch gap-2 sm:items-end">
           <form action="{% url 'resume_subscription' %}" method="post">
             {% csrf_token %}
-            <button class="w-full rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600">Συνέχιση συνδρομής</button>
+            <button class="w-full rounded-panel bg-signal px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600">Συνέχιση συνδρομής</button>
           </form>
           <form action="{% url 'customer_portal' %}" method="post">
             {% csrf_token %}
@@ -56,7 +56,7 @@
       </div>
 
       {% elif state == "scheduled_downgrade" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
         <div>
           <h3 class="text-lg font-bold text-navy-950">Τρέχον πλάνο: {{ sub.get_tier_display }}</h3>
           <p class="text-sm text-navy-700/60 mt-1">
@@ -67,7 +67,7 @@
         <div class="flex flex-shrink-0 flex-col items-stretch gap-2 sm:items-end">
           <form action="{% url 'cancel_scheduled_downgrade' %}" method="post">
             {% csrf_token %}
-            <button class="w-full rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600">Ακύρωση προγραμματισμένης υποβάθμισης</button>
+            <button class="w-full rounded-panel bg-signal px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600">Ακύρωση προγραμματισμένης υποβάθμισης</button>
           </form>
           <form action="{% url 'customer_portal' %}" method="post">
             {% csrf_token %}
@@ -77,7 +77,7 @@
       </div>
 
       {% elif state == "normal_active" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
         <div>
           <h3 class="text-lg font-bold text-navy-950">{{ sub.get_tier_display }} Πλάνο</h3>
           <p class="text-sm text-navy-700/60 mt-1">
@@ -87,7 +87,7 @@
         <div class="flex flex-shrink-0 flex-col items-stretch gap-2 sm:items-end">
           <form action="{% url 'customer_portal' %}" method="post">
             {% csrf_token %}
-            <button class="w-full rounded-xl border border-navy-900/10 px-6 py-3 text-sm font-bold text-navy-950 transition hover:bg-sand-50">Διαχείριση Συνδρομής</button>
+            <button class="w-full rounded-panel border border-navy-900/10 px-6 py-3 text-sm font-bold text-navy-950 transition hover:bg-sand-50">Διαχείριση Συνδρομής</button>
           </form>
           <form action="{% url 'cancel_subscription' %}" method="post">
             {% csrf_token %}
@@ -97,7 +97,7 @@
       </div>
 
       {% elif state == "terminal" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
         <div>
           <h3 class="text-lg font-bold text-navy-950">Χωρίς Ενεργή Συνδρομή</h3>
           <p class="text-sm text-navy-700/60 mt-1">
@@ -105,12 +105,12 @@
           </p>
         </div>
         <div class="flex-shrink-0">
-          <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">Επιλογή νέου πλάνου</a>
+          <a href="{% url 'pricing' %}" class="inline-block rounded-panel bg-signal px-6 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-blue-600">Επιλογή νέου πλάνου</a>
         </div>
       </div>
 
       {% elif state == "complimentary_only" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
         <div>
           <h3 class="text-lg font-bold text-navy-950">🎁 Δωρεάν Πρόσβαση {{ sub.get_complimentary_tier_display|default:sub.complimentary_tier|upper }}</h3>
           <p class="text-sm text-navy-700/60 mt-1">
@@ -118,18 +118,18 @@
           </p>
         </div>
         <div class="flex-shrink-0">
-          <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">Αγορά συνδρομής</a>
+          <a href="{% url 'pricing' %}" class="inline-block rounded-panel bg-signal px-6 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-blue-600">Αγορά συνδρομής</a>
         </div>
       </div>
 
       {% else %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-3xl border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
         <div>
           <h3 class="text-lg font-bold text-navy-950">Δεν υπάρχει ενεργή συνδρομή</h3>
           <p class="text-sm text-navy-700/60 mt-1">Έχεις όριο 0 Ραντάρ Πελατών. Επίλεξε συνδρομητικό πλάνο για να ενεργοποιήσεις την εφαρμογή.</p>
         </div>
         <div class="flex-shrink-0">
-          <a href="{% url 'pricing' %}" class="inline-block rounded-xl bg-signal px-6 py-3 text-sm font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600">Δείτε τα πλάνα</a>
+          <a href="{% url 'pricing' %}" class="inline-block rounded-panel bg-signal px-6 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-blue-600">Δείτε τα πλάνα</a>
         </div>
       </div>
       {% endif %}
@@ -138,22 +138,22 @@
 
     <!-- Digest Preferences -->
     <div data-reveal>
-      <p class="text-sm font-bold uppercase tracking-[.2em] text-blue-600">Προτιμήσεις</p>
+      <p class="text-sm font-bold uppercase tracking-[.12em] text-blue-600">Προτιμήσεις</p>
       <h1 class="mt-2 text-4xl font-extrabold">Το digest στα μέτρα σου.</h1>
       <p class="mt-3 text-navy-700/55">Έλεγξε πότε λαμβάνεις ενημέρωση στο {{ user.email }}. Η στόχευση ΚΑΔ και περιοχών διαχειρίζεται πλέον από τα Radars.</p>
     </div>
 
-    <div class="mt-8 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900" data-reveal>
+    <div class="mt-8 rounded-control border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900" data-reveal>
       <b>Ψάχνεις φίλτρα εταιρειών;</b> <a href="{% url 'radar_list' %}" class="font-bold underline">Άνοιξε τα Ραντάρ Πελατών</a> για να δημιουργήσεις μία ή περισσότερες στοχευμένες αναζητήσεις.
     </div>
 
-    <form method="post" class="mt-5 space-y-7 rounded-[2rem] border border-navy-900/10 bg-white p-8 shadow-soft" data-reveal>
+    <form method="post" class="mt-5 space-y-7 rounded-card border border-navy-900/10 bg-white p-8 shadow-soft" data-reveal>
       {% csrf_token %}
       <div>
         <label class="mb-2 block text-sm font-bold">{{ form.frequency.label }}</label>
         {{ form.frequency }}
       </div>
-      <label class="flex cursor-pointer items-center justify-between gap-5 rounded-2xl bg-sand-50 p-5">
+      <label class="flex cursor-pointer items-center justify-between gap-5 rounded-control bg-sand-50 p-5">
         <span>
           <b class="block">{{ form.include_empty_digest.label }}</b>
           <span class="text-sm text-navy-700/50">Μικρό μήνυμα επιβεβαίωσης όταν η ημέρα δεν έχει αποτελέσματα.</span>

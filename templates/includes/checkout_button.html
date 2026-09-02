@@ -21,7 +21,7 @@ enabled again.
   <input type="hidden" name="tier" value="{{ tier }}">
   <button
     type="submit"
-    class="w-full rounded-xl bg-signal py-3 text-xs font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-70"
+    class="w-full rounded-panel bg-signal py-3 text-xs font-bold text-white shadow-glow transition hover:-translate-y-0.5 hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-70"
     data-checkout-submit
     data-loading-label="Μεταφορά στο Stripe…"
     data-analytics="pricing_cta_click"
@@ -29,7 +29,7 @@ enabled again.
   >{{ label }}</button>
 </form>
 {% else %}
-<div class="w-full rounded-xl border border-dashed border-navy-900/20 bg-sand-50 py-3 text-center text-xs font-bold text-navy-700/60">
+<div class="w-full rounded-panel border border-dashed border-navy-900/20 bg-sand-50 py-3 text-center text-xs font-bold text-navy-700/60">
   Σύντομα διαθέσιμο
 </div>
 <p class="mt-2 text-center text-[11px] leading-4 text-navy-700/50">

@@ -8,7 +8,7 @@
 <section class="mx-auto max-w-3xl px-5 py-20 lg:px-8">
 
   {% if legal_is_draft %}
-  <div class="mb-10 rounded-2xl border border-amber-300 bg-amber-50 p-5">
+  <div class="mb-10 rounded-control border border-amber-300 bg-amber-50 p-5">
     <p class="text-sm font-bold text-amber-900">⚠ Προσχέδιο — δεν έχει δημοσιευθεί</p>
     <p class="mt-2 text-sm leading-6 text-amber-900/80">
       Τα στοιχεία του παρόχου δεν έχουν συμπληρωθεί ακόμη. Μέχρι να συμπληρωθούν, το κείμενο δεν
@@ -23,8 +23,8 @@
   <div class="mt-10 space-y-10 leading-7 text-navy-900/80">
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">1. Ποιος παρέχει την υπηρεσία</h2>
-      <div class="mt-4 rounded-2xl bg-sand-50 p-5 text-sm">
+      <h2 class="text-xl font-bold text-navy-950">1. Ποιος παρέχει την υπηρεσία</h2>
+      <div class="mt-4 rounded-control bg-sand-50 p-5 text-sm">
         <p><b>Πάροχος:</b> {{ legal_controller_name }}</p>
         {% if legal_vat %}<p class="mt-1"><b>ΑΦΜ:</b> {{ legal_vat }}</p>{% endif %}
         {% if legal_gemi %}<p class="mt-1"><b>Αριθμός ΓΕΜΗ:</b> {{ legal_gemi }}</p>{% endif %}
@@ -40,7 +40,7 @@
     </article>
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">2. Τι κάνει η υπηρεσία</h2>
+      <h2 class="text-xl font-bold text-navy-950">2. Τι κάνει η υπηρεσία</h2>
       <p class="mt-3">
         Το Gemi Leads διαβάζει καθημερινά το επίσημο Open Data API του ΓΕΜΗ και σου παρουσιάζει τις
         νέες εγγραφές επιχειρήσεων που ταιριάζουν στα κριτήρια που ορίζεις (ΚΑΔ, περιοχή, νομική
@@ -53,7 +53,7 @@
     </article>
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">3. Λογαριασμός</h2>
+      <h2 class="text-xl font-bold text-navy-950">3. Λογαριασμός</h2>
       <ul class="mt-3 space-y-2">
         <li>Πρέπει να δώσεις έγκυρη διεύθυνση email και να την επιβεβαιώσεις.</li>
         <li>Είσαι υπεύθυνος για τη φύλαξη του κωδικού σου και για κάθε δραστηριότητα στον λογαριασμό σου.</li>
@@ -63,7 +63,7 @@
     </article>
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">4. Συνδρομές και χρεώσεις</h2>
+      <h2 class="text-xl font-bold text-navy-950">4. Συνδρομές και χρεώσεις</h2>
       {% if legal_billing_active %}
       <p class="mt-3">
         Η υπηρεσία προσφέρεται με μηνιαία συνδρομή. Οι τιμές αναγράφονται στη σελίδα
@@ -96,7 +96,7 @@
     </article>
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">5. Επιτρεπτή χρήση</h2>
+      <h2 class="text-xl font-bold text-navy-950">5. Επιτρεπτή χρήση</h2>
       <p class="mt-3">Δεν επιτρέπεται να:</p>
       <ul class="mt-3 space-y-2">
         <li>μεταπωλείς ή αναδιανέμεις τα δεδομένα της υπηρεσίας ως δικό σου προϊόν,</li>
@@ -107,7 +107,7 @@
     </article>
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">6. Δική σου ευθύνη κατά την επικοινωνία</h2>
+      <h2 class="text-xl font-bold text-navy-950">6. Δική σου ευθύνη κατά την επικοινωνία</h2>
       <p class="mt-3">
         Η υπηρεσία σου παρέχει δημοσιευμένα στοιχεία επιχειρήσεων. <b>Ο τρόπος που τα χρησιμοποιείς
         είναι δική σου ευθύνη.</b> Αν επικοινωνήσεις με τις επιχειρήσεις αυτές για εμπορικό σκοπό,
@@ -117,7 +117,7 @@
     </article>
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">7. Ακρίβεια δεδομένων</h2>
+      <h2 class="text-xl font-bold text-navy-950">7. Ακρίβεια δεδομένων</h2>
       <p class="mt-3">
         Τα δεδομένα προέρχονται από το ΓΕΜΗ και παρέχονται «ως έχουν». Δεν εγγυόμαστε ότι είναι
         πλήρη, ακριβή ή επίκαιρα, καθώς εξαρτώνται από την πηγή. Δεν φέρουμε ευθύνη για
@@ -126,7 +126,7 @@
     </article>
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">8. Διαθεσιμότητα</h2>
+      <h2 class="text-xl font-bold text-navy-950">8. Διαθεσιμότητα</h2>
       <p class="mt-3">
         Καταβάλλουμε εύλογη προσπάθεια για τη συνεχή λειτουργία της υπηρεσίας, χωρίς όμως να
         εγγυόμαστε αδιάλειπτη διαθεσιμότητα. Ενδέχεται να υπάρξουν διακοπές για συντήρηση,
@@ -135,7 +135,7 @@
     </article>
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">9. Περιορισμός ευθύνης</h2>
+      <h2 class="text-xl font-bold text-navy-950">9. Περιορισμός ευθύνης</h2>
       <p class="mt-3">
         Στον μέγιστο βαθμό που επιτρέπει ο νόμος, δεν ευθυνόμαστε για έμμεσες ή αποθετικές ζημίες,
         διαφυγόντα κέρδη ή απώλεια δεδομένων. Ουδέν στους παρόντες όρους περιορίζει την ευθύνη μας
@@ -145,7 +145,7 @@
     </article>
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">10. Διακοπή</h2>
+      <h2 class="text-xl font-bold text-navy-950">10. Διακοπή</h2>
       <p class="mt-3">
         Μπορείς να σταματήσεις να χρησιμοποιείς την υπηρεσία οποτεδήποτε. Διατηρούμε το δικαίωμα να
         αναστείλουμε λογαριασμό που παραβιάζει τους παρόντες όρους, κατόπιν ειδοποίησης όπου αυτό
@@ -154,7 +154,7 @@
     </article>
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">11. Αλλαγές στους όρους</h2>
+      <h2 class="text-xl font-bold text-navy-950">11. Αλλαγές στους όρους</h2>
       <p class="mt-3">
         Μπορεί να τροποποιήσουμε τους όρους. Σε ουσιώδεις αλλαγές θα ενημερωθείς με email ή μέσα
         από την υπηρεσία. Η συνέχιση της χρήσης μετά την ενημέρωση συνιστά αποδοχή.
@@ -162,7 +162,7 @@
     </article>
 
     <article>
-      <h2 class="text-xl font-extrabold text-navy-950">12. Εφαρμοστέο δίκαιο</h2>
+      <h2 class="text-xl font-bold text-navy-950">12. Εφαρμοστέο δίκαιο</h2>
       <p class="mt-3">
         Εφαρμόζεται το ελληνικό δίκαιο. Για κάθε διαφορά αρμόδια είναι τα δικαστήρια της Ελλάδας,
         με την επιφύλαξη τυχόν ευνοϊκότερων διατάξεων που ισχύουν για καταναλωτές. Για

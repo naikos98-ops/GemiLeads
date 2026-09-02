@@ -59,6 +59,37 @@ REQUIRED_BINDINGS = [
 ]
 
 
+# Every LIGHT-valued bg-* utility a non-superadmin, non-email template uses must
+# be remapped by the phone dark block. One that is not keeps its light value
+# while the text on top is lightened -- the same failure as the original
+# text-navy-700/65 bug, arriving from the surface side. Before this guard eight
+# of these were uncovered and measured 1.28:1 to 1.83:1, the worst being the
+# cookie consent banner every new mobile visitor meets first.
+#
+# Always-dark chrome (bg-navy-*, bg-white/10 and friends on the navbar, hero and
+# dark CTA panels) is deliberately absent: those surfaces do not flip, and the
+# --text-on-navy-* family already covers the text on them.
+REQUIRED_SURFACE_BINDINGS = [
+    "bg-white", "bg-white/95", "bg-white/90", "bg-white/80", "bg-white/70",
+    "bg-sand-50", "bg-sand-100", "bg-sand-200", "bg-sand-50/60",
+    "bg-blue-50", "bg-blue-50/60", "bg-blue-50/70", "bg-blue-100", "bg-blue-200",
+    "bg-emerald-50", "bg-emerald-100",
+    "bg-amber-50", "bg-amber-100",
+    "bg-red-50", "bg-red-100",
+    "bg-purple-50",
+]
+
+# Which text token each semantic tint has to carry. A success badge is only
+# useful if its green text is legible on its green ground.
+TINT_TEXT_PAIRS = {
+    "--surface-tint-info": "--text-link",
+    "--surface-tint-success": "--text-success",
+    "--surface-tint-warning": "--text-warning",
+    "--surface-tint-danger": "--text-danger",
+    "--surface-tint": "--text-body",
+}
+
+
 def _channel(value):
     value = value / 255
     return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
@@ -136,6 +167,19 @@ class ContrastTokenTests(SimpleTestCase):
                 if sel.startswith(".text-"):
                     cls.bindings[sel[1:].replace("\\", "")] = m[2]
 
+        # Surface bindings, scoped to the phone dark block. Slicing from the
+        # media query keeps a light-mode background rule from being mistaken
+        # for dark-mode coverage.
+        dark_block = cls.css[dark.start():]
+        cls.surface_bindings = {}
+        for m in re.finditer(
+            r"([^{}]*?)\{background-color:var\((--surface-[a-z-]+)\)!important\}", dark_block
+        ):
+            for sel in m[1].split(","):
+                sel = sel.strip()
+                if sel.startswith(".bg-"):
+                    cls.surface_bindings[sel[1:].replace("\\", "")] = m[2]
+
     def test_stylesheet_is_built(self):
         self.assertTrue(
             CSS_PATH.exists(),
@@ -189,6 +233,76 @@ class ContrastTokenTests(SimpleTestCase):
         self.assertGreaterEqual(
             ratio, AA_NORMAL,
             "landing-page body copy is unreadable on dark cards (%.2f:1)" % ratio,
+        )
+
+    def test_every_light_surface_is_remapped_in_dark_mode(self):
+        """The surface-side counterpart of the text binding guard.
+
+        A light bg-* left uncovered keeps its light value on a dark page while
+        the text on it is lightened -- the exact bug this file was written for,
+        inverted.
+        """
+        missing = [c for c in REQUIRED_SURFACE_BINDINGS if c not in self.surface_bindings]
+        self.assertEqual(
+            missing, [],
+            "these light surfaces are not remapped by the dark block, so text "
+            "on them will be lightened against a light ground: %s" % missing,
+        )
+
+    def test_no_surface_binding_points_at_an_undefined_token(self):
+        for cls_name, token in sorted(self.surface_bindings.items()):
+            self.assertIn(
+                token, self.dark,
+                "%s -> %s is undefined in dark mode" % (cls_name, token),
+            )
+
+    def test_semantic_tints_carry_their_text_at_aa(self):
+        """A tint must keep its hue AND stay legible on every ground it sits on."""
+        failures = []
+        for mode, values in (("light", self.light), ("dark", self.dark)):
+            grounds = LIGHT_SURFACES if mode == "light" else DARK_SURFACES
+            for tint_token, text_token in TINT_TEXT_PAIRS.items():
+                if tint_token not in values:
+                    continue
+                tint, tint_alpha = parse_color(values[tint_token])
+                fg, fg_alpha = parse_color(values[text_token])
+                for ground_name, ground_hex in grounds.items():
+                    ground = _hex_to_rgb(ground_hex)
+                    # The tint is a translucent wash: composite it first, then
+                    # the text on the resulting surface.
+                    surface = _composite(tint, ground, tint_alpha)
+                    ratio = contrast(_composite(fg, surface, fg_alpha), surface)
+                    if ratio < AA_NORMAL:
+                        failures.append(
+                            "%s + %s %s on %s: %.2f:1"
+                            % (tint_token, text_token, mode, ground_name, ratio)
+                        )
+        self.assertEqual(
+            failures, [],
+            "semantic tint below WCAG AA (%.1f:1):\n  %s"
+            % (AA_NORMAL, "\n  ".join(failures)),
+        )
+
+    def test_cookie_banner_surface_is_readable(self):
+        """Regression guard for the worst failure found in the Phase 1 audit.
+
+        bg-white/95 measured 1.28:1 in phone dark mode. It is the consent
+        banner, so an unreadable one suppresses accepts and with them all
+        analytics -- a business bug as much as an accessibility one.
+        """
+        self.assertIn(
+            "bg-white/95", self.surface_bindings,
+            "the cookie consent banner surface is not remapped in dark mode",
+        )
+        token = self.surface_bindings["bg-white/95"]
+        surface, surface_alpha = parse_color(self.dark[token])
+        page = _hex_to_rgb(DARK_SURFACES["page"])
+        surface = _composite(surface, page, surface_alpha)
+        fg, alpha = parse_color(self.dark["--text-body"])
+        ratio = contrast(_composite(fg, surface, alpha), surface)
+        self.assertGreaterEqual(
+            ratio, AA_NORMAL,
+            "cookie consent banner text is unreadable in dark mode (%.2f:1)" % ratio,
         )
 
     def test_dark_headings_are_not_pure_white(self):

@@ -16,18 +16,27 @@ module.exports = {
       // base.html used h-18 for the fixed nav, which Tailwind never generated. main compensates
       // with pt-18, so the two must come from the same value.
       spacing: { 18: '4.5rem' },
+      // Semantic radius scale, defined as tokens in static/src/input.css. Templates use
+      // rounded-card / rounded-panel / rounded-control / rounded-chip instead of the nine
+      // ad-hoc values (rounded-[2rem], [1.75rem], [1.6rem], [1.5rem], 3xl, 2xl, xl, lg, md)
+      // they had grown into. rounded-full is unchanged and still correct for pills.
+      borderRadius: {
+        chip: 'var(--radius-sm)',
+        control: 'var(--radius-lg)',
+        panel: 'var(--radius-md)',
+        card: 'var(--radius-xl)',
+      },
       boxShadow: {
-        soft: '0 24px 80px rgba(7,23,37,.12)',
-        glow: '0 0 40px rgba(40,120,255,.22)',
+        // Was 0 24px 80px: an 80px blur offset 24px down, applied to 58 elements
+        // including flat inline ones. At that size it reads as a template default
+        // rather than elevation. A two-layer shadow at a realistic distance keeps
+        // cards lifted off the cream ground without the haze.
+        soft: '0 1px 2px rgba(7,23,37,.06), 0 8px 24px rgba(7,23,37,.08)',
+        glow: '0 0 32px rgba(33,102,224,.28)',
       },
-      keyframes: {
-        float: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-12px)' } },
-        shine: { '0%': { transform: 'translateX(-150%) skewX(-18deg)' }, '100%': { transform: 'translateX(250%) skewX(-18deg)' } },
-      },
-      animation: {
-        float: 'float 6s ease-in-out infinite',
-        shine: 'shine 2.8s ease-in-out infinite',
-      },
+      // `float` was never referenced by any template, and `shine` drove an infinite
+      // sweep across the primary hero CTA -- perpetual motion on the one button the
+      // page most wants read. Both removed; emphasis now comes from hover only.
     },
   },
   plugins: [],

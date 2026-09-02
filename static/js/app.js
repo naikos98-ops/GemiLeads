@@ -85,7 +85,7 @@
         empty.textContent = 'Δεν βρέθηκαν άλλοι ΚΑΔ.'; results.append(empty);
       } else available.forEach(item => {
         const button = document.createElement('button'); button.type = 'button'; button.setAttribute('role', 'option');
-        button.className = 'flex w-full items-start justify-between gap-4 rounded-xl px-4 py-3 text-left transition hover:bg-blue-50';
+        button.className = 'flex w-full items-start justify-between gap-4 rounded-panel px-4 py-3 text-left transition hover:bg-blue-50';
         const copy = document.createElement('span'); copy.className = 'min-w-0';
         const code = document.createElement('b'); code.className = 'block text-sm text-blue-700'; code.textContent = item.code;
         const description = document.createElement('span'); description.className = 'mt-1 block text-xs leading-5 text-navy-700/60'; description.textContent = item.description;
@@ -139,7 +139,39 @@
     button.disabled = true; button.setAttribute('aria-busy', 'true');
     button.textContent = button.dataset.loadingLabel || button.textContent;
   });
-  document.getElementById('menuButton')?.addEventListener('click', () => document.getElementById('mobileMenu')?.classList.toggle('hidden'));
+  // Show/hide password. Was an inline onclick duplicated verbatim in login.html and
+  // signup.html, communicating its state only through style.opacity -- invisible to a
+  // screen reader. One delegated handler, with aria-pressed carrying the state.
+  document.addEventListener('click', event => {
+    const button = event.target.closest('[data-password-toggle]');
+    if (!button) return;
+    const input = document.getElementById(button.dataset.passwordToggle);
+    if (!input) return;
+    const reveal = input.type === 'password';
+    input.type = reveal ? 'text' : 'password';
+    button.setAttribute('aria-pressed', String(reveal));
+    button.setAttribute('aria-label', reveal ? 'Απόκρυψη κωδικού' : 'Εμφάνιση κωδικού');
+  });
+
+  // Mobile menu. Previously a bare class toggle: it reported no state to assistive
+  // tech, and tapping an in-page anchor (#how-it-works) scrolled the page while
+  // leaving the panel open on top of the target.
+  const menuButton = document.getElementById('menuButton');
+  const mobileMenu = document.getElementById('mobileMenu');
+  if (menuButton && mobileMenu) {
+    const setMenu = open => {
+      mobileMenu.classList.toggle('hidden', !open);
+      menuButton.setAttribute('aria-expanded', String(open));
+    };
+    menuButton.setAttribute('aria-expanded', 'false');
+    menuButton.setAttribute('aria-controls', 'mobileMenu');
+    menuButton.addEventListener('click', () => setMenu(mobileMenu.classList.contains('hidden')));
+    mobileMenu.addEventListener('click', event => { if (event.target.closest('a')) setMenu(false); });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || mobileMenu.classList.contains('hidden')) return;
+      setMenu(false); menuButton.focus();
+    });
+  }
   setTimeout(() => document.querySelectorAll('[data-toast]').forEach(x => { x.style.opacity = '0'; setTimeout(() => x.remove(), 300); }), 3500);
   document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); });
   window.addEventListener('resize', sizeCompanyTable);

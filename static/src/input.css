@@ -46,9 +46,27 @@
   --surface-card:   #ffffff;
   --surface-sunk:   #f3ecdf;
   --surface-raised: #e6d8c3;
-  --surface-tint:   rgb(7 23 37 / 0.04);   /* badge / callout wash */
+  --surface-tint:   rgb(7 23 37 / 0.04);   /* neutral badge / callout wash */
   --border-subtle:  rgb(7 23 37 / 0.10);
   --border-field:   rgb(7 23 37 / 0.16);   /* input / select / textarea outline */
+
+  /* Semantic tints: the ground under a status badge or an inline callout. A
+     single neutral --surface-tint would collapse "success" and "danger" into
+     the same grey, so each keeps its own hue in both modes. Light values are
+     the Tailwind -50 shades the templates already used. */
+  --surface-tint-info:    #eff6ff;
+  --surface-tint-success: #ecfdf5;
+  --surface-tint-warning: #fffbeb;
+  --surface-tint-danger:  #fef2f2;
+
+  /* Radius scale. The templates had grown nine values -- rounded-[2rem],
+     [1.75rem], [1.6rem], [1.5rem] and 3xl were all "card", differing by as
+     little as 2px. Four steps cover every real role; rounded-full stays as-is
+     for pills and avatars. */
+  --radius-sm: 0.5rem;    /* chips, small inline tags */
+  --radius-md: 0.75rem;   /* inner panels, snippets nested in a card */
+  --radius-lg: 1rem;      /* inputs, selects, buttons, sub-panels */
+  --radius-xl: 1.25rem;   /* cards, forms, top-level containers */
 
   /* Text that sits on the always-dark navy chrome (navbar, dark CTA panels).
      Those surfaces do not flip between modes, so this stays white in both. */
@@ -99,8 +117,41 @@
     --surface-tint:   rgb(255 255 255 / 0.06);
     --border-subtle:  rgb(255 255 255 / 0.10);
     --border-field:   rgb(255 255 255 / 0.14);
+
+    /* Semantic tints as a low-alpha wash of their own hue, so the ground under
+       a badge stays recognisably green / amber / red rather than one grey. At
+       0.14 the paired text token clears 4.5:1 on every ground these can sit on
+       (worst case: info on --surface-raised, 4.72:1). */
+    --surface-tint-info:    rgb(127 178 255 / 0.14);
+    --surface-tint-success: rgb(95 211 163 / 0.14);
+    --surface-tint-warning: rgb(245 192 101 / 0.14);
+    --surface-tint-danger:  rgb(255 155 150 / 0.14);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   TYPOGRAPHY WEIGHT POLICY
+   ---------------------------------------------------------------------------
+   Weight is assigned by EMPHASIS ROLE, not by HTML tag. font-extrabold once sat
+   on ~120 elements -- every heading at every level, every eyebrow, every table
+   header -- which is the same as having no emphasis at all.
+
+     800 extrabold  Peak emphasis, rare. A page <h1>; a price; a metric or KPI
+                    value. Allowed regardless of tag: on a pricing card the
+                    "EUR 99" outranks its own <h3> tier name, and on a stat card
+                    the animated number IS the card. The hero metric row is
+                    explicitly allowed here.
+     700 bold       Section and card headings (h2/h3/h4), primary button labels,
+                    <b> inside prose.
+     600 semibold   Labels, eyebrows, table headers, badges, status pills, nav
+                    links, <dt>.
+     500 medium     Emphasised body / lead paragraphs.
+     400 normal     Body copy.
+
+   NOT permitted at 800: eyebrows, navigation items, table headings, badges,
+   status labels, h3/h4, and ordinary body text. Do not adjust a weight merely
+   to satisfy an element count -- the rule is the role, not the tally.
+   --------------------------------------------------------------------------- */
 
 /* ---------------------------------------------------------------------------
    TOKEN BINDINGS
@@ -188,7 +239,6 @@
 
 /* Alpha variants resolve to the same tier -- the opacity suffix was only ever a
    de-emphasis hint, and the tier already encodes that. */
-.text-navy-900\/65,
 .text-blue-900\/65 { color: var(--text-body) !important; }
 .text-amber-900\/80,
 .text-amber-800\/80 { color: var(--text-muted) !important; }
@@ -238,15 +288,74 @@
   [class*="border-navy-900/10"],
   [class*="border-navy-900/5"] { border-color: var(--border-subtle) !important; }
 
-  /* Faint tinted surfaces used for badges and inline callouts. The coloured text
-     on these is remapped to the semantic tokens above, which clear 5.99:1 on
-     this wash. */
-  .bg-sand-50\/60,
+  /* The light tinted borders (-100 / -200 / -300) are the companions of the tinted
+     surfaces above: they outline the same callouts. Left alone they keep their light
+     value on a dark ground and render as a near-white frame, far heavier than any
+     other border on the page -- the signup password panel showed this clearly.
+     Bound to the subtle border token so the callout reads as one quiet block. */
+  .border-blue-100,
+  .border-blue-200:not([data-kad-spinner]),
+  .border-blue-300,
+  .border-emerald-100,
+  .border-emerald-200,
+  .border-amber-200,
+  .border-amber-300,
+  .border-red-200,
+  .border-purple-200 { border-color: var(--border-subtle) !important; }
+
+  /* The KAD search spinner is a ring whose visible motion comes from the contrast
+     between its track and its accented top edge. Both of its colours are authored
+     for a light field, so it needs its own pair rather than the callout binding. */
+  [data-kad-spinner] {
+    border-color: rgb(255 255 255 / 0.18) !important;
+    border-top-color: var(--text-link) !important;
+  }
+
+  /* Tinted surfaces used for badges and inline callouts, each keeping its own
+     hue so a success pill still reads green. Every pairing clears 4.5:1 against
+     its semantic text token on every ground it can sit on (worst: info on
+     --surface-raised, 4.72:1).
+
+     The -100 and -200 shades are listed alongside the -50s: they were NOT
+     covered before, so they kept their LIGHT value while the text on them was
+     lightened -- 1.52:1 to 1.77:1, the same failure mode as the original
+     text-navy-700/65 bug, arriving from the surface side instead. */
   .bg-blue-50,
+  .bg-blue-100,
+  .bg-blue-200 { background-color: var(--surface-tint-info) !important; }
+
   .bg-emerald-50,
+  .bg-emerald-100 { background-color: var(--surface-tint-success) !important; }
+
   .bg-amber-50,
+  .bg-amber-100 { background-color: var(--surface-tint-warning) !important; }
+
   .bg-red-50,
+  .bg-red-100 { background-color: var(--surface-tint-danger) !important; }
+
+  /* Neutral washes keep the hueless tint. */
+  .bg-sand-50\/60,
   .bg-purple-50 { background-color: var(--surface-tint) !important; }
+
+  /* Translucent light surfaces. bg-white/95 is the cookie consent banner -- at
+     1.28:1 it was the worst contrast failure on the site, and it is the first
+     element a new mobile visitor meets, so an unreadable banner suppressed
+     consent and with it all analytics. The alpha variants of the blue wash are
+     the pricing beta notice and the signup password help. */
+  .bg-white\/95,
+  .bg-white\/90,
+  .bg-white\/80,
+  .bg-white\/70 { background-color: var(--surface-card) !important; }
+
+  .bg-blue-50\/70,
+  .bg-blue-50\/60 { background-color: var(--surface-tint-info) !important; }
+
+  /* The mobile menu sits inside the navbar, which is dark chrome in BOTH modes, so
+     its primary CTA must keep a light face rather than follow the page surfaces. */
+  [data-menu-cta] {
+    background-color: #ffffff !important;
+    color: #071725 !important;
+  }
 
   /* Form fields */
   input, select, textarea {
@@ -261,11 +370,34 @@
 input::placeholder,
 textarea::placeholder { color: var(--text-faint) !important; opacity: 1; }
 
+/* The brand blue #2878ff carries white text at only 4.02:1, and several of the
+   buttons using it are text-xs -- normal text, which needs 4.5:1. Darkening it
+   slightly as a BUTTON FACE fixes ~16 primary CTAs (pricing, settings,
+   dashboard, radars) without touching the brand token itself: text-signal is
+   already bound to --text-link, and border-signal is decorative, so both keep
+   the original value. 5.20:1 with white. */
+.bg-signal { background-color: #2166e0 !important; }
+
 /* Keyboard focus must be visible on both grounds. */
 :focus-visible { outline: 2px solid var(--text-link); outline-offset: 2px; }
 
 /* Previously inlined in base.html; kept here so it ships in the compiled stylesheet. */
 @layer utilities {
+  /* Section rhythm. The landing page had py-24 lg:py-28, py-24 lg:py-32, py-16
+     and py-10 doing the same job. One utility means the rhythm is changed in
+     one place, and the phone gets its own value instead of inheriting 96px of
+     padding between every section on a 360px screen. */
+  .section-y {
+    padding-top: 3.5rem;
+    padding-bottom: 3.5rem;
+  }
+  @media (min-width: 640px) {
+    .section-y { padding-top: 5rem; padding-bottom: 5rem; }
+  }
+  @media (min-width: 1024px) {
+    .section-y { padding-top: 6.5rem; padding-bottom: 6.5rem; }
+  }
+
   [data-reveal] {
     opacity: 0;
     transform: translateY(24px);
@@ -303,6 +435,38 @@ textarea::placeholder { color: var(--text-faint) !important; opacity: 1; }
     align-items: center;
     justify-content: center;
   }
+  /* Form controls were excluded and passed only by accident of their py-3
+     padding; a py-2 select landed at ~34px. Checkbox and radio keep their own
+     intrinsic size -- stretching them to 44px would just draw a huge box. */
+  select,
+  textarea,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]) {
+    min-height: 44px;
+  }
+}
+
+/* The mobile menu only exists below md, i.e. on a phone, so its rows are sized by
+   viewport rather than by pointer type. Gating them on (pointer: coarse) left them
+   at 20px wherever the browser reports a fine pointer -- a desktop window narrowed
+   to phone width, a tablet with a trackpad, and any emulated device -- which is
+   exactly where the menu is reachable. The bare anchors match none of the coarse
+   rules above either, so they need their own. */
+@media (max-width: 767px) {
+  #mobileMenu a {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* A disabled control must LOOK disabled. app.js disables the checkout submit on
+   click to block a double POST, but nothing changed visually, so the button
+   stayed bright and clickable-looking while inert. */
+button[disabled],
+button[aria-busy="true"],
+input[type="submit"][disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* A table inside its own scroller must never widen the page itself. */

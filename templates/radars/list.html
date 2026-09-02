@@ -5,46 +5,59 @@
 <section class="min-h-screen bg-sand-50 px-5 py-12 lg:px-8">
   <div class="mx-auto max-w-7xl">
     {% if not has_active_paid_subscription %}
-    <div class="mb-8 flex flex-col justify-between gap-5 rounded-3xl border-2 border-signal bg-white p-6 shadow-glow sm:flex-row sm:items-center" data-reveal>
+    <div class="mb-8 flex flex-col justify-between gap-5 rounded-card border-2 border-signal bg-white p-6 sm:flex-row sm:items-center" data-reveal>
       <div>
-        <h3 class="text-xl font-extrabold text-navy-950">Απαιτείται ενεργή συνδρομή</h3>
+        <h3 class="text-xl font-bold text-navy-950">Απαιτείται ενεργή συνδρομή</h3>
         <p class="mt-1 text-sm text-navy-700/65 font-medium">Επίλεξε συνδρομητικό πλάνο (Pro ή Business) για να δημιουργήσεις και να ενεργοποιήσεις τα Ραντάρ σου.</p>
       </div>
-      <a href="{% url 'pricing' %}" class="rounded-full bg-signal px-7 py-3 font-extrabold text-white shadow-glow transition hover:bg-blue-600 whitespace-nowrap">Επιλογή Πλάνου →</a>
+      <a href="{% url 'pricing' %}" class="rounded-full bg-signal px-7 py-3 font-bold text-white transition hover:bg-blue-600 whitespace-nowrap">Επιλογή Πλάνου →</a>
     </div>
     {% endif %}
     <div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-end" data-reveal>
-      <div><p class="text-sm font-bold uppercase tracking-[.2em] text-blue-600">Στοχευμένη παρακολούθηση</p><h1 class="mt-2 text-4xl font-extrabold">Ραντάρ Πελατών</h1><p class="mt-3 max-w-2xl text-navy-700/55">Αποθήκευσε τα κριτήρια που σε ενδιαφέρουν. Χρησιμοποιείς {{ radar_count }} από τα {{ radar_limit }} Ραντάρ του πλάνου σου.</p></div>
+      <div><p class="text-sm font-bold uppercase tracking-[.12em] text-blue-600">Στοχευμένη παρακολούθηση</p><h1 class="mt-2 text-4xl font-extrabold">Ραντάρ Πελατών</h1><p class="mt-3 max-w-2xl text-navy-700/55">Αποθήκευσε τα κριτήρια που σε ενδιαφέρουν. Χρησιμοποιείς {{ radar_count }} από τα {{ radar_limit }} Ραντάρ του πλάνου σου.</p></div>
       {% if radar_limit == 0 %}
-      <a href="{% url 'pricing' %}" class="rounded-full bg-signal px-6 py-3.5 text-center font-bold text-white shadow-glow transition hover:bg-blue-600">Επιλογή Πλάνου</a>
+      <a href="{% url 'pricing' %}" class="rounded-full bg-signal px-6 py-3.5 text-center font-bold text-white transition hover:bg-blue-600">Επιλογή Πλάνου</a>
       {% elif radar_count >= radar_limit %}
-      <a href="#" class="rounded-full bg-navy-950/40 px-6 py-3.5 text-center font-bold text-white cursor-not-allowed" onclick="alert('Έχεις φτάσει το όριο των {{ radar_limit }} Ραντάρ. Αναβάθμισε το πλάνο σου ή διέγραψε ένα υπάρχον.'); return false;">+ Νέο Radar</a>
+      {% comment %} At the plan limit the action is genuinely unavailable, so it is a disabled
+         button rather than an href="#" that fires an alert(): a real <a> is
+         announced as a link and followable by keyboard, and an alert() is neither
+         reachable nor readable by a screen reader. The reason is stated inline
+         instead of hidden behind a click. {% endcomment %}
+      <div class="text-center sm:text-right">
+        <button type="button" disabled aria-describedby="radar-limit-note"
+                class="rounded-full bg-navy-950 px-6 py-3.5 text-center font-bold text-white">+ Νέο Radar</button>
+        <p id="radar-limit-note" class="mt-2 text-xs text-navy-700/60">
+          Έφτασες το όριο των {{ radar_limit }} Ραντάρ.
+          <a href="{% url 'pricing' %}" class="font-bold text-blue-700 hover:underline">Αναβάθμισε το πλάνο σου</a>
+          ή διέγραψε ένα υπάρχον.
+        </p>
+      </div>
       {% else %}
       <a href="{% url 'radar_create' %}" class="rounded-full bg-navy-950 px-6 py-3.5 text-center font-bold text-white transition hover:-translate-y-1">+ Νέο Radar</a>
       {% endif %}
     </div>
     {% if user.subscription.effective_tier != "enterprise" and user.subscription.effective_tier != "custom" %}
-    <div class="mt-6 flex flex-col justify-between gap-4 rounded-3xl border border-blue-500/20 bg-blue-600/5 p-6 sm:flex-row sm:items-center" data-reveal>
+    <div class="mt-6 flex flex-col justify-between gap-4 rounded-card border border-blue-500/20 bg-blue-600/5 p-6 sm:flex-row sm:items-center" data-reveal>
       <div class="flex items-center gap-4">
-        <div class="grid h-12 w-12 flex-shrink-0 place-items-center rounded-2xl bg-blue-600 text-white font-extrabold text-xl shadow-glow">⚡</div>
+        <div class="grid h-12 w-12 flex-shrink-0 place-items-center rounded-control bg-blue-600 text-white font-bold text-xl">⚡</div>
         <div>
-          <h4 class="font-extrabold text-navy-950 text-base">Χρειάζεσαι περισσότερα Ραντάρ & ταχύτερες ειδοποιήσεις;</h4>
+          <h4 class="font-bold text-navy-950 text-base">Χρειάζεσαι περισσότερα Ραντάρ & ταχύτερες ειδοποιήσεις;</h4>
           <p class="mt-0.5 text-xs text-navy-700/60">Αναβάθμισε στο <strong>Enterprise / Priority Alerts (€99/mo)</strong> για 15 Ενεργά Ραντάρ & αυτόματη ενημέρωση ανά 3 ώρες.</p>
         </div>
       </div>
-      <a href="{% url 'pricing' %}" class="rounded-full bg-blue-600 px-6 py-3 text-xs font-bold text-white shadow-glow transition hover:bg-blue-700 whitespace-nowrap">Αναβάθμιση Πλάνου →</a>
+      <a href="{% url 'pricing' %}" class="rounded-full bg-blue-600 px-6 py-3 text-xs font-bold text-white transition hover:bg-blue-700 whitespace-nowrap">Αναβάθμιση Πλάνου →</a>
     </div>
     {% endif %}
     <div class="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
       {% for radar in radars %}
-      <article class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft" data-reveal>
-        <div class="flex items-start justify-between gap-4"><div><span class="rounded-full px-3 py-1 text-xs font-bold {% if radar.is_active and radar.frequency != 'off' %}bg-emerald-50 text-emerald-700{% else %}bg-sand-100 text-navy-700/55{% endif %}">{% if radar.is_active %}{{ radar.get_frequency_display }}{% else %}Σε παύση{% endif %}</span><h2 class="mt-4 text-xl font-extrabold">{{ radar.name }}</h2></div><span class="grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-blue-700">⌁</span></div>
-        <dl class="mt-6 grid grid-cols-2 gap-3 text-sm"><div class="rounded-2xl bg-sand-50 p-4"><dt class="text-xs text-navy-700/45">Matches</dt><dd class="mt-1 text-2xl font-extrabold">{{ radar.match_count }}</dd></div><div class="rounded-2xl bg-sand-50 p-4"><dt class="text-xs text-navy-700/45">Τελευταίο</dt><dd class="mt-2 font-bold">{{ radar.latest_match|date:'d/m/Y'|default:'—' }}</dd></div></dl>
+      <article class="rounded-card border border-navy-900/10 bg-white p-6 shadow-soft" data-reveal>
+        <div class="flex items-start justify-between gap-4"><div><span class="rounded-full px-3 py-1 text-xs font-bold {% if radar.is_active and radar.frequency != 'off' %}bg-emerald-50 text-emerald-700{% else %}bg-sand-100 text-navy-700/55{% endif %}">{% if radar.is_active %}{{ radar.get_frequency_display }}{% else %}Σε παύση{% endif %}</span><h2 class="mt-4 text-xl font-bold">{{ radar.name }}</h2></div><span class="grid h-11 w-11 place-items-center rounded-control bg-blue-50 text-blue-700">⌁</span></div>
+        <dl class="mt-6 grid grid-cols-2 gap-3 text-sm"><div class="rounded-control bg-sand-50 p-4"><dt class="text-xs text-navy-700/45">Matches</dt><dd class="mt-1 text-2xl font-extrabold">{{ radar.match_count }}</dd></div><div class="rounded-control bg-sand-50 p-4"><dt class="text-xs text-navy-700/45">Τελευταίο</dt><dd class="mt-2 font-bold">{{ radar.latest_match|date:'d/m/Y'|default:'—' }}</dd></div></dl>
         <div class="mt-5 space-y-2 text-sm text-navy-700/60"><p><b class="text-navy-950">ΚΑΔ:</b> {% if radar.activity_codes.all %}{{ radar.activity_codes.all|length }} επιλεγμένοι{% else %}Όλοι{% endif %}</p><p><b class="text-navy-950">Περιοχές:</b> {{ radar.prefectures|join:', '|default:'Όλες' }}</p><p><b class="text-navy-950">Νομικές μορφές:</b> {{ radar.legal_types|join:', '|default:'Όλες' }}</p></div>
         <div class="mt-7 flex flex-wrap gap-2"><a href="{% url 'radar_detail' radar.pk %}" class="rounded-full bg-blue-600 px-4 py-2 text-sm font-bold text-white">Προβολή</a><a href="{% url 'radar_edit' radar.pk %}" class="rounded-full border border-navy-900/10 px-4 py-2 text-sm font-bold">Επεξεργασία</a><form method="post" action="{% url 'radar_toggle' radar.pk %}">{% csrf_token %}<button class="rounded-full border border-navy-900/10 px-4 py-2 text-sm font-bold">{% if radar.is_active %}Παύση{% else %}Ενεργοποίηση{% endif %}</button></form></div>
       </article>
       {% empty %}
-      <div class="rounded-[2rem] border border-dashed border-navy-900/15 bg-white p-12 text-center md:col-span-2 xl:col-span-3" data-reveal><p class="text-4xl">⌁</p><h2 class="mt-4 text-2xl font-extrabold">Δεν έχεις δημιουργήσει Radar.</h2><p class="mt-2 text-navy-700/50">Ξεκίνα με έναν κλάδο ή μία περιοχή που σε ενδιαφέρει.</p><a href="{% url 'radar_create' %}" class="mt-6 inline-block rounded-full bg-blue-600 px-6 py-3 font-bold text-white">Δημιουργία πρώτου Radar</a></div>
+      <div class="rounded-card border border-dashed border-navy-900/15 bg-white p-12 text-center md:col-span-2 xl:col-span-3" data-reveal><p class="text-4xl">⌁</p><h2 class="mt-4 text-2xl font-bold">Δεν έχεις δημιουργήσει Radar.</h2><p class="mt-2 text-navy-700/50">Ξεκίνα με έναν κλάδο ή μία περιοχή που σε ενδιαφέρει.</p><a href="{% url 'radar_create' %}" class="mt-6 inline-block rounded-full bg-blue-600 px-6 py-3 font-bold text-white">Δημιουργία πρώτου Radar</a></div>
       {% endfor %}
     </div>
   </div>
