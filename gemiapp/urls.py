@@ -17,6 +17,7 @@ urlpatterns = [
     path("radars/<int:pk>/delete/", views.radar_delete, name="radar_delete"),
     path("radars/<int:pk>/export/", views.radar_export_csv, name="radar_export_csv"),
     path("leads/", views.lead_list, name="lead_list"),
+    path("leads/export/", views.lead_export_csv, name="lead_export_csv"),
     path("leads/<int:pk>/status/", views.lead_status, name="lead_status"),
     path("leads/<int:pk>/favorite/", views.lead_favorite, name="lead_favorite"),
     path("leads/<int:pk>/notes/", views.lead_notes, name="lead_notes"),
@@ -26,6 +27,7 @@ urlpatterns = [
     path("verify/<uidb64>/<token>/", views.verify_email, name="verify_email"),
     path("resend-verification/", views.resend_verification, name="resend_verification"),
     path("unsubscribe/<token>/", views.unsubscribe, name="unsubscribe"),
+    path("digest/<token>/export/", views.digest_export_csv, name="digest_export_csv"),
     path("outreach/unsubscribe/<token>/", views.outreach_unsubscribe, name="outreach_unsubscribe"),
     # Billing / Stripe
     path("pricing/", billing.pricing, name="pricing"),

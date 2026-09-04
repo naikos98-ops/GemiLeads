@@ -26,6 +26,21 @@ def _claim_pipeline_slot(name, ttl_seconds):
     return caches["shared"].add(key, "1", ttl_seconds)
 
 
+def _claim_outreach_send_lock(ttl_seconds=1800):
+    """Serialise outreach sending across every live cluster. Returns a release callable, or
+    None when another run holds the lock.
+
+    Unlike _claim_pipeline_slot this is not bucketed by the hour: the point is one sender at a
+    time, not one run per slot, and it is released as soon as the run finishes. The TTL only
+    bounds a worker that dies mid-send. Without this, a second deployed service picked up the
+    same queue and both ran a full OUTREACH_DAILY_SEND_CAP budget.
+    """
+    key = "outreach-send-lock"
+    if not caches["shared"].add(key, "1", ttl_seconds):
+        return None
+    return lambda: caches["shared"].delete(key)
+
+
 def _pipeline_is_already_running(target_date):
     """True when an unfinished ImportRun for the same date is still in flight.
 
@@ -71,7 +86,15 @@ def send_company_outreach_task(company_ids):
     """
     from gemiapp.superadmin.services import process_pending_outreach
 
-    sent, failed, skipped = process_pending_outreach(company_ids)
+    release = _claim_outreach_send_lock()
+    if release is None:
+        # Another cluster is mid-send. The rows stay "pending"; the daily drain picks them up.
+        logger.info("Outreach send lock held elsewhere; leaving %s queued.", len(company_ids))
+        return {"sent": 0, "failed": 0, "skipped": len(company_ids)}
+    try:
+        sent, failed, skipped = process_pending_outreach(company_ids)
+    finally:
+        release()
     logger.info(
         "Client outreach: %s sent, %s failed, %s skipped (daily cap) of %s queued",
         sent, failed, skipped, len(company_ids),
@@ -97,6 +120,15 @@ def drain_pending_outreach_task():
         logger.info("Outreach drain slot already claimed by another cluster; skipping.")
         return
 
+    # A worker killed between claiming a row and saving the result leaves it "sending"
+    # forever. Nothing else reaps those, and the send lock's TTL is far shorter than this
+    # sweep's, so anything still "sending" here belongs to a run that is long gone.
+    stranded = CompanyOutreach.objects.filter(
+        status="sending", created_at__lt=timezone.now() - timedelta(hours=1)
+    ).update(status="pending")
+    if stranded:
+        logger.warning("Outreach drain: reset %s rows stranded in 'sending'.", stranded)
+
     company_ids = list(
         CompanyOutreach.objects.filter(status="pending")
         .order_by("created_at")
@@ -106,7 +138,14 @@ def drain_pending_outreach_task():
         logger.info("Outreach drain: nothing pending.")
         return {"sent": 0, "failed": 0, "skipped": 0}
 
-    sent, failed, skipped = process_pending_outreach(company_ids)
+    release = _claim_outreach_send_lock()
+    if release is None:
+        logger.info("Outreach send lock held elsewhere; drain deferred.")
+        return {"sent": 0, "failed": 0, "skipped": len(company_ids)}
+    try:
+        sent, failed, skipped = process_pending_outreach(company_ids)
+    finally:
+        release()
     logger.info(
         "Outreach drain: %s sent, %s failed, %s still pending of %s backlog.",
         sent, failed, skipped, len(company_ids),

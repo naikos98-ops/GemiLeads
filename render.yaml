@@ -48,6 +48,20 @@ services:
         sync: false
       - key: OUTREACH_DAILY_SEND_CAP
         value: "180"
+      # Social login. Unset providers simply do not render a button.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # Apple: Services ID, Team ID, Key ID and the .p8 contents (newlines as literal \n).
+      - key: APPLE_CLIENT_ID
+        sync: false
+      - key: APPLE_TEAM_ID
+        sync: false
+      - key: APPLE_KEY_ID
+        sync: false
+      - key: APPLE_PRIVATE_KEY
+        sync: false
       - key: LEGAL_CONTROLLER_NAME
         sync: false
       - key: LEGAL_VAT

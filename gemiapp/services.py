@@ -517,7 +517,12 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
             signer = TimestampSigner()
             token = signer.sign(user.id)
             unsubscribe_url = f"{settings.BASE_URL}{reverse('unsubscribe', kwargs={'token': token})}"
-            
+
+            from .views import make_digest_export_token
+
+            export_token = make_digest_export_token(user.id, target_date)
+            export_url = f"{settings.BASE_URL}{reverse('digest_export_csv', kwargs={'token': export_token})}"
+
             context = {
                 "user": user,
                 "company_data": company_data,
@@ -527,6 +532,7 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
                 "end_date": end_date,
                 "frequency": frequency,
                 "unsubscribe_url": unsubscribe_url,
+                "export_url": export_url,
             }
             if frequency == "intraday":
                 subject = f"Gemi Leads Priority Alert · {total_companies_count} νέες επιχειρήσεις"

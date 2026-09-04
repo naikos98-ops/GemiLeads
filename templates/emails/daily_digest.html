@@ -87,6 +87,15 @@
                     </a>
                   </td>
                 </tr>
+                {% if export_url %}
+                <tr>
+                  <td align="center" style="padding-top: 12px;">
+                    <a href="{{ export_url }}" style="display: inline-block; border: 1px solid #cbd5e1; color: #0f172a; font-size: 14px; font-weight: 600; text-decoration: none; padding: 12px 28px; border-radius: 10px;">
+                      Λήψη σε CSV
+                    </a>
+                  </td>
+                </tr>
+                {% endif %}
               </table>
             </td>
           </tr>

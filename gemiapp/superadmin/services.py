@@ -482,6 +482,12 @@ OUTREACH_BATCH_LIMIT = 500
 # included) counts against the same quota, so this is deliberately conservative.
 OUTREACH_DAILY_SEND_CAP_DEFAULT = 250
 
+# How many sends between re-reads of the 24h counter inside one run. The counter is the only
+# thing that tells a worker what another cluster has already spent, and reading it once up
+# front is what let two clusters each send a full cap's worth. Small enough to bound the
+# overshoot, large enough not to add a COUNT(*) per email.
+BUDGET_RECHECK_EVERY = 25
+
 
 def _outreach_daily_send_cap():
     return int(getattr(settings, "OUTREACH_DAILY_SEND_CAP", OUTREACH_DAILY_SEND_CAP_DEFAULT))
@@ -679,20 +685,28 @@ def process_pending_outreach(company_ids):
     because that quota is shared with digests, earlier days, and manual sends, so our local
     count alone can say "180 left" while Brevo is really at zero and every send is a silent
     250-OK-then-drop.
+
+    The cap is re-derived from the database every BUDGET_RECHECK_EVERY sends rather than
+    computed once up front. Two clusters (a stale service left deployed alongside the current
+    one, or a drain firing while an enqueue is still draining) each used to read
+    _outreach_sent_last_24h() before the other had written any "sent" row, so both started
+    with a full budget and the real ceiling became Brevo's balance, not the cap.
     """
     sent = failed = skipped = 0
     rows = CompanyOutreach.objects.filter(
         company_id__in=company_ids, status="pending"
     ).select_related("company")
 
+    cap = _outreach_daily_send_cap()
     # Rows sent earlier today (this run or a previous one) already spent quota.
-    budget = _outreach_daily_send_cap() - _outreach_sent_last_24h()
+    budget = cap - _outreach_sent_last_24h()
     brevo_left = brevo_email_credits_remaining()
     if brevo_left is not None:
         budget = min(budget, brevo_left)
         if brevo_left <= 0:
             logger.warning("Brevo quota exhausted; leaving %s outreach rows pending.", len(rows))
 
+    since_recheck = 0
     for row in rows:
         company = row.company
         if not company.email or OutreachSuppression.is_suppressed(company.email):
@@ -701,8 +715,21 @@ def process_pending_outreach(company_ids):
             row.save(update_fields=["status", "error_message"])
             failed += 1
             continue
+        if budget > 0 and since_recheck >= BUDGET_RECHECK_EVERY:
+            # Re-read the shared counter: another cluster may have spent the cap since we
+            # started. Only ever lowers the budget for this run.
+            since_recheck = 0
+            budget = min(budget, cap - _outreach_sent_last_24h())
         if budget <= 0:
             # Leave "pending" -- the next worker run picks it up once quota resets.
+            skipped += 1
+            continue
+        # Claim the row before the SMTP round-trip. A concurrent cluster that already flipped
+        # it away from "pending" updates 0 rows, and we skip rather than send a duplicate.
+        claimed = CompanyOutreach.objects.filter(pk=row.pk, status="pending").update(
+            status="sending"
+        )
+        if not claimed:
             skipped += 1
             continue
         try:
@@ -713,6 +740,7 @@ def process_pending_outreach(company_ids):
             row.save(update_fields=["status", "error_message", "sent_at"])
             sent += 1
             budget -= 1
+            since_recheck += 1
         except Exception as exc:
             logger.exception("Failed sending outreach to company %s", company.pk)
             row.status = "failed"

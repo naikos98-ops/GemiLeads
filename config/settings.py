@@ -64,7 +64,14 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.sitemaps",
+    # allauth needs the sites framework; SITE_ID below pins the single site.
+    "django.contrib.sites",
     "django_q",
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.google",
+    "allauth.socialaccount.providers.apple",
     "gemiapp",
 ]
 
@@ -77,6 +84,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -89,6 +97,7 @@ TEMPLATES = [{
         "django.contrib.auth.context_processors.auth",
         "django.contrib.messages.context_processors.messages",
         "gemiapp.context_processors.global_stats",
+        "gemiapp.context_processors.social_login_providers",
     ]},
 }]
 WSGI_APPLICATION = "config.wsgi.application"
@@ -292,5 +301,51 @@ Q_CLUSTER = {
 }
 
 AUTHENTICATION_BACKENDS = [
+    # Kept first: every pre-existing account signs in with a password through this one, and
+    # allauth's own backend does not understand the username-or-email lookup it does.
     "gemiapp.backends.EmailOrUsernameBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
 ]
+
+SITE_ID = 1
+
+# Social login only. The email+password signup, its verification email and the password reset
+# all stay on the project's own views (gemiapp.views.signup / send_verification_email), so
+# allauth's parallel account flows are switched off rather than left to compete with them.
+ACCOUNT_EMAIL_VERIFICATION = "none"
+ACCOUNT_ADAPTER = "gemiapp.adapters.NoLocalSignupAdapter"
+SOCIALACCOUNT_ADAPTER = "gemiapp.adapters.SocialAccountAdapter"
+# Google and Apple both verify the address before handing it over, so a returning user is
+# matched to their existing password account instead of being shown a signup form.
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
+SOCIALACCOUNT_STORE_TOKENS = False
+# One click, no interstitial "you are about to sign in as..." page.
+SOCIALACCOUNT_LOGIN_ON_GET = True
+
+SOCIALACCOUNT_PROVIDERS = {
+    "google": {
+        "APP": {
+            "client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
+            "secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
+            "key": "",
+        },
+        "SCOPE": ["profile", "email"],
+        "AUTH_PARAMS": {"access_type": "online"},
+    },
+    "apple": {
+        "APP": {
+            # Apple's "Services ID", not the app bundle id.
+            "client_id": os.getenv("APPLE_CLIENT_ID", ""),
+            # The 10-character Team ID.
+            "secret": os.getenv("APPLE_TEAM_ID", ""),
+            # The private key's Key ID.
+            "key": os.getenv("APPLE_KEY_ID", ""),
+            "settings": {
+                # Contents of the .p8 file. Newlines survive the env var as literal "\n".
+                "certificate_key": os.getenv("APPLE_PRIVATE_KEY", "").replace("\\n", "\n"),
+            },
+        },
+        "SCOPE": ["email", "name"],
+    },
+}

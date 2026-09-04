@@ -14,6 +14,9 @@
 {% endfor %}
 {% endif %}
 Συνδέσου στο Gemi Leads Inbox (https://gemileads.gr/leads/) για πλήρη διαχείριση.
+{% if export_url %}
+Λήψη σε CSV: {{ export_url }}
+{% endif %}
 
 Για να σταματήσετε να λαμβάνετε αυτά τα email, κάντε κλικ εδώ:
 {{ unsubscribe_url }}

@@ -1,6 +1,6 @@
 import csv
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
@@ -18,7 +18,7 @@ from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.urls import reverse
-from django.utils.encoding import force_bytes, force_str
+from django.utils.encoding import DjangoUnicodeDecodeError, force_bytes, force_str
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.decorators import method_decorator
 from django_ratelimit.decorators import ratelimit
@@ -63,6 +63,12 @@ SAMPLE_LEADS = [
 MAX_SELECTED_KADS = 25
 # An unfiltered export would otherwise buffer every company in the database into one response.
 MAX_EXPORT_ROWS = 5000
+
+# Adding allauth's backend made AUTHENTICATION_BACKENDS ambiguous, so every login() call that
+# did not come from authenticate() must name the backend that vouched for the user. These
+# sites all verify the account themselves (an email token, a superadmin action), which is what
+# the password backend represents.
+PASSWORD_BACKEND = "gemiapp.backends.EmailOrUsernameBackend"
 LEAD_STATUSES = dict(UserCompanyLead.STATUSES)
 
 
@@ -197,7 +203,7 @@ def verify_email(request, uidb64, token):
     if user is not None and default_token_generator.check_token(user, token):
         user.is_active = True
         user.save()
-        login(request, user)
+        login(request, user, backend=PASSWORD_BACKEND)
         messages.success(request, "Το email σου επιβεβαιώθηκε! Καλώς ήρθες στο Gemi Leads.")
         # login() cycles the session key but preserves its data, so a plan chosen before
         # signing up survives and the checkout can pick up where the user left off.
@@ -222,6 +228,63 @@ def unsubscribe(request, token):
     preference.frequency = "off"
     preference.save(update_fields=["frequency", "updated_at"])
     return render(request, "unsubscribed.html")
+
+
+# The digest's CSV link is clicked from a mail client with no session, so it carries a signed
+# token instead of relying on @login_required. Salted separately from the unsubscribe signer so
+# a token for one can never be replayed as the other.
+DIGEST_EXPORT_SALT = "digest-export"
+DIGEST_EXPORT_MAX_AGE = timedelta(days=30)
+
+
+def make_digest_export_token(user_id, digest_date):
+    """Signed token for one user's digest on one date. Base64-wrapped for the same reason as
+    the outreach token: the payload contains ":" and must survive every proxy as a path
+    segment."""
+    signed = TimestampSigner(salt=DIGEST_EXPORT_SALT).sign(f"{user_id}:{digest_date.isoformat()}")
+    return urlsafe_base64_encode(force_bytes(signed))
+
+
+def digest_export_csv(request, token):
+    """Download the companies from one digest email. Authenticated by the token alone.
+
+    Deliberately not @login_required: the whole point is a one-click download from the email.
+    The token names both the user and the digest date, so it can only ever yield that one
+    day's rows for that one account, and it expires with DIGEST_EXPORT_MAX_AGE.
+    """
+    signer = TimestampSigner(salt=DIGEST_EXPORT_SALT)
+    try:
+        payload = signer.unsign(
+            force_str(urlsafe_base64_decode(token)), max_age=DIGEST_EXPORT_MAX_AGE
+        )
+        user_id, _, date_str = payload.partition(":")
+        user = User.objects.get(pk=user_id)
+        digest_date = date.fromisoformat(date_str)
+    except (BadSignature, SignatureExpired, User.DoesNotExist, ValueError, DjangoUnicodeDecodeError):
+        return render(request, "unsubscribed.html", {
+            "error": "Ο σύνδεσμος λήψης είναι άκυρος ή έχει λήξει.",
+        }, status=400)
+
+    # Shown to everyone in the email as an upsell, so the paywall lives here rather than in
+    # the template: a free account following the link lands on pricing, not on a download.
+    if get_user_radar_limit(user) == 0:
+        return redirect("pricing")
+
+    leads = (
+        UserCompanyLead.objects.filter(user=user, first_seen_at__date=digest_date)
+        .select_related("company")
+        .prefetch_related("radar_matches__radar")
+    )
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = (
+        f'attachment; filename="gemi-leads-{digest_date.isoformat()}.csv"'
+    )
+    response.write("﻿")
+    writer = csv.writer(response)
+    writer.writerow(LEAD_EXPORT_HEADER)
+    for lead in leads[:MAX_EXPORT_ROWS]:
+        writer.writerow(_lead_export_row(lead))
+    return response
 
 
 # Prospecting emails carry a signed address, not a user id: the recipient has no account.
@@ -537,8 +600,10 @@ def _lead_queryset(user):
     )
 
 
-@login_required
-def lead_list(request):
+def _filtered_leads(request):
+    """Apply the Inbox's filters to the user's leads. Shared by the page and its CSV export
+    so a download can never contain a different set of rows than the screen it was started
+    from. Returns (queryset, selected_status, radar, query, favorites_only)."""
     leads = _lead_queryset(request.user)
     selected_status = request.GET.get("status", "").strip()
     selected_radar = request.GET.get("radar", "").strip()
@@ -567,6 +632,12 @@ def lead_list(request):
         )
     if favorites_only:
         leads = leads.filter(is_favorite=True)
+    return leads, selected_status, radar, query, favorites_only
+
+
+@login_required
+def lead_list(request):
+    leads, selected_status, radar, query, favorites_only = _filtered_leads(request)
 
     all_user_leads = UserCompanyLead.objects.filter(user=request.user)
     return render(request, "leads/list.html", {
@@ -580,7 +651,53 @@ def lead_list(request):
         "new_count": all_user_leads.filter(status="new").count(),
         "favorite_count": all_user_leads.filter(is_favorite=True).count(),
         "interested_count": all_user_leads.filter(status="interested").count(),
+        "query": query,
     })
+
+
+LEAD_EXPORT_HEADER = [
+    "Ημερομηνία", "Αρ. ΓΕΜΗ", "ΑΦΜ", "Επωνυμία", "Νομική μορφή", "Περιφέρεια", "Πόλη",
+    "Κατάσταση lead", "Αγαπημένο", "Ραντάρ", "Email", "Website", "Σημειώσεις",
+]
+
+
+def _lead_export_row(lead):
+    company = lead.company
+    radars = ", ".join(sorted({m.radar.name for m in lead.radar_matches.all()}))
+    return [
+        lead.first_seen_at.date() if lead.first_seen_at else "",
+        company.gemi_number,
+        company.vat_number,
+        company.name,
+        company.legal_type,
+        company.prefecture,
+        company.city,
+        lead.get_status_display(),
+        "Ναι" if lead.is_favorite else "Όχι",
+        radars,
+        company.email,
+        company.website,
+        lead.notes,
+    ]
+
+
+@login_required
+def lead_export_csv(request):
+    """Download the Inbox as CSV, honouring whatever filters the page is showing."""
+    if get_user_radar_limit(request.user) == 0:
+        messages.error(request, "Απαιτείται ενεργή συνδρομή για την εξαγωγή CSV.")
+        return redirect("pricing")
+
+    leads, *_ = _filtered_leads(request)
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = 'attachment; filename="gemi-leads-inbox.csv"'
+    # BOM: Excel otherwise reads the Greek headers as mojibake.
+    response.write("﻿")
+    writer = csv.writer(response)
+    writer.writerow(LEAD_EXPORT_HEADER)
+    for lead in leads.distinct()[:MAX_EXPORT_ROWS]:
+        writer.writerow(_lead_export_row(lead))
+    return response
 
 
 @login_required

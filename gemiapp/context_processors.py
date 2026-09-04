@@ -21,3 +21,22 @@ def global_stats(request):
         "beta_mode": settings.BETA_MODE,
         "billing_active": settings.LEGAL_BILLING_ACTIVE,
     }
+
+
+def social_login_providers(request):
+    """Which social buttons to render.
+
+    allauth's {% get_providers %} lists every provider in SOCIALACCOUNT_PROVIDERS whether or
+    not it has credentials, so on an environment where only Google is set up it would still
+    draw an Apple button that dead-ends on Apple's error page. Keying on the client_id keeps
+    a half-finished setup invisible instead.
+    """
+    configured = {
+        provider
+        for provider, config in settings.SOCIALACCOUNT_PROVIDERS.items()
+        if config.get("APP", {}).get("client_id")
+    }
+    return {
+        "google_login_enabled": "google" in configured,
+        "apple_login_enabled": "apple" in configured,
+    }

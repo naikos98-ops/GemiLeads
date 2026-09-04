@@ -17,5 +17,9 @@ urlpatterns = [
     path("password_reset/done/", auth_views.PasswordResetDoneView.as_view(), name="password_reset_done"),
     path("reset/<uidb64>/<token>/", auth_views.PasswordResetConfirmView.as_view(), name="password_reset_confirm"),
     path("reset/done/", auth_views.PasswordResetCompleteView.as_view(), name="password_reset_complete"),
+    # Social login only. Declared after the project's own login/logout/password_reset routes so
+    # that those names keep resolving to the views above -- allauth ships its own views under
+    # the same names, and the project's (rate-limited, custom-templated) ones must win.
+    path("accounts/", include("allauth.urls")),
     path("", include("gemiapp.urls")),
 ]

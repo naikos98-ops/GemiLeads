@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from gemiapp.backups import backup_filename, backup_json
+from gemiapp.views import PASSWORD_BACKEND
 
 from .decorators import is_superadmin, superadmin_required
 from .forms import AdminUserCreateForm
@@ -604,7 +605,7 @@ def impersonate_start(request, user_id):
         target_repr=target_user.email,
     )
 
-    login(request, target_user)
+    login(request, target_user, backend=PASSWORD_BACKEND)
     request.session["impersonator_id"] = admin_id
     messages.info(request, f"Ξεκινήσατε impersonation ως {target_user.email}.")
     return redirect("dashboard")
@@ -635,7 +636,7 @@ def impersonate_stop(request):
             target_id=request.user.id,
             target_repr=target_email,
         )
-        login(request, admin_user)
+        login(request, admin_user, backend=PASSWORD_BACKEND)
         if "impersonator_id" in request.session:
             del request.session["impersonator_id"]
         messages.success(request, "Επιστρέψατε στο Superadmin account σας.")

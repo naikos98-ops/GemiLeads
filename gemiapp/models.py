@@ -490,6 +490,10 @@ class CompanyOutreach(models.Model):
 
     STATUSES = [
         ("pending", "Σε ουρά"),
+        # Claimed by a worker for the duration of one SMTP round-trip, so a second cluster
+        # cannot pick the same row up and email the company twice. A row stuck here means the
+        # worker died mid-send; requeue_dropped_outreach flips it back to "pending".
+        ("sending", "Αποστέλλεται"),
         ("sent", "Εστάλη"),
         ("failed", "Απέτυχε"),
     ]

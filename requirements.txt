@@ -10,3 +10,5 @@ django-q2==1.11.0
 croniter==6.2.4
 honcho==2.0.0
 stripe==15.5.0
+# [socialaccount] pulls PyJWT + cryptography, which Apple's client-secret JWT needs.
+django-allauth[socialaccount]==65.19.2

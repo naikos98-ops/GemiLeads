@@ -2,6 +2,7 @@ import datetime as dt
 import json
 import re
 import tempfile
+import time
 from datetime import date, datetime, timedelta
 from io import StringIO
 from pathlib import Path
@@ -13,7 +14,7 @@ from django.core.management import call_command
 from django.core.cache import cache
 from django.db import transaction
 from django.db.utils import OperationalError
-from django.test import Client, TestCase, override_settings
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from .models import (
@@ -1942,6 +1943,249 @@ class ExportBoundsTests(TestCase):
         self.assertRedirects(response, reverse("pricing"))
 
 
+class LeadInboxExportTests(TestCase):
+    """The Inbox had no export at all -- only the dashboard and a single radar did."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("inbox@example.com", "inbox@example.com", "StrongPass123")
+        sub = self.user.subscription
+        sub.tier = "pro"
+        sub.status = "active"
+        sub.save()
+        self.client.force_login(self.user)
+        today = timezone.localdate()
+        self.wanted = Company.objects.create(
+            gemi_number="7000001", name="ΘΕΛΩ ΑΕ", incorporation_date=today,
+            prefecture="ΑΤΤΙΚΗΣ", email="want@x.gr",
+        )
+        self.other = Company.objects.create(
+            gemi_number="7000002", name="ΔΕΝ ΘΕΛΩ ΑΕ", incorporation_date=today,
+            prefecture="ΑΤΤΙΚΗΣ", email="skip@x.gr",
+        )
+        UserCompanyLead.objects.create(user=self.user, company=self.wanted, status="interested")
+        UserCompanyLead.objects.create(user=self.user, company=self.other, status="archived")
+
+    def _rows(self, response):
+        body = response.content.decode("utf-8-sig")
+        return [line for line in body.splitlines() if line.strip()][1:]
+
+    def test_exports_the_users_leads(self):
+        response = self.client.get(reverse("lead_export_csv"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self._rows(response)), 2)
+
+    def test_the_export_honours_the_pages_filters(self):
+        """A download started from a filtered screen must match what the screen shows."""
+        response = self.client.get(reverse("lead_export_csv"), {"status": "interested"})
+        rows = self._rows(response)
+        self.assertEqual(len(rows), 1)
+        self.assertIn("ΘΕΛΩ ΑΕ", rows[0])
+
+    def test_another_users_leads_are_never_included(self):
+        stranger = User.objects.create_user("s@example.com", "s@example.com", "StrongPass123")
+        UserCompanyLead.objects.create(user=stranger, company=self.wanted, status="new")
+        response = self.client.get(reverse("lead_export_csv"))
+        self.assertEqual(len(self._rows(response)), 2)
+
+    def test_export_requires_a_subscription(self):
+        sub = self.user.subscription
+        sub.tier = "free"
+        sub.status = "inactive"
+        sub.save()
+        response = self.client.get(reverse("lead_export_csv"))
+        self.assertRedirects(response, reverse("pricing"))
+
+
+class SocialLoginAdapterTests(TestCase):
+    """Google/Apple sign-in is bolted onto an app that already had its own signup, so the
+    adapters carry all the risk: linking to the right account and reproducing first-run setup."""
+
+    def setUp(self):
+        from allauth.socialaccount.models import SocialAccount, SocialLogin
+
+        self.SocialAccount = SocialAccount
+        self.SocialLogin = SocialLogin
+        from .adapters import SocialAccountAdapter
+
+        self.adapter = SocialAccountAdapter()
+        self.request = RequestFactory().get("/accounts/google/login/callback/")
+        # allauth reads request.session while saving a user; RequestFactory builds none.
+        from django.contrib.sessions.backends.db import SessionStore
+
+        self.request.session = SessionStore()
+
+    def _sociallogin(self, email, uid="uid-1", provider="google"):
+        account = self.SocialAccount(provider=provider, uid=uid)
+        login = self.SocialLogin(user=User(email=email), account=account)
+        return login
+
+    def test_an_existing_password_account_is_linked_not_duplicated(self):
+        """The bug this prevents: signing in with Google after signing up with a password
+        would otherwise create a second, empty account with no radars or leads."""
+        existing = User.objects.create_user("dup@example.com", "dup@example.com", "StrongPass123")
+        login = self._sociallogin("dup@example.com")
+
+        self.adapter.pre_social_login(self.request, login)
+
+        self.assertEqual(login.user.pk, existing.pk)
+        self.assertEqual(User.objects.filter(email__iexact="dup@example.com").count(), 1)
+
+    def test_linking_is_case_insensitive(self):
+        existing = User.objects.create_user("Mixed@Example.com", "Mixed@Example.com", "StrongPass123")
+        login = self._sociallogin("mixed@example.com")
+
+        self.adapter.pre_social_login(self.request, login)
+
+        self.assertEqual(login.user.pk, existing.pk)
+
+    def test_an_unverified_account_is_activated_by_the_provider(self):
+        """Signed up with a password, never clicked the link. The provider has now vouched
+        for the address, which is what that link existed to prove."""
+        existing = User.objects.create_user("cold@example.com", "cold@example.com", "StrongPass123")
+        existing.is_active = False
+        existing.save(update_fields=["is_active"])
+
+        self.adapter.pre_social_login(self.request, self._sociallogin("cold@example.com"))
+
+        existing.refresh_from_db()
+        self.assertTrue(existing.is_active)
+
+    def test_an_unknown_address_is_left_for_signup(self):
+        login = self._sociallogin("brand-new@example.com")
+        self.adapter.pre_social_login(self.request, login)
+        self.assertIsNone(login.user.pk)
+
+    def test_a_provider_that_returns_no_address_links_nothing(self):
+        """Apple lets a user hide their address. Matching on "" would attach them to whichever
+        account happens to have an empty email."""
+        User.objects.create(username="blank", email="")
+        login = self._sociallogin("")
+
+        self.adapter.pre_social_login(self.request, login)
+
+        self.assertIsNone(login.user.pk)
+
+    def test_a_new_social_account_gets_the_same_setup_as_a_form_signup(self):
+        login = self._sociallogin("fresh@example.com")
+        login.user.username = "fresh@example.com"
+
+        user = self.adapter.save_user(self.request, login)
+
+        self.assertTrue(user.is_active, "the provider verified the address")
+        self.assertEqual(user.username, user.email)
+        self.assertTrue(DigestPreference.objects.filter(user=user).exists())
+        self.assertTrue(CustomerRadar.objects.filter(user=user).exists())
+
+    def test_allauths_own_password_signup_stays_closed(self):
+        """The project's SignupForm owns that flow -- allauth's version would skip the
+        verification email and create an already-active account."""
+        from .adapters import NoLocalSignupAdapter
+
+        self.assertFalse(NoLocalSignupAdapter().is_open_for_signup(self.request))
+
+
+class SocialLoginButtonTests(TestCase):
+    """A provider without credentials must not render a button that dead-ends on the
+    provider's error page."""
+
+    def test_no_buttons_without_credentials(self):
+        providers = {"google": {"APP": {"client_id": ""}}, "apple": {"APP": {"client_id": ""}}}
+        with override_settings(SOCIALACCOUNT_PROVIDERS=providers):
+            response = self.client.get(reverse("login"))
+        self.assertNotContains(response, "Συνέχεια με Google")
+        self.assertNotContains(response, "Συνέχεια με Apple")
+
+    def test_only_the_configured_provider_renders(self):
+        providers = {
+            "google": {"APP": {"client_id": "gid", "secret": "s", "key": ""}},
+            "apple": {"APP": {"client_id": ""}},
+        }
+        with override_settings(SOCIALACCOUNT_PROVIDERS=providers):
+            response = self.client.get(reverse("login"))
+        self.assertContains(response, "Συνέχεια με Google")
+        self.assertNotContains(response, "Συνέχεια με Apple")
+
+    def test_the_projects_own_login_view_still_owns_the_login_url(self):
+        """allauth ships views under the same names; mounting it must not steal them."""
+        response = self.client.get(reverse("login"))
+        self.assertTemplateUsed(response, "registration/login.html")
+
+
+class DigestExportTokenTests(TestCase):
+    """The digest's CSV link is clicked from a mail client with no session, so it is
+    authenticated by a signed token rather than @login_required."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("dig@example.com", "dig@example.com", "StrongPass123")
+        sub = self.user.subscription
+        sub.tier = "pro"
+        sub.status = "active"
+        sub.save()
+        self.today = timezone.localdate()
+        company = Company.objects.create(
+            gemi_number="7100001", name="DIGEST ΑΕ", incorporation_date=self.today,
+            prefecture="ΑΤΤΙΚΗΣ", email="d@x.gr",
+        )
+        UserCompanyLead.objects.create(user=self.user, company=company, status="new")
+
+    def _url(self, user_id=None, digest_date=None):
+        from .views import make_digest_export_token
+
+        token = make_digest_export_token(user_id or self.user.id, digest_date or self.today)
+        return reverse("digest_export_csv", kwargs={"token": token})
+
+    def test_a_valid_token_downloads_without_logging_in(self):
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("text/csv", response["Content-Type"])
+        self.assertIn("DIGEST ΑΕ", response.content.decode("utf-8-sig"))
+
+    def test_a_tampered_token_is_refused(self):
+        response = self.client.get(reverse("digest_export_csv", kwargs={"token": "not-a-token"}))
+        self.assertEqual(response.status_code, 400)
+
+    def test_an_expired_token_is_refused(self):
+        from .views import DIGEST_EXPORT_MAX_AGE
+
+        url = self._url()
+        with patch("django.core.signing.time.time", return_value=time.time() + DIGEST_EXPORT_MAX_AGE.total_seconds() + 60):
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 400)
+
+    def test_the_token_only_yields_its_own_days_rows(self):
+        response = self.client.get(self._url(digest_date=self.today - timedelta(days=1)))
+        body = response.content.decode("utf-8-sig")
+        self.assertNotIn("DIGEST ΑΕ", body)
+
+    def test_a_free_account_following_the_link_lands_on_pricing(self):
+        """The link is shown to everyone as an upsell, so the paywall lives in the view."""
+        sub = self.user.subscription
+        sub.tier = "free"
+        sub.status = "inactive"
+        sub.save()
+        response = self.client.get(self._url())
+        self.assertRedirects(response, reverse("pricing"))
+
+    def test_the_rendered_digest_carries_a_working_link(self):
+        """Renders the real template with the real context helper: a typo in either the
+        context key or the {% if export_url %} guard would silently drop the button."""
+        from django.template.loader import render_to_string
+
+        from .views import make_digest_export_token
+
+        token = make_digest_export_token(self.user.id, self.today)
+        export_url = f"https://gemileads.gr{reverse('digest_export_csv', kwargs={'token': token})}"
+        html = render_to_string("emails/daily_digest.html", {
+            "user": self.user, "company_data": [], "general_companies": [],
+            "digest_date": self.today, "frequency": "daily",
+            "unsubscribe_url": "https://gemileads.gr/unsubscribe/x/",
+            "export_url": export_url,
+        })
+        self.assertIn(export_url, html)
+        # And the link that lands in the inbox actually downloads.
+        self.assertEqual(self.client.get(self._url()).status_code, 200)
+
+
 @SYNC_Q
 @override_settings(RATELIMIT_ENABLE=False)
 class UnverifiedAccountRecoveryTests(TestCase):
@@ -2617,6 +2861,50 @@ class PendingOutreachDrainTests(TestCase):
 
         self.assertEqual(Schedule.objects.count(), before)
 
+    @override_settings(OUTREACH_DAILY_SEND_CAP=10)
+    def test_a_second_cluster_mid_send_defers_instead_of_sending(self):
+        """A stale service left deployed alongside the current one ran its own full cap.
+        The shared-cache lock makes the second caller defer to the daily drain."""
+        from gemiapp.tasks import _claim_outreach_send_lock, send_company_outreach_task
+
+        company = self._company(10)
+        self._pending(company)
+        held = _claim_outreach_send_lock()
+        self.addCleanup(held)
+
+        result = send_company_outreach_task([company.id])
+
+        self.assertEqual(result, {"sent": 0, "failed": 0, "skipped": 1})
+        self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(OUTREACH_DAILY_SEND_CAP=10)
+    def test_the_send_lock_is_released_for_the_next_run(self):
+        from gemiapp.tasks import _claim_outreach_send_lock, send_company_outreach_task
+
+        first = self._company(11)
+        self._pending(first)
+        send_company_outreach_task([first.id])
+
+        release = _claim_outreach_send_lock()
+        self.assertIsNotNone(release, "lock still held after the run finished")
+        release()
+
+    @override_settings(OUTREACH_DAILY_SEND_CAP=10)
+    def test_drain_resets_rows_stranded_by_a_killed_worker(self):
+        from .models import CompanyOutreach
+        from gemiapp.tasks import drain_pending_outreach_task
+
+        company = self._company(12)
+        row = self._pending(company)
+        CompanyOutreach.objects.filter(pk=row.pk).update(
+            status="sending", created_at=timezone.now() - timedelta(hours=2)
+        )
+
+        drain_pending_outreach_task()
+
+        row.refresh_from_db()
+        self.assertEqual(row.status, "sent")
+
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend", RATELIMIT_ENABLE=False)
 class VerificationEmailDeliveryTests(TestCase):
@@ -3017,6 +3305,55 @@ class OutreachDailyCapTests(TestCase):
             sent, failed, skipped = self.process(ids)
         self.assertEqual((sent, failed, skipped), (0, 0, 5))
         self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(OUTREACH_DAILY_SEND_CAP=4)
+    def test_a_concurrent_cluster_spending_the_cap_stops_this_run(self):
+        """Two deployed services each read the 24h counter before either had written a "sent"
+        row, so both ran a full cap and the real ceiling became Brevo's balance. The budget is
+        re-derived mid-run, so a cap spent elsewhere stops this run too."""
+        from gemiapp.superadmin import services
+
+        other = self.companies[-1]
+
+        def spend_the_cap_elsewhere(company):
+            # Stand in for the other cluster: after our first send, the cap is gone.
+            self.CompanyOutreach.objects.filter(company=other).update(
+                status="sent", sent_at=timezone.now()
+            )
+            return original(company)
+
+        original = services.build_outreach_email
+        with patch.object(services, "BUDGET_RECHECK_EVERY", 1), \
+                patch.object(services, "build_outreach_email", side_effect=spend_the_cap_elsewhere):
+            sent, _, skipped = self.process([c.id for c in self.companies[:4]])
+        # One send, then the recheck sees cap(4) - sent_last_24h(2: ours + theirs) and stops.
+        self.assertLess(sent, 4)
+        self.assertEqual(sent + skipped, 4)
+
+    def test_a_row_claimed_by_another_worker_is_not_sent_twice(self):
+        """The claim is a conditional UPDATE, so the loser of the race sends nothing."""
+        from gemiapp.superadmin import services
+
+        target = self.companies[0]
+
+        def steal_the_row(company):
+            if company.pk == target.pk:
+                self.CompanyOutreach.objects.filter(company=target).update(status="sent")
+            return original(company)
+
+        original = services.build_outreach_email
+        with patch.object(services, "build_outreach_email", side_effect=steal_the_row):
+            # Steal it before our loop reaches it: the row is no longer "pending", so the
+            # conditional update matches nothing.
+            self.CompanyOutreach.objects.filter(company=target).update(status="sent")
+            sent, _, skipped = self.process([target.id])
+        self.assertEqual((sent, skipped), (0, 0))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_a_successful_send_leaves_no_row_stuck_in_sending(self):
+        ids = [c.id for c in self.companies]
+        self.process(ids)
+        self.assertEqual(self.CompanyOutreach.objects.filter(status="sending").count(), 0)
 
 
 class SchedulerHealthCheckTests(TestCase):
