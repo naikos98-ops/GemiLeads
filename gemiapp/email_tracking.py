@@ -1,10 +1,16 @@
-"""Brevo delivery/engagement webhook -- durable logging only, no business logic depends on it.
+"""Brevo delivery/engagement webhook.
 
 Mirrors the shape of gemiapp.billing's Stripe webhook handling (persist first, verify auth,
 never trust an unauthenticated delivery) but is deliberately much simpler: there is no money
-and no entitlement on the other side of an "opened" or "unsubscribed" event, so there is no
-idempotency requirement and no per-event-type dispatch -- every event is just appended to
-EmailEngagementEvent for the superadmin dashboard to aggregate.
+and no entitlement behind an "opened" event, so there is no idempotency requirement -- every
+event is appended to EmailEngagementEvent for the superadmin dashboard to aggregate.
+
+One event type does carry business logic: a hard bounce means the address does not exist,
+so it is also written to OutreachSuppression. Without that, the same dead address is picked
+straight back out of the ΓΕΜΗ feed on the next batch and bounced again, and a hard-bounce
+rate above ~1% is precisely what makes Gmail/Microsoft treat the rest of our mail as spam.
+Soft bounces are excluded on purpose -- a full mailbox or a greylisting MX is temporary, and
+suppressing on one would throw away recipients who are perfectly reachable tomorrow.
 """
 
 import hashlib
@@ -17,9 +23,18 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from .models import EmailEngagementEvent
+from .models import EmailEngagementEvent, OutreachSuppression
 
 logger = logging.getLogger(__name__)
+
+# Brevo names the same event differently depending on which side sent it: the SMTP relay
+# emits snake_case, the transactional API camelCase. Both are mapped, same as in
+# gemiapp.superadmin.services._ENGAGEMENT_BUCKETS.
+#
+# "blocked" is included because Brevo only reports it for an address already on its own
+# blocklist (a previous hard bounce, or a spam complaint) -- our suppression list should
+# agree with that rather than keep re-sending. Soft bounces are deliberately absent.
+_SUPPRESSING_EVENTS = frozenset({"hardBounce", "hard_bounce", "blocked"})
 
 
 def _token_is_valid(token):
@@ -66,6 +81,28 @@ def _record_event(item):
     EmailEngagementEvent.objects.create(
         event_type=event_type, email=email, tag=tag, payload=item,
     )
+
+    if event_type in _SUPPRESSING_EVENTS and email:
+        _suppress_bounced(email, event_type)
+
+
+def _suppress_bounced(email, event_type):
+    """Add a hard-bounced address to the outreach suppression list.
+
+    Deliberately does not fail the event: the engagement row is already written and is the
+    audit record, so a suppression write that loses a race (get_or_create against a
+    concurrent unsubscribe) must not cost us the event or make Brevo retry the batch.
+    """
+    normalized = OutreachSuppression.normalize(email)
+    if not normalized:
+        return
+    try:
+        _, created = OutreachSuppression.objects.get_or_create(email=normalized)
+    except Exception:
+        logger.exception("Could not suppress bounced address %r", normalized)
+        return
+    if created:
+        logger.info("Suppressed %s after %s", normalized, event_type)
 
 
 @csrf_exempt

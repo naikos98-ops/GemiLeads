@@ -27,6 +27,7 @@ from ..models import (
     paid_subscription_q,
 )
 from ..services import digest_email_tag
+from ..email_validation import is_undeliverable
 
 logger = logging.getLogger(__name__)
 
@@ -635,6 +636,45 @@ def send_outreach_test_email(admin_user, to_email):
     )
 
 
+UNDELIVERABLE_ERROR = "Δεν στάλθηκε: το domain του email δεν δέχεται μηνύματα (κανένα MX/A record)."
+
+
+def _suppress_undeliverable(companies, admin_user):
+    """Record companies whose address is provably dead, so they are never queued again.
+
+    Two writes per company, both needed for a different reason: the suppression row stops
+    the *address* from being retried through another company that filed the same one (an
+    accountant's address is shared across every company they incorporate), and the failed
+    CompanyOutreach row stops this *company* reappearing in the tool and leaves the reason
+    visible in the admin instead of the company silently vanishing.
+    """
+    OutreachSuppression.objects.bulk_create(
+        [OutreachSuppression(email=OutreachSuppression.normalize(c.email)) for c in companies],
+        ignore_conflicts=True,
+    )
+    CompanyOutreach.objects.bulk_create(
+        [
+            CompanyOutreach(
+                company=c,
+                status="failed",
+                sent_to=c.email,
+                sent_by=admin_user,
+                error_message=UNDELIVERABLE_ERROR,
+            )
+            for c in companies
+        ],
+        ignore_conflicts=True,
+    )
+    log_admin_action(
+        admin_user=admin_user,
+        action="company_outreach_undeliverable",
+        target_type="Company",
+        target_id="batch",
+        target_repr=f"{len(companies)} undeliverable",
+        metadata={"skipped": len(companies), "emails": [c.email for c in companies][:50]},
+    )
+
+
 def queue_company_outreach(admin_user, company_ids):
     """Claim eligible companies as pending and hand the send to a background worker.
 
@@ -644,10 +684,23 @@ def queue_company_outreach(admin_user, company_ids):
     """
     from django_q.tasks import async_task
 
-    eligible = uncontacted_companies_qs().filter(id__in=company_ids)[:OUTREACH_BATCH_LIMIT]
+    eligible = list(uncontacted_companies_qs().filter(id__in=company_ids)[:OUTREACH_BATCH_LIMIT])
+
+    # Drop addresses whose domain cannot receive mail at all before they cost us a hard
+    # bounce. ΓΕΜΗ never verifies the email a company files, so a measurable share of the
+    # feed is typo'd or on a lapsed domain, and hard bounces are what push otherwise
+    # deliverable mail into spam. Only provably-dead domains are dropped -- a DNS timeout
+    # leaves the address in the batch (see gemiapp.email_validation).
+    deliverable, undeliverable = [], []
+    for c in eligible:
+        (undeliverable if is_undeliverable(c.email) else deliverable).append(c)
+
+    if undeliverable:
+        _suppress_undeliverable(undeliverable, admin_user)
+
     rows = [
         CompanyOutreach(company=c, status="pending", sent_to=c.email, sent_by=admin_user)
-        for c in eligible
+        for c in deliverable
     ]
     if not rows:
         return 0
