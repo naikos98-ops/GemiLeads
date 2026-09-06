@@ -351,10 +351,11 @@ def digest_skip_reason(user, frequency):
         return "Ο λογαριασμός δεν έχει email"
 
     subscription = getattr(user, "subscription", None)
-    if subscription is None or not subscription.has_entitlement:
-        return NO_ENTITLEMENT
-    if frequency == "intraday" and subscription.effective_tier not in TOP_TIERS:
-        return f"Το intraday απαιτεί enterprise/custom (τρέχον tier: {subscription.effective_tier})"
+    if frequency != "daily":
+        if subscription is None or not subscription.has_entitlement:
+            return NO_ENTITLEMENT
+        if frequency == "intraday" and subscription.effective_tier not in TOP_TIERS:
+            return f"Το intraday απαιτεί enterprise/custom (τρέχον tier: {subscription.effective_tier})"
     return None
 
 

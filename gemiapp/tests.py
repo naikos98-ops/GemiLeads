@@ -1511,7 +1511,7 @@ class DigestRecipientTests(TestCase):
         from .services import NO_ENTITLEMENT, digest_skip_reason
 
         unpaid = self._user("unpaid", tier="free", status="inactive")
-        self.assertEqual(digest_skip_reason(unpaid, "daily"), NO_ENTITLEMENT)
+        self.assertEqual(digest_skip_reason(unpaid, "intraday"), NO_ENTITLEMENT)
 
         no_pref = self._user("nopref")
         no_pref.digest_preference.delete()
