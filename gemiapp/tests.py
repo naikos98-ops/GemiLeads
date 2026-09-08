@@ -3436,6 +3436,57 @@ class OutreachEmergencyStopTests(TestCase):
             "Οι αποστολές cold outreach έχουν διακοπεί",
         )
 
+    def test_requeue_dropped_outreach_command_refuses_when_disabled(self):
+        from io import StringIO
+        from django.core.management import call_command, CommandError
+
+        out = StringIO()
+        with self.assertRaises(CommandError) as ctx:
+            call_command("requeue_dropped_outreach", "--apply", stdout=out)
+        self.assertIn("OUTREACH_ENABLED=0", str(ctx.exception))
+
+    def test_prune_bot_suppressions_skips_outreach_requeue_when_disabled(self):
+        from io import StringIO
+        from django.utils import timezone
+        from django.core.management import call_command
+        from gemiapp.models import OutreachSuppression
+
+        now = timezone.now()
+        OutreachSuppression.objects.create(email="bot1@example.com", created_at=now)
+        OutreachSuppression.objects.create(email="bot2@example.com", created_at=now)
+
+        out = StringIO()
+        call_command("prune_bot_suppressions", "--apply", stdout=out)
+        self.assertIn("OUTREACH_ENABLED=0", out.getvalue())
+
+    def test_cancelled_status_records_are_never_processed_even_if_enabled(self):
+        from gemiapp.models import CompanyOutreach
+        from gemiapp.superadmin.services import process_pending_outreach
+
+        cancelled_row = CompanyOutreach.objects.create(
+            company=self.company, status="cancelled", sent_to=self.company.email
+        )
+        with override_settings(OUTREACH_ENABLED=True):
+            sent, failed, skipped = process_pending_outreach([self.company.id])
+
+        cancelled_row.refresh_from_db()
+        self.assertEqual(cancelled_row.status, "cancelled")
+        self.assertEqual((sent, failed, skipped), (0, 0, 0))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_transactional_verification_and_reset_emails_continue_working(self):
+        from gemiapp.views import send_verification_email
+
+        user = User.objects.create_user("txuser@example.com", "txuser@example.com", "pw")
+        with patch("django_q.tasks.async_task"):
+            send_verification_email(None, user)
+        
+        # Test password reset request
+        res = self.client.post(reverse("password_reset"), {"email": user.email})
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("/reset/", mail.outbox[0].body.lower())
+
 
 class SchedulerHealthCheckTests(TestCase):
     """The check counted every failure ever recorded, so it pinned itself to Warning forever.

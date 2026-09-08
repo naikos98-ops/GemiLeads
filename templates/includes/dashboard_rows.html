@@ -1,26 +1,51 @@
 {% for company in companies %}
-<tr class="group transition hover:bg-sand-50">
-  <td class="px-6 py-5">
-    <a href="{% url 'company_detail' company.gemi_number %}" class="max-w-sm font-bold text-navy-950 hover:text-blue-600 hover:underline block">{{ company.name }}</a>
-    <p class="mt-1 text-xs text-navy-700/45">ΓΕΜΗ {{ company.gemi_number }}{% if company.vat_number %} · ΑΦΜ {{ company.vat_number }}{% endif %}</p>
-  </td>
-  <td class="px-5 py-5 text-sm font-medium">
-    {{ company.incorporation_date|date:'d/m/Y' }}
-    {% if company.incorporation_date == today %}<span class="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-blue-700">Σήμερα</span>{% endif %}
-  </td>
-  <td class="px-5 py-5 text-sm text-navy-700/60">{{ company.legal_type|default:'—' }}</td>
-  <td class="px-5 py-5 text-sm text-navy-700/60">{{ company.city|default:company.prefecture|default:'—' }}</td>
-  <td class="px-5 py-5">
-    <span class="rounded-full px-3 py-1 text-xs font-bold {% if company.is_active %}bg-emerald-50 text-emerald-700{% else %}bg-red-50 text-red-700{% endif %}">{{ company.status|default:'Ενεργή' }}</span>
-  </td>
-  <td class="px-5 py-5">
-    <a href="{% url 'company_detail' company.gemi_number %}" class="grid h-9 w-9 place-items-center rounded-full border border-navy-900/10 transition group-hover:bg-navy-950 group-hover:text-white">↗</a>
-  </td>
-</tr>
+<article class="product-signal is-signal {% if forloop.first and not is_ajax %}selected{% endif %}"
+         data-name="{{ company.name }}"
+         data-gemi="{{ company.gemi_number }}"
+         data-vat="{% if company.vat_number %}ΑΦΜ {{ company.vat_number }}{% endif %}"
+         data-date="{{ company.incorporation_date|date:'d/m/Y' }}"
+         data-legal="{{ company.legal_type|default:'—' }}"
+         data-prefecture="{{ company.city|default:company.prefecture|default:'—' }}"
+         data-status="{{ company.status|default:'Ενεργή' }}"
+         data-detail-url="{% url 'company_detail' company.gemi_number %}"
+         onclick="selectSignal(this, event)">
+  <time datetime="{{ company.incorporation_date|date:'Y-m-d' }}">{{ company.incorporation_date|date:'d/m' }}</time>
+  <div class="product-match-stroke empty"></div>
+  <div class="product-signal-copy">
+    <b>{{ company.name }}</b>
+    <small>ΓΕΜΗ {{ company.gemi_number }}{% if company.vat_number %} · ΑΦΜ {{ company.vat_number }}{% endif %} · {{ company.city|default:company.prefecture|default:'—' }}</small>
+    <em class="quiet">{{ company.legal_type|default:'Δημοσιευμένη εγγραφή' }}</em>
+  </div>
+  <div class="state">
+    <i></i>
+    <b>SIGNAL</b>
+    <small>{% if company.incorporation_date == today %}<strong style="color: var(--product-amber);">Σήμερα</strong>{% else %}{{ company.incorporation_date|date:'d/m/Y' }}{% endif %}</small>
+  </div>
+</article>
+
+<div class="product-mobile-selection" id="mobile-expand-{{ company.gemi_number }}" style="display: none;">
+  <p>ΕΓΓΡΑΦΗ ΓΕΜΗ</p>
+  <h3>{{ company.name }}</h3>
+  <dl>
+    <div>
+      <dt>ΓΕΜΗ</dt>
+      <dd>{{ company.gemi_number }}</dd>
+    </div>
+    <div>
+      <dt>ΜΟΡΦΗ</dt>
+      <dd>{{ company.legal_type|default:'—' }}</dd>
+    </div>
+    <div>
+      <dt>ΠΕΡΙΟΧΗ</dt>
+      <dd>{{ company.city|default:company.prefecture|default:'—' }}</dd>
+    </div>
+  </dl>
+  <a href="{% url 'company_detail' company.gemi_number %}" class="product-ink-button" style="text-align: center; text-decoration: none;">Προβολή Dossier →</a>
+</div>
 {% empty %}
 {% if not is_ajax %}
-<tr>
-  <td colspan="6" class="px-6 py-16 text-center text-navy-700/45">Δεν βρέθηκαν επιχειρήσεις με αυτά τα φίλτρα.</td>
-</tr>
+<div style="padding: 40px 20px; text-align: center; color: var(--product-muted); font-family: ui-monospace, monospace; font-size: 11px;">
+  Δεν βρέθηκαν επιχειρήσεις με αυτά τα φίλτρα.
+</div>
 {% endif %}
 {% endfor %}

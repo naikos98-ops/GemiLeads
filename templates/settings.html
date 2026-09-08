@@ -1,167 +1,168 @@
 {% extends 'base.html' %}
 {% load billing_tags %}
-{% block title %}Ρυθμίσεις · Gemi Leads{% endblock %}
+{% block title %}Settings · Gemi Leads{% endblock %}
 {% block robots %}noindex, nofollow{% endblock %}
-{% block content %}
-<section class="min-h-[80vh] px-5 py-16">
-  <div class="mx-auto max-w-3xl">
-    <!-- Subscription Section -->
-    {% with sub=user.subscription state=user.subscription|billing_state %}
-    <div data-reveal class="mb-10">
-      <p class="text-sm font-bold uppercase tracking-[.12em] text-blue-600">ΛΟΓΑΡΙΑΣΜΟΣ</p>
-      <h1 class="mt-2 text-4xl font-extrabold">Το πλάνο σου.</h1>
 
-      {% comment %}
-      Phase 5g: a single canonical, mutually-exclusive billing card driven by billing_state
-      (gemiapp/templatetags/billing_tags.py), which itself only re-reads existing server-side
-      fields (status, active_until, scheduled_tier, complimentary_*) -- no Stripe call here, no
-      new persisted field. State priority: payment_problem > scheduled_cancellation >
-      scheduled_downgrade > normal_active > terminal > complimentary_only > none. Exactly one of
-      these renders, so there is never more than one lifecycle action on screen at once.
-      {% endcomment %}
+{% block content %}
+<div class="product-workspace">
+  <!-- Page Header -->
+  <div class="product-pagehead">
+    <div>
+      <p class="product-eyebrow">SYSTEM CONFIGURATION</p>
+      <h1>Settings</h1>
+    </div>
+    <div class="product-facts">
+      <span><b>{{ user.email }}</b>Λογαριασμος</span>
+    </div>
+    <div>
+      <a href="{% url 'radar_list' %}" class="product-ink-button">Διαχείριση Radars →</a>
+    </div>
+  </div>
+
+  <div style="max-width: 800px; margin: 0 auto; padding: 28px 20px;">
+    <!-- Subscription Card -->
+    {% with sub=user.subscription state=user.subscription|billing_state %}
+    <div style="background: var(--product-white); border: 1px solid var(--product-ink); padding: 24px; margin-bottom: 24px;">
+      <p style="font-family: ui-monospace, monospace; font-size: 8px; font-weight: 700; color: var(--product-muted); letter-spacing: .08em; margin: 0 0 12px;">
+        ΣΥΝΔΡΟΜΗ &amp; ΠΛΑΝΟ
+      </p>
 
       {% if state == "payment_problem" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border-2 border-amber-400/60 bg-amber-50 p-6 shadow-soft sm:flex-row sm:items-center">
+      <div style="padding: 16px; background: #fffbe6; border: 1px solid var(--product-amber); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <h3 class="text-lg font-bold text-navy-950">{{ sub.get_tier_display }} Πλάνο</h3>
-          <p class="text-sm font-semibold text-amber-800 mt-1">⚠️ Χρειάζεται ενέργεια για την πληρωμή σας ({{ sub.status|stripe_status_label }}).</p>
+          <strong style="font-size: 15px; color: var(--product-ink);">{{ sub.get_tier_display }} Πλάνο</strong>
+          <p style="margin: 4px 0 0; font-size: 12px; color: #775215; font-weight: 600;">⚠️ Χρειάζεται ενέργεια για την πληρωμή σας ({{ sub.status|stripe_status_label }}).</p>
         </div>
-        <div class="flex-shrink-0">
-          <form action="{% url 'customer_portal' %}" method="post">
-            {% csrf_token %}
-            <button class="w-full rounded-panel bg-amber-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-amber-700">Διαχείριση Χρέωσης</button>
-          </form>
-        </div>
+        <form action="{% url 'customer_portal' %}" method="post">
+          {% csrf_token %}
+          <button type="submit" class="product-amber-button">Διαχείριση Χρέωσης</button>
+        </form>
       </div>
 
       {% elif state == "scheduled_cancellation" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <h3 class="text-lg font-bold text-navy-950">{{ sub.get_tier_display }} Πλάνο</h3>
-          <p class="text-sm text-navy-700/60 mt-1">
-            Κατάσταση: <strong>{{ sub.status|stripe_status_label }}</strong> &bull; Έχεις όριο έως <strong>{{ sub.radar_limit }} Ραντάρ Πελατών</strong>.
-            <br><span class="font-semibold text-amber-700">Η συνδρομή σου θα λήξει στις {{ sub.active_until|date:"d/m/Y" }}.</span>
+          <strong style="font-size: 16px; color: var(--product-ink);">{{ sub.get_tier_display }} Πλάνο</strong>
+          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">
+            Κατάσταση: <b>{{ sub.status|stripe_status_label }}</b> · Όριο: <b>{{ sub.radar_limit }} Ραντάρ</b>
+            <br><span style="color: #775215; font-weight: 600;">Η συνδρομή σου θα λήξει στις {{ sub.active_until|date:"d/m/Y" }}.</span>
           </p>
         </div>
-        <div class="flex flex-shrink-0 flex-col items-stretch gap-2 sm:items-end">
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">
           <form action="{% url 'resume_subscription' %}" method="post">
             {% csrf_token %}
-            <button class="w-full rounded-panel bg-signal px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600">Συνέχιση συνδρομής</button>
+            <button type="submit" class="product-ink-button">Συνέχιση συνδρομής</button>
           </form>
           <form action="{% url 'customer_portal' %}" method="post">
             {% csrf_token %}
-            <button class="text-xs font-semibold text-navy-700/50 underline decoration-dotted transition hover:text-navy-900">Διαχείριση χρέωσης</button>
+            <button type="submit" class="product-text-button">Διαχείριση χρέωσης</button>
           </form>
         </div>
       </div>
 
       {% elif state == "scheduled_downgrade" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <h3 class="text-lg font-bold text-navy-950">Τρέχον πλάνο: {{ sub.get_tier_display }}</h3>
-          <p class="text-sm text-navy-700/60 mt-1">
-            Κατάσταση: <strong>{{ sub.status|stripe_status_label }}</strong>
-            <br><span class="font-semibold text-blue-700">Προγραμματισμένη αλλαγή: {{ sub.get_scheduled_tier_display }} στις {{ sub.scheduled_change_at|date:"d/m/Y" }}.</span>
+          <strong style="font-size: 16px; color: var(--product-ink);">Τρέχον πλάνο: {{ sub.get_tier_display }}</strong>
+          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">
+            Κατάσταση: <b>{{ sub.status|stripe_status_label }}</b>
+            <br><span style="color: var(--product-green); font-weight: 600;">Προγραμματισμένη αλλαγή: {{ sub.get_scheduled_tier_display }} στις {{ sub.scheduled_change_at|date:"d/m/Y" }}.</span>
           </p>
         </div>
-        <div class="flex flex-shrink-0 flex-col items-stretch gap-2 sm:items-end">
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">
           <form action="{% url 'cancel_scheduled_downgrade' %}" method="post">
             {% csrf_token %}
-            <button class="w-full rounded-panel bg-signal px-6 py-3 text-sm font-bold text-white transition hover:bg-blue-600">Ακύρωση προγραμματισμένης υποβάθμισης</button>
+            <button type="submit" class="product-ink-button">Ακύρωση προγραμματισμένης υποβάθμισης</button>
           </form>
           <form action="{% url 'customer_portal' %}" method="post">
             {% csrf_token %}
-            <button class="text-xs font-semibold text-navy-700/50 underline decoration-dotted transition hover:text-navy-900">Διαχείριση χρέωσης</button>
+            <button type="submit" class="product-text-button">Διαχείριση χρέωσης</button>
           </form>
         </div>
       </div>
 
       {% elif state == "normal_active" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <h3 class="text-lg font-bold text-navy-950">{{ sub.get_tier_display }} Πλάνο</h3>
-          <p class="text-sm text-navy-700/60 mt-1">
-            Κατάσταση: <strong>{{ sub.status|stripe_status_label }}</strong> &bull; Έχεις όριο έως <strong>{{ sub.radar_limit }} Ραντάρ Πελατών</strong>.
+          <strong style="font-size: 16px; color: var(--product-ink);">{{ sub.get_tier_display }} Πλάνο</strong>
+          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">
+            Κατάσταση: <b>{{ sub.status|stripe_status_label }}</b> · Όριο έως <b>{{ sub.radar_limit }} Ραντάρ Πελατών</b>.
           </p>
         </div>
-        <div class="flex flex-shrink-0 flex-col items-stretch gap-2 sm:items-end">
+        <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end;">
           <form action="{% url 'customer_portal' %}" method="post">
             {% csrf_token %}
-            <button class="w-full rounded-panel border border-navy-900/10 px-6 py-3 text-sm font-bold text-navy-950 transition hover:bg-sand-50">Διαχείριση Συνδρομής</button>
+            <button type="submit" class="product-ink-button">Διαχείριση Συνδρομής</button>
           </form>
           <form action="{% url 'cancel_subscription' %}" method="post">
             {% csrf_token %}
-            <button class="text-xs font-semibold text-navy-700/50 underline decoration-dotted transition hover:text-navy-900">Ακύρωση στο τέλος περιόδου</button>
+            <button type="submit" class="product-text-button">Ακύρωση στο τέλος περιόδου</button>
           </form>
         </div>
       </div>
 
       {% elif state == "terminal" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <h3 class="text-lg font-bold text-navy-950">Χωρίς Ενεργή Συνδρομή</h3>
-          <p class="text-sm text-navy-700/60 mt-1">
-            Η προηγούμενη συνδρομή σου ({{ sub.status|stripe_status_label }}) δεν είναι πλέον ενεργή. Έχεις όριο 0 Ραντάρ Πελατών.
+          <strong style="font-size: 16px; color: var(--product-ink);">Χωρίς Ενεργή Συνδρομή</strong>
+          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">
+            Η προηγούμενη συνδρομή σου ({{ sub.status|stripe_status_label }}) δεν είναι πλέον ενεργή.
           </p>
         </div>
-        <div class="flex-shrink-0">
-          <a href="{% url 'pricing' %}" class="inline-block rounded-panel bg-signal px-6 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-blue-600">Επιλογή νέου πλάνου</a>
-        </div>
+        <a href="{% url 'pricing' %}" class="product-amber-button">Επιλογή νέου πλάνου</a>
       </div>
 
       {% elif state == "complimentary_only" %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <h3 class="text-lg font-bold text-navy-950">🎁 Δωρεάν Πρόσβαση {{ sub.get_complimentary_tier_display|default:sub.complimentary_tier|upper }}</h3>
-          <p class="text-sm text-navy-700/60 mt-1">
-            Έχεις ενεργή δωρεάν πρόσβαση Admin με όριο έως <strong>{{ sub.radar_limit }} Ραντάρ</strong> (Διάρκεια: <strong>{% if sub.complimentary_until %}Έως {{ sub.complimentary_until|date:"d/m/Y H:i" }}{% else %}Μόνιμη / Για πάντα{% endif %}</strong>).
+          <strong style="font-size: 16px; color: var(--product-ink);">🎁 Δωρεάν Πρόσβαση {{ sub.get_complimentary_tier_display|default:sub.complimentary_tier|upper }}</strong>
+          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">
+            Ενεργή δωρεάν πρόσβαση Admin με όριο έως <b>{{ sub.radar_limit }} Ραντάρ</b> (Διάρκεια: <b>{% if sub.complimentary_until %}Έως {{ sub.complimentary_until|date:"d/m/Y H:i" }}{% else %}Μόνιμη{% endif %}</b>).
           </p>
         </div>
-        <div class="flex-shrink-0">
-          <a href="{% url 'pricing' %}" class="inline-block rounded-panel bg-signal px-6 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-blue-600">Αγορά συνδρομής</a>
-        </div>
+        <a href="{% url 'pricing' %}" class="product-ink-button">Αγορά συνδρομής</a>
       </div>
 
       {% else %}
-      <div class="mt-6 flex flex-col justify-between gap-5 rounded-card border border-navy-900/10 bg-white p-6 shadow-soft sm:flex-row sm:items-center">
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <h3 class="text-lg font-bold text-navy-950">Δεν υπάρχει ενεργή συνδρομή</h3>
-          <p class="text-sm text-navy-700/60 mt-1">Έχεις όριο 0 Ραντάρ Πελατών. Επίλεξε συνδρομητικό πλάνο για να ενεργοποιήσεις την εφαρμογή.</p>
+          <strong style="font-size: 16px; color: var(--product-ink);">Δεν υπάρχει ενεργή συνδρομή</strong>
+          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">Επίλεξε συνδρομητικό πλάνο για να ενεργοποιήσεις τα Ραντάρ σου.</p>
         </div>
-        <div class="flex-shrink-0">
-          <a href="{% url 'pricing' %}" class="inline-block rounded-panel bg-signal px-6 py-3 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-blue-600">Δείτε τα πλάνα</a>
-        </div>
+        <a href="{% url 'pricing' %}" class="product-amber-button">Δείτε τα πλάνα</a>
       </div>
       {% endif %}
     </div>
     {% endwith %}
 
-    <!-- Digest Preferences -->
-    <div data-reveal>
-      <p class="text-sm font-bold uppercase tracking-[.12em] text-blue-600">Προτιμήσεις</p>
-      <h1 class="mt-2 text-4xl font-extrabold">Το digest στα μέτρα σου.</h1>
-      <p class="mt-3 text-navy-700/55">Έλεγξε πότε λαμβάνεις ενημέρωση στο {{ user.email }}. Η στόχευση ΚΑΔ και περιοχών διαχειρίζεται πλέον από τα Radars.</p>
-    </div>
+    <!-- Digest Preferences Form -->
+    <div style="background: var(--product-white); border: 1px solid var(--product-ink); padding: 24px;">
+      <p style="font-family: ui-monospace, monospace; font-size: 8px; font-weight: 700; color: var(--product-muted); letter-spacing: .08em; margin: 0 0 12px;">
+        ΠΡΟΤΙΜΗΣΕΙΣ EMAIL DIGEST
+      </p>
 
-    <div class="mt-8 rounded-control border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900" data-reveal>
-      <b>Ψάχνεις φίλτρα εταιρειών;</b> <a href="{% url 'radar_list' %}" class="font-bold underline">Άνοιξε τα Ραντάρ Πελατών</a> για να δημιουργήσεις μία ή περισσότερες στοχευμένες αναζητήσεις.
-    </div>
+      <p style="font-size: 12px; color: var(--product-muted); margin: 0 0 16px;">
+        Έλεγξε πότε λαμβάνεις ενημέρωση στο <b>{{ user.email }}</b>. Η στόχευση ΚΑΔ και περιοχών διαχειρίζεται πλέον από τα Radars.
+      </p>
 
-    <form method="post" class="mt-5 space-y-7 rounded-card border border-navy-900/10 bg-white p-8 shadow-soft" data-reveal>
-      {% csrf_token %}
-      <div>
-        <label class="mb-2 block text-sm font-bold">{{ form.frequency.label }}</label>
-        {{ form.frequency }}
-      </div>
-      <label class="flex cursor-pointer items-center justify-between gap-5 rounded-control bg-sand-50 p-5">
-        <span>
-          <b class="block">{{ form.include_empty_digest.label }}</b>
-          <span class="text-sm text-navy-700/50">Μικρό μήνυμα επιβεβαίωσης όταν η ημέρα δεν έχει αποτελέσματα.</span>
-        </span>
-        {{ form.include_empty_digest }}
-      </label>
-      <button class="rounded-full bg-navy-950 px-7 py-3.5 font-bold text-white transition hover:-translate-y-1">Αποθήκευση αλλαγών</button>
-    </form>
+      <form method="post" style="display: flex; flex-direction: column; gap: 16px;">
+        {% csrf_token %}
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px;">{{ form.frequency.label }}</label>
+          {{ form.frequency }}
+        </div>
+        <label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; background: var(--product-paper); border: 1px solid var(--product-line); cursor: pointer;">
+          <span>
+            <b style="display: block; font-size: 12px;">{{ form.include_empty_digest.label }}</b>
+            <span style="font-size: 11px; color: var(--product-muted);">Μικρό μήνυμα επιβεβαίωσης όταν η ημέρα δεν έχει αποτελέσματα.</span>
+          </span>
+          {{ form.include_empty_digest }}
+        </label>
+        <div style="display: flex; justify-content: flex-end;">
+          <button type="submit" class="product-ink-button">Αποθήκευση αλλαγών</button>
+        </div>
+      </form>
+    </div>
   </div>
-</section>
+</div>
 {% endblock %}

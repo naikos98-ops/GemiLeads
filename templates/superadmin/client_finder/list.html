@@ -37,8 +37,8 @@
       <p class="mt-1 text-3xl font-extrabold text-navy-950">{{ total_matching }}</p>
     </div>
     <div class="rounded-2xl border border-navy-900/10 bg-white p-5 shadow-soft">
-      <p class="text-xs font-bold uppercase tracking-wider text-navy-700/50">Σε ουρά</p>
-      <p class="mt-1 text-3xl font-extrabold text-amber-600">{{ pending_total }}</p>
+      <p class="text-xs font-bold uppercase tracking-wider text-navy-700/50">{% if cancelled_total %}Ακυρωμένες (Shutdown){% else %}Σε ουρά{% endif %}</p>
+      <p class="mt-1 text-3xl font-extrabold text-amber-600">{% if cancelled_total %}{{ cancelled_total }}{% else %}{{ pending_total }}{% endif %}</p>
     </div>
     <div class="rounded-2xl border border-navy-900/10 bg-white p-5 shadow-soft">
       <p class="text-xs font-bold uppercase tracking-wider text-navy-700/50">Απεσταλμένα σύνολο</p>

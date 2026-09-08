@@ -257,6 +257,7 @@ def client_finder(request):
     sent_total = CompanyOutreach.objects.filter(status="sent").count()
     failed_total = CompanyOutreach.objects.filter(status="failed").count()
     pending_total = CompanyOutreach.objects.filter(status="pending").count()
+    cancelled_total = CompanyOutreach.objects.filter(status="cancelled").count()
 
     return render(request, "superadmin/client_finder/list.html", {
         "page_obj": page_obj,
@@ -266,6 +267,7 @@ def client_finder(request):
         "sent_total": sent_total,
         "failed_total": failed_total,
         "pending_total": pending_total,
+        "cancelled_total": cancelled_total,
         "test_email": settings.OUTREACH_TEST_EMAIL,
         "outreach_enabled": outreach_enabled(),
         "search": search,

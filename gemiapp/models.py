@@ -496,6 +496,7 @@ class CompanyOutreach(models.Model):
         ("sending", "Αποστέλλεται"),
         ("sent", "Εστάλη"),
         ("failed", "Απέτυχε"),
+        ("cancelled", "Ακυρώθηκε"),
     ]
 
     company = models.OneToOneField(Company, on_delete=models.CASCADE, related_name="outreach")

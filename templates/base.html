@@ -12,6 +12,7 @@
   {# Compiled by the Tailwind CLI (npm run build:css). #}
   {# The CDN build shipped a 120 KB JIT compiler that blocked the first paint. #}
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <link rel="stylesheet" href="{% static 'css/product-ui.css' %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -65,7 +66,7 @@
 
   {% block head %}{% endblock %}
 </head>
-<body class="noise min-h-screen bg-sand-50 font-sans text-navy-950 antialiased selection:bg-signal selection:text-white">
+<body class="noise min-h-screen bg-sand-50 font-sans text-navy-950 antialiased selection:bg-signal selection:text-white{% if user.is_authenticated %} product-body{% endif %}">
   {% if request.session.impersonator_id %}
   <div class="bg-amber-500 text-navy-950 px-4 py-2.5 text-center text-sm font-bold flex items-center justify-center gap-4 z-[100] relative shadow-md">
     <span>SUPERADMIN IMPERSONATION — Προβολή ως <strong>{{ user.email }}</strong></span>
@@ -75,6 +76,33 @@
     </form>
   </div>
   {% endif %}
+  {% if user.is_authenticated %}
+  <header class="product-topbar">
+    <a class="product-brand" href="{% url 'dashboard' %}" aria-label="Gemi Leads · Signals">
+      <span class="product-mark" aria-hidden="true"><i></i></span>
+      <span>GEMI <b>LEADS</b></span>
+      {% if beta_mode %}<small>BETA</small>{% endif %}
+    </a>
+    <div class="product-source-meta">
+      <b>GEMI INTAKE</b>
+      <span>{% now "l d F" %}</span>
+      <span>Public registration intelligence</span>
+    </div>
+    <div class="product-account">
+      {% if user.is_staff or user.is_superuser %}<a href="{% url 'superadmin:overview' %}">SUPERADMIN</a>{% endif %}
+      <span>{{ user.email }}</span>
+      <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button type="submit">Έξοδος</button></form>
+    </div>
+  </header>
+  <nav class="product-rail" aria-label="Κύρια πλοήγηση">
+    <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><span>MARKET</span><b>Signals</b><small>new registrations</small></a>
+    <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name %}aria-current="page"{% endif %}><span>CRITERIA</span><b>Radars</b><small>matching definitions</small></a>
+    <a href="{% url 'lead_list' %}" {% if request.resolver_match.url_name == 'lead_list' or request.resolver_match.url_name == 'company_detail' %}aria-current="page"{% endif %}><span>OUTCOME</span><b>Leads</b><small>qualified businesses</small></a>
+    <a href="{% url 'settings' %}" {% if request.resolver_match.url_name == 'settings' %}aria-current="page"{% endif %}><span>SYSTEM</span><b>Settings</b><small>plan &amp; digest</small></a>
+    <div class="product-flow" aria-label="Source to match to lead"><span>SOURCE</span><i></i><span>MATCH</span><i></i><span>LEAD</span></div>
+    <div class="product-source"><span>PUBLIC DATA SOURCE</span><b>ΓΕΜΗ OPEN DATA</b></div>
+  </nav>
+  {% else %}
   <nav class="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-navy-950/90 text-white glass">
     <div class="mx-auto flex h-18 max-w-7xl items-center justify-between px-5 py-4 lg:px-8">
       <a href="{% url 'home' %}" class="group flex items-center gap-3">
@@ -145,8 +173,10 @@
       </div>
     </div>
   </nav>
+  {% endif %}
   {% if messages %}<div class="fixed right-5 top-24 z-50 space-y-2">{% for message in messages %}<div data-toast class="rounded-control bg-navy-900 px-5 py-4 text-sm text-white shadow-soft">{{ message }}</div>{% endfor %}</div>{% endif %}
-  <main class="pt-18">{% block content %}{% endblock %}</main>
+  <main class="{% if user.is_authenticated %}product-main{% else %}pt-18{% endif %}">{% block content %}{% endblock %}</main>
+  {% if not user.is_authenticated %}
   <footer class="border-t border-navy-900/10 bg-sand-100 px-5 py-10">
     <div class="mx-auto flex max-w-7xl flex-col justify-between gap-4 text-sm text-navy-900/60 sm:flex-row">
       <p>© 2026 Gemi Leads · Δεδομένα από το επίσημο Open Data API ΓΕΜΗ.</p>
@@ -162,6 +192,15 @@
       </p>
     </div>
   </footer>
+  {% endif %}
+  {% if user.is_authenticated %}
+  <nav class="product-mobile-nav" aria-label="Κύρια πλοήγηση κινητού">
+    <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}>Signals</a>
+    <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name %}aria-current="page"{% endif %}>Radars</a>
+    <a href="{% url 'lead_list' %}" {% if request.resolver_match.url_name == 'lead_list' or request.resolver_match.url_name == 'company_detail' %}aria-current="page"{% endif %}>Leads</a>
+    <a href="{% url 'settings' %}" {% if request.resolver_match.url_name == 'settings' %}aria-current="page"{% endif %}>Settings</a>
+  </nav>
+  {% endif %}
   <script src="{% static 'js/app.js' %}"></script>
   {% include "includes/analytics.html" %}
   {% block scripts %}{% endblock %}
