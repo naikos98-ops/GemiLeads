@@ -228,13 +228,17 @@ SKIP_MX_VALIDATION = "test" in sys.argv
 # Default recipient for the "Δοκιμαστική αποστολή" button on the Εύρεση Πελατών page.
 OUTREACH_TEST_EMAIL = os.getenv("OUTREACH_TEST_EMAIL", "naikos98@gmail.com")
 
+# Emergency/master switch for every cold-outreach path. Fail closed: production must opt in
+# explicitly before a manual queue, background worker, daily drain, or test outreach can send.
+OUTREACH_ENABLED = os.getenv("OUTREACH_ENABLED", "0") == "1"
+
 # Max cold-outreach emails per rolling 24h. Past the Brevo plan's daily quota the SMTP relay
 # accepts the message (250 OK) and silently drops it, so send() succeeds and the row would be
 # wrongly marked "sent". process_pending_outreach stops here and leaves the rest "pending"
 # for drain_pending_outreach_task to pick up. Kept below the plan quota (300/day) with
 # headroom for the digests AND the transactional mail -- verification and password reset --
 # that draw on the same quota and, unlike outreach, cannot wait for tomorrow.
-OUTREACH_DAILY_SEND_CAP = int(os.getenv("OUTREACH_DAILY_SEND_CAP", "180"))
+OUTREACH_DAILY_SEND_CAP = int(os.getenv("OUTREACH_DAILY_SEND_CAP", "0"))
 
 # Shared secret Brevo sends back with every outbound webhook call (Brevo's own "Token-based
 # authentication" option, not an HMAC signature) -- checked with a constant-time comparison in

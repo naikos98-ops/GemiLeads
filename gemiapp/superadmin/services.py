@@ -494,6 +494,11 @@ def _outreach_daily_send_cap():
     return int(getattr(settings, "OUTREACH_DAILY_SEND_CAP", OUTREACH_DAILY_SEND_CAP_DEFAULT))
 
 
+def outreach_enabled():
+    """Single fail-closed switch shared by the UI, queue and worker send paths."""
+    return bool(getattr(settings, "OUTREACH_ENABLED", False))
+
+
 def _outreach_sent_last_24h():
     cutoff = timezone.now() - timedelta(hours=24)
     # Key on sent_at (when the mail left), not created_at (when the row was made): a row can be
@@ -606,6 +611,9 @@ def send_outreach_test_email(admin_user, to_email):
     Uses a representative in-memory Company. Records nothing in CompanyOutreach and
     does not consult the suppression list — this is a manual test, not real outreach.
     """
+    if not outreach_enabled():
+        raise RuntimeError("Οι αποστολές outreach είναι απενεργοποιημένες.")
+
     from datetime import date
 
     # The SMTP relay returns 250 OK for a send that is over the daily quota and then drops it,
@@ -682,6 +690,10 @@ def queue_company_outreach(admin_user, company_ids):
     async_task. The rows make the companies vanish from the tool immediately and stop a
     second enqueue from picking them up. Returns the number of companies queued.
     """
+    if not outreach_enabled():
+        logger.warning("Cold outreach is disabled; refusing to queue %s companies.", len(company_ids))
+        return 0
+
     from django_q.tasks import async_task
 
     eligible = list(uncontacted_companies_qs().filter(id__in=company_ids)[:OUTREACH_BATCH_LIMIT])
@@ -745,6 +757,13 @@ def process_pending_outreach(company_ids):
     _outreach_sent_last_24h() before the other had written any "sent" row, so both started
     with a full budget and the real ceiling became Brevo's balance, not the cap.
     """
+    if not outreach_enabled():
+        pending = CompanyOutreach.objects.filter(
+            company_id__in=company_ids, status="pending"
+        ).count()
+        logger.warning("Cold outreach is disabled; leaving %s rows pending.", pending)
+        return 0, 0, pending
+
     sent = failed = skipped = 0
     rows = CompanyOutreach.objects.filter(
         company_id__in=company_ids, status="pending"
