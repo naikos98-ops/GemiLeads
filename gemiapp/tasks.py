@@ -84,6 +84,11 @@ def send_company_outreach_task(company_ids):
     The web request only claims the rows (status="pending"); this worker does the SMTP
     round-trips, which are what used to time out the gunicorn worker.
     """
+    from django.conf import settings
+    if not getattr(settings, "OUTREACH_ENABLED", False):
+        logger.warning("Cold outreach is disabled; background send aborted.")
+        return {"sent": 0, "failed": 0, "skipped": len(company_ids)}
+
     from gemiapp.superadmin.services import process_pending_outreach
 
     release = _claim_outreach_send_lock()
@@ -113,6 +118,11 @@ def drain_pending_outreach_task():
     carrying a list of ids from whoever queued them, so a row cannot be stranded by the batch
     it happened to arrive in.
     """
+    from django.conf import settings
+    if not getattr(settings, "OUTREACH_ENABLED", False):
+        logger.info("Cold outreach is disabled; daily drain skipped.")
+        return {"sent": 0, "failed": 0, "skipped": 0}
+
     from gemiapp.models import CompanyOutreach
     from gemiapp.superadmin.services import process_pending_outreach
 

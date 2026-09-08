@@ -28,6 +28,7 @@ from .services import (
     grant_complimentary_access,
     log_admin_action,
     queue_company_outreach,
+    outreach_enabled,
     revoke_complimentary_access,
     send_outreach_test_email,
     toggle_user_active_state,
@@ -266,6 +267,7 @@ def client_finder(request):
         "failed_total": failed_total,
         "pending_total": pending_total,
         "test_email": settings.OUTREACH_TEST_EMAIL,
+        "outreach_enabled": outreach_enabled(),
         "search": search,
         "prefecture_filter": prefecture,
         "legal_type_filter": legal_type,
@@ -330,6 +332,10 @@ def outreach_history(request):
 @superadmin_required
 @require_POST
 def client_finder_send(request):
+    if not outreach_enabled():
+        messages.warning(request, "Οι αποστολές cold outreach έχουν διακοπεί.")
+        return redirect("superadmin:client_finder")
+
     mode = request.POST.get("mode", "selected")
 
     if mode == "all_filtered":
@@ -357,6 +363,10 @@ def client_finder_send(request):
 @superadmin_required
 @require_POST
 def client_finder_test(request):
+    if not outreach_enabled():
+        messages.warning(request, "Οι αποστολές cold outreach έχουν διακοπεί.")
+        return redirect("superadmin:client_finder")
+
     to_email = request.POST.get("email", "").strip() or settings.OUTREACH_TEST_EMAIL
     try:
         send_outreach_test_email(request.user, to_email)

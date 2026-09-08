@@ -6,6 +6,12 @@
 {% block content %}
 <div class="space-y-6">
 
+  {% if not outreach_enabled %}
+  <div class="rounded-2xl border border-red-300 bg-red-50 p-5 text-sm font-bold text-red-800">
+    Οι αποστολές cold outreach έχουν διακοπεί. Δεν δημιουργούνται νέες αποστολές και η υπάρχουσα ουρά παραμένει σε αναμονή.
+  </div>
+  {% endif %}
+
   <!-- Test send -->
   <div class="rounded-[2rem] border border-signal/30 bg-blue-50/60 p-6 shadow-soft">
     <form method="post" action="{% url 'superadmin:client_finder_test' %}" class="flex flex-wrap items-end gap-3">
@@ -15,7 +21,7 @@
         <input type="email" name="email" value="{{ test_email }}" required
                class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
       </div>
-      <button class="rounded-xl bg-signal px-5 py-2.5 text-sm font-bold text-white hover:opacity-90 transition">
+      <button {% if not outreach_enabled %}disabled{% endif %} class="rounded-xl bg-signal px-5 py-2.5 text-sm font-bold text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-40">
         Στείλε δοκιμαστικό email
       </button>
       <p class="w-full text-xs text-navy-700/50">
@@ -104,15 +110,15 @@
           Προσωποποιημένο ανά επιχείρηση.
         </p>
         <div class="flex gap-2">
-          <button type="submit"
+          <button type="submit" {% if not outreach_enabled %}disabled{% endif %}
                   onclick="document.getElementById('sendMode').value='selected'"
-                  class="rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition"
+                  class="rounded-xl bg-navy-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-navy-800 transition disabled:cursor-not-allowed disabled:opacity-40"
                   onsubmit="return confirm('Αποστολή email στις επιλεγμένες επιχειρήσεις;')">
             Αποστολή σε επιλεγμένες
           </button>
-          <button type="submit"
+          <button type="submit" {% if not outreach_enabled %}disabled{% endif %}
                   onclick="if(!confirm('Αποστολή email σε ΟΛΕΣ τις φιλτραρισμένες επιχειρήσεις (έως {{ batch_limit }});')){return false;} document.getElementById('sendMode').value='all_filtered';"
-                  class="rounded-xl bg-signal px-5 py-2.5 text-sm font-bold text-white hover:opacity-90 transition">
+                  class="rounded-xl bg-signal px-5 py-2.5 text-sm font-bold text-white hover:opacity-90 transition disabled:cursor-not-allowed disabled:opacity-40">
             Αποστολή σε όλες τις φιλτραρισμένες ({{ total_matching }})
           </button>
         </div>

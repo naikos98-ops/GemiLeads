@@ -683,6 +683,7 @@ class AuthFlowTests(TestCase):
 
 
 @override_settings(SUPERADMIN_EMAILS=["admin@gemileads.gr"])
+@override_settings(OUTREACH_ENABLED=True, OUTREACH_DAILY_SEND_CAP=250)
 class SuperadminTests(TestCase):
     def setUp(self):
         self.superuser = User.objects.create_superuser(username="admin@gemileads.gr", email="admin@gemileads.gr", password="SuperPassword123")
@@ -2778,7 +2779,10 @@ class DigestEmailTagTests(TestCase):
         self.assertEqual(message.alternatives[0][1], "text/html")
 
 
-@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    OUTREACH_ENABLED=True,
+)
 class PendingOutreachDrainTests(TestCase):
     """Outreach past the daily cap stays "pending" and has to be picked up later.
 
@@ -3240,7 +3244,11 @@ class OutreachEngagementDetailTests(TestCase):
         self.assertEqual(len(row.engagement_detail["unsubscribes"]), 1)
 
 
-@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    OUTREACH_ENABLED=True,
+    OUTREACH_DAILY_SEND_CAP=250,
+)
 class OutreachDailyCapTests(TestCase):
     """Past the Brevo daily quota the SMTP relay returns 250 OK and drops the message, so
     send() succeeds and the row would be wrongly marked "sent". process_pending_outreach
@@ -3354,6 +3362,62 @@ class OutreachDailyCapTests(TestCase):
         ids = [c.id for c in self.companies]
         self.process(ids)
         self.assertEqual(self.CompanyOutreach.objects.filter(status="sending").count(), 0)
+
+
+@override_settings(
+    EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+    OUTREACH_ENABLED=False,
+    OUTREACH_DAILY_SEND_CAP=180,
+    SUPERADMIN_EMAILS=["stop@example.com"],
+)
+class OutreachEmergencyStopTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser("stop-admin", "stop@example.com", "pw")
+        self.company = Company.objects.create(
+            gemi_number="stop-1", name="Stopped Outreach ΑΕ",
+            incorporation_date=date(2026, 9, 9), email="stopped@example.gr",
+        )
+
+    def test_disabled_switch_refuses_new_queue_rows(self):
+        from gemiapp.models import CompanyOutreach
+        from gemiapp.superadmin.services import queue_company_outreach
+
+        with patch("django_q.tasks.async_task") as enqueue:
+            queued = queue_company_outreach(self.admin, [self.company.id])
+        self.assertEqual(queued, 0)
+        self.assertFalse(CompanyOutreach.objects.filter(company=self.company).exists())
+        enqueue.assert_not_called()
+
+    def test_disabled_switch_leaves_existing_queue_pending(self):
+        from gemiapp.models import CompanyOutreach
+        from gemiapp.superadmin.services import process_pending_outreach
+
+        row = CompanyOutreach.objects.create(
+            company=self.company, status="pending", sent_to=self.company.email
+        )
+        self.assertEqual(process_pending_outreach([self.company.id]), (0, 0, 1))
+        row.refresh_from_db()
+        self.assertEqual(row.status, "pending")
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_disabled_switch_aborts_workers_and_endpoint(self):
+        from gemiapp.models import CompanyOutreach
+        from gemiapp.tasks import drain_pending_outreach_task, send_company_outreach_task
+
+        row = CompanyOutreach.objects.create(
+            company=self.company, status="pending", sent_to=self.company.email
+        )
+        self.assertEqual(send_company_outreach_task([self.company.id])["sent"], 0)
+        self.assertEqual(drain_pending_outreach_task()["sent"], 0)
+        self.client.login(username="stop-admin", password="pw")
+        response = self.client.post(
+            reverse("superadmin:client_finder_send"),
+            {"mode": "selected", "company_ids": [self.company.id]},
+        )
+        self.assertRedirects(response, reverse("superadmin:client_finder"))
+        row.refresh_from_db()
+        self.assertEqual(row.status, "pending")
+        self.assertEqual(len(mail.outbox), 0)
 
 
 class SchedulerHealthCheckTests(TestCase):

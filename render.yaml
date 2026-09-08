@@ -46,8 +46,10 @@ services:
         value: info@gemileads.gr
       - key: BREVO_WEBHOOK_TOKEN
         sync: false
+      - key: OUTREACH_ENABLED
+        value: "0"
       - key: OUTREACH_DAILY_SEND_CAP
-        value: "180"
+        value: "0"
       # Social login. Unset providers simply do not render a button.
       - key: GOOGLE_CLIENT_ID
         sync: false
