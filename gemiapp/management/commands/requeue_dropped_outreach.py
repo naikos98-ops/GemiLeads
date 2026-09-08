@@ -38,6 +38,11 @@ class Command(BaseCommand):
         parser.add_argument("--limit", type=int, default=0, help="Ανώτατο πλήθος rows (0 = χωρίς όριο).")
 
     def handle(self, *args, **opts):
+        from gemiapp.superadmin.services import outreach_enabled
+
+        if not outreach_enabled():
+            raise CommandError("Οι αποστολές cold outreach έχουν διακοπεί (OUTREACH_ENABLED=0). Η ενέργεια ακυρώθηκε.")
+
         rows = CompanyOutreach.objects.filter(status="sent").select_related("company").order_by("created_at")
 
         if opts["before"]:

@@ -87,7 +87,12 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"\nΔιαγράφηκαν {n} suppressions."))
 
         # A CompanyOutreach row that failed *because of* one of these suppressions should
-        # retry now. Match on the normalised recipient address.
+        # retry now only if cold outreach is enabled. Match on the normalised recipient address.
+        from gemiapp.superadmin.services import outreach_enabled
+        if not outreach_enabled():
+            self.stdout.write("Οι αποστολές cold outreach είναι απενεργοποιημένες (OUTREACH_ENABLED=0). Παραλείφθηκε η επαναφορά CompanyOutreach εγγραφών.")
+            return
+
         from gemiapp.models import CompanyOutreach
 
         stuck = [

@@ -26,6 +26,7 @@
         <option value="sent" {% if history_status_filter == 'sent' %}selected{% endif %}>Εστάλη</option>
         <option value="pending" {% if history_status_filter == 'pending' %}selected{% endif %}>Σε ουρά</option>
         <option value="failed" {% if history_status_filter == 'failed' %}selected{% endif %}>Απέτυχε</option>
+        <option value="cancelled" {% if history_status_filter == 'cancelled' %}selected{% endif %}>Ακυρώθηκε</option>
       </select>
       <input type="text" name="hkad" value="{{ history_kad_filter }}" placeholder="ΚΑΔ π.χ. 47" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
       <select name="sort" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
@@ -62,7 +63,7 @@
             </td>
             <td class="p-3 text-xs text-navy-700/80 font-medium">{{ o.sent_to }}</td>
             <td class="p-3">
-              <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-bold {% if o.status == 'sent' %}bg-emerald-50 text-emerald-700{% elif o.status == 'failed' %}bg-red-50 text-red-700{% else %}bg-sand-100 text-navy-700/60{% endif %}">
+              <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-bold {% if o.status == 'sent' %}bg-emerald-50 text-emerald-700{% elif o.status == 'failed' %}bg-red-50 text-red-700{% elif o.status == 'cancelled' %}bg-amber-50 text-amber-800{% else %}bg-sand-100 text-navy-700/60{% endif %}">
                 {{ o.get_status_display }}
               </span>
             </td>

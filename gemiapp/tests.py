@@ -6,7 +6,7 @@ import time
 from datetime import date, datetime, timedelta
 from io import StringIO
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import stripe
 from django.contrib.auth.models import User
 from django.core import mail
@@ -1512,7 +1512,7 @@ class DigestRecipientTests(TestCase):
         from .services import NO_ENTITLEMENT, digest_skip_reason
 
         unpaid = self._user("unpaid", tier="free", status="inactive")
-        self.assertEqual(digest_skip_reason(unpaid, "daily"), NO_ENTITLEMENT)
+        self.assertEqual(digest_skip_reason(unpaid, "intraday"), NO_ENTITLEMENT)
 
         no_pref = self._user("nopref")
         no_pref.digest_preference.delete()
@@ -3374,8 +3374,10 @@ class OutreachEmergencyStopTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser("stop-admin", "stop@example.com", "pw")
         self.company = Company.objects.create(
-            gemi_number="stop-1", name="Stopped Outreach ΑΕ",
-            incorporation_date=date(2026, 9, 9), email="stopped@example.gr",
+            gemi_number="stop-1",
+            name="Stopped Outreach ΑΕ",
+            incorporation_date=date(2026, 9, 9),
+            email="stopped@example.gr",
         )
 
     def test_disabled_switch_refuses_new_queue_rows(self):
@@ -3384,6 +3386,7 @@ class OutreachEmergencyStopTests(TestCase):
 
         with patch("django_q.tasks.async_task") as enqueue:
             queued = queue_company_outreach(self.admin, [self.company.id])
+
         self.assertEqual(queued, 0)
         self.assertFalse(CompanyOutreach.objects.filter(company=self.company).exists())
         enqueue.assert_not_called()
@@ -3395,29 +3398,94 @@ class OutreachEmergencyStopTests(TestCase):
         row = CompanyOutreach.objects.create(
             company=self.company, status="pending", sent_to=self.company.email
         )
-        self.assertEqual(process_pending_outreach([self.company.id]), (0, 0, 1))
+        result = process_pending_outreach([self.company.id])
+
         row.refresh_from_db()
+        self.assertEqual(result, (0, 0, 1))
         self.assertEqual(row.status, "pending")
         self.assertEqual(len(mail.outbox), 0)
 
-    def test_disabled_switch_aborts_workers_and_endpoint(self):
+    def test_disabled_switch_aborts_worker_and_daily_drain(self):
         from gemiapp.models import CompanyOutreach
         from gemiapp.tasks import drain_pending_outreach_task, send_company_outreach_task
 
         row = CompanyOutreach.objects.create(
             company=self.company, status="pending", sent_to=self.company.email
         )
-        self.assertEqual(send_company_outreach_task([self.company.id])["sent"], 0)
-        self.assertEqual(drain_pending_outreach_task()["sent"], 0)
+        self.assertEqual(
+            send_company_outreach_task([self.company.id]),
+            {"sent": 0, "failed": 0, "skipped": 1},
+        )
+        self.assertEqual(
+            drain_pending_outreach_task(),
+            {"sent": 0, "failed": 0, "skipped": 0},
+        )
+        row.refresh_from_db()
+        self.assertEqual(row.status, "pending")
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_superadmin_send_endpoint_is_blocked_server_side(self):
         self.client.login(username="stop-admin", password="pw")
         response = self.client.post(
             reverse("superadmin:client_finder_send"),
             {"mode": "selected", "company_ids": [self.company.id]},
         )
         self.assertRedirects(response, reverse("superadmin:client_finder"))
-        row.refresh_from_db()
-        self.assertEqual(row.status, "pending")
+        self.assertContains(
+            self.client.get(reverse("superadmin:client_finder")),
+            "Οι αποστολές cold outreach έχουν διακοπεί",
+        )
+
+    def test_requeue_dropped_outreach_command_refuses_when_disabled(self):
+        from io import StringIO
+        from django.core.management import call_command, CommandError
+
+        out = StringIO()
+        with self.assertRaises(CommandError) as ctx:
+            call_command("requeue_dropped_outreach", "--apply", stdout=out)
+        self.assertIn("OUTREACH_ENABLED=0", str(ctx.exception))
+
+    def test_prune_bot_suppressions_skips_outreach_requeue_when_disabled(self):
+        from io import StringIO
+        from django.utils import timezone
+        from django.core.management import call_command
+        from gemiapp.models import OutreachSuppression
+
+        now = timezone.now()
+        OutreachSuppression.objects.create(email="bot1@example.com", created_at=now)
+        OutreachSuppression.objects.create(email="bot2@example.com", created_at=now)
+
+        out = StringIO()
+        call_command("prune_bot_suppressions", "--apply", stdout=out)
+        self.assertIn("OUTREACH_ENABLED=0", out.getvalue())
+
+    def test_cancelled_status_records_are_never_processed_even_if_enabled(self):
+        from gemiapp.models import CompanyOutreach
+        from gemiapp.superadmin.services import process_pending_outreach
+
+        cancelled_row = CompanyOutreach.objects.create(
+            company=self.company, status="cancelled", sent_to=self.company.email
+        )
+        with override_settings(OUTREACH_ENABLED=True):
+            sent, failed, skipped = process_pending_outreach([self.company.id])
+
+        cancelled_row.refresh_from_db()
+        self.assertEqual(cancelled_row.status, "cancelled")
+        self.assertEqual((sent, failed, skipped), (0, 0, 0))
         self.assertEqual(len(mail.outbox), 0)
+
+    def test_transactional_verification_and_reset_emails_continue_working(self):
+        from gemiapp.views import send_verification_email
+
+        user = User.objects.create_user("txuser@example.com", "txuser@example.com", "pw")
+        with patch("django_q.tasks.async_task"):
+            send_verification_email(None, user)
+        
+        # Test password reset request
+        res = self.client.post(reverse("password_reset"), {"email": user.email})
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("/reset/", mail.outbox[0].body.lower())
 
 
 class SchedulerHealthCheckTests(TestCase):
@@ -8578,3 +8646,217 @@ class BillingMessageContentTests(TestCase):
         self.assertIn("Η αναβάθμιση του πλάνου σου ξεκίνησε", content)
         self.assertNotIn("SubscriptionSchedule", content)
         self.assertNotIn("idempotency", content)
+
+
+@override_settings(SKIP_MX_VALIDATION=False)
+class MXValidationTests(TestCase):
+    """The MX pre-check decides whether an address is suppressed forever, so the only
+    verdict that may come out of an unreachable resolver is UNKNOWN -- never DEAD.
+
+    SKIP_MX_VALIDATION is on for the rest of the suite (no test should hit live DNS); these
+    tests turn it back off and drive a stubbed resolver instead, so they exercise the real
+    decision logic without a network call.
+    """
+
+    def setUp(self):
+        from gemiapp import email_validation
+
+        email_validation.domain_status.cache_clear()
+
+    def _resolver(self, side_effect):
+        resolver = Mock()
+        resolver.resolve.side_effect = side_effect
+        return patch("gemiapp.email_validation._resolver", return_value=resolver)
+
+    def test_domain_with_mx_is_deliverable(self):
+        from gemiapp import email_validation
+
+        answer = [Mock(exchange="mx.example.com.")]
+        with self._resolver(lambda d, r: answer):
+            self.assertEqual(email_validation.email_status("a@example.com"), email_validation.DELIVERABLE)
+
+    def test_nxdomain_is_dead(self):
+        import dns.resolver
+        from gemiapp import email_validation
+
+        with self._resolver(dns.resolver.NXDOMAIN):
+            self.assertEqual(email_validation.email_status("a@nope.invalid"), email_validation.DEAD)
+
+    def test_timeout_is_unknown_never_dead(self):
+        """A transient DNS failure must not suppress a live address permanently."""
+        import dns.exception
+        from gemiapp import email_validation
+
+        with self._resolver(dns.exception.Timeout):
+            self.assertEqual(email_validation.email_status("a@example.com"), email_validation.UNKNOWN)
+            self.assertFalse(email_validation.is_undeliverable("a@example.com"))
+
+    def test_no_mx_falls_back_to_a_record(self):
+        """RFC 5321 implicit MX -- plenty of small Greek business domains rely on it."""
+        import dns.resolver
+        from gemiapp import email_validation
+
+        def resolve(domain, record):
+            if record == "MX":
+                raise dns.resolver.NoAnswer()
+            return [Mock()]
+
+        with self._resolver(resolve):
+            self.assertEqual(email_validation.email_status("a@example.com"), email_validation.DELIVERABLE)
+
+    def test_no_mx_and_no_address_record_is_dead(self):
+        import dns.resolver
+        from gemiapp import email_validation
+
+        with self._resolver(dns.resolver.NoAnswer()):
+            self.assertEqual(email_validation.email_status("a@example.com"), email_validation.DEAD)
+
+    def test_null_mx_is_dead(self):
+        """RFC 7505: a single "." target means the domain accepts no mail at all."""
+        from gemiapp import email_validation
+
+        with self._resolver(lambda d, r: [Mock(exchange=".")]):
+            self.assertEqual(email_validation.email_status("a@example.com"), email_validation.DEAD)
+
+    def test_malformed_address_is_dead_without_a_lookup(self):
+        from gemiapp import email_validation
+
+        with self._resolver(AssertionError("should not resolve")):
+            self.assertEqual(email_validation.email_status("not-an-email"), email_validation.DEAD)
+
+
+@override_settings(BREVO_WEBHOOK_TOKEN="test-token-123")
+class BounceSuppressionTests(TestCase):
+    """A hard bounce means the address does not exist; leaving it unsuppressed means the
+    GEMI feed hands it straight back on the next batch and we bounce it again."""
+
+    def _post(self, payload):
+        return self.client.post(
+            reverse("brevo_webhook", kwargs={"token": "test-token-123"}),
+            data=json.dumps(payload).encode(), content_type="application/json",
+        )
+
+    def test_hard_bounce_suppresses_the_address(self):
+        from gemiapp.models import OutreachSuppression
+
+        self._post({"event": "hardBounce", "email": "Dead@Example.GR"})
+        self.assertTrue(OutreachSuppression.is_suppressed("dead@example.gr"))
+
+    def test_snake_case_hard_bounce_also_suppresses(self):
+        """Brevo's SMTP relay and its transactional API name the same event differently."""
+        from gemiapp.models import OutreachSuppression
+
+        self._post({"event": "hard_bounce", "email": "dead@example.gr"})
+        self.assertTrue(OutreachSuppression.is_suppressed("dead@example.gr"))
+
+    def test_blocked_suppresses(self):
+        from gemiapp.models import OutreachSuppression
+
+        self._post({"event": "blocked", "email": "blocked@example.gr"})
+        self.assertTrue(OutreachSuppression.is_suppressed("blocked@example.gr"))
+
+    def test_soft_bounce_does_not_suppress(self):
+        """A full mailbox is temporary -- suppressing on it throws away a live recipient."""
+        from gemiapp.models import OutreachSuppression
+
+        self._post({"event": "soft_bounce", "email": "full@example.gr"})
+        self.assertFalse(OutreachSuppression.is_suppressed("full@example.gr"))
+        self.assertEqual(EmailEngagementEvent.objects.count(), 1)
+
+    def test_delivered_does_not_suppress(self):
+        from gemiapp.models import OutreachSuppression
+
+        self._post({"event": "delivered", "email": "fine@example.gr"})
+        self.assertFalse(OutreachSuppression.is_suppressed("fine@example.gr"))
+
+    def test_repeated_bounce_does_not_error(self):
+        from gemiapp.models import OutreachSuppression
+
+        self._post({"event": "hardBounce", "email": "dead@example.gr"})
+        response = self._post({"event": "hardBounce", "email": "dead@example.gr"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(OutreachSuppression.objects.filter(email="dead@example.gr").count(), 1)
+        self.assertEqual(EmailEngagementEvent.objects.count(), 2)
+
+    def test_event_is_still_logged_when_suppression_fails(self):
+        """The engagement row is the audit record; a failed suppression write must not cost
+        us the event or make Brevo retry the whole batch."""
+        with patch(
+            "gemiapp.email_tracking.OutreachSuppression.objects.get_or_create",
+            side_effect=Exception("db down"),
+        ):
+            response = self._post({"event": "hardBounce", "email": "dead@example.gr"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(EmailEngagementEvent.objects.count(), 1)
+
+
+@override_settings(OUTREACH_ENABLED=True)
+class QueueUndeliverableTests(TestCase):
+    """Dead addresses must be filtered before they become pending rows -- once queued they
+    cost a real send and a real hard bounce."""
+
+    def setUp(self):
+        from gemiapp import email_validation
+
+        email_validation.domain_status.cache_clear()
+        self.admin = User.objects.create_superuser("admin-mx", "admin-mx@example.com", "pw")
+
+    def _company(self, gemi, email):
+        return Company.objects.create(
+            gemi_number=gemi, name=f"CO {gemi}", incorporation_date=date(2026, 8, 1), email=email,
+        )
+
+    def test_undeliverable_company_is_not_queued(self):
+        from gemiapp.models import CompanyOutreach, OutreachSuppression
+        from gemiapp.superadmin.services import queue_company_outreach
+
+        dead = self._company("mx-1", "a@dead.invalid")
+        with patch("gemiapp.superadmin.services.is_undeliverable", return_value=True):
+            queued = queue_company_outreach(self.admin, [dead.id])
+
+        self.assertEqual(queued, 0)
+        row = CompanyOutreach.objects.get(company=dead)
+        self.assertEqual(row.status, "failed")
+        self.assertIn("MX", row.error_message)
+        self.assertTrue(OutreachSuppression.is_suppressed("a@dead.invalid"))
+
+    def test_deliverable_company_is_queued(self):
+        from gemiapp.models import CompanyOutreach
+        from gemiapp.superadmin.services import queue_company_outreach
+
+        live = self._company("mx-2", "a@live.gr")
+        with patch("gemiapp.superadmin.services.is_undeliverable", return_value=False), \
+             patch("django_q.tasks.async_task"):
+            queued = queue_company_outreach(self.admin, [live.id])
+
+        self.assertEqual(queued, 1)
+        self.assertEqual(CompanyOutreach.objects.get(company=live).status, "pending")
+
+    def test_mixed_batch_queues_only_the_live_ones(self):
+        from gemiapp.models import CompanyOutreach
+        from gemiapp.superadmin.services import queue_company_outreach
+
+        dead = self._company("mx-3", "a@dead.invalid")
+        live = self._company("mx-4", "a@live.gr")
+
+        with patch(
+            "gemiapp.superadmin.services.is_undeliverable",
+            side_effect=lambda e: e.endswith("dead.invalid"),
+        ), patch("django_q.tasks.async_task"):
+            queued = queue_company_outreach(self.admin, [dead.id, live.id])
+
+        self.assertEqual(queued, 1)
+        self.assertEqual(CompanyOutreach.objects.get(company=dead).status, "failed")
+        self.assertEqual(CompanyOutreach.objects.get(company=live).status, "pending")
+
+    def test_suppressed_dead_address_blocks_a_second_company_with_the_same_email(self):
+        """An accountant's address is filed by every company they incorporate."""
+        from gemiapp.superadmin.services import queue_company_outreach, uncontacted_companies_qs
+
+        first = self._company("mx-5", "shared@dead.invalid")
+        second = self._company("mx-6", "shared@dead.invalid")
+
+        with patch("gemiapp.superadmin.services.is_undeliverable", return_value=True):
+            queue_company_outreach(self.admin, [first.id])
+
+        self.assertNotIn(second, uncontacted_companies_qs())
