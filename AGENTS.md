@@ -45,6 +45,47 @@ Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 
 ## Τρέχουσα κατάσταση
 
+- **Forensic recovery & visual system consolidation (2026-09-09).** Εντοπίστηκε ότι το εγκεκριμένο
+  Signal Ledger UI (`static/css/product-ui.css` + τα authenticated templates) **δεν υπήρχε καθόλου στο
+  `main`** — ζούσε μόνο στο branch `fix/outreach-hard-bounces` (`e55f8a3`), το οποίο δεν είχε ποτέ γίνει
+  merge. Το `main` είχε το compliance shutdown αλλά το παλιό generic SaaS UI. Γι' αυτό κάθε προηγούμενη
+  προσπάθεια στις δημόσιες επιφάνειες επανέφερε `rounded-card` / `shadow-soft` / stat cards: αυτά ήταν
+  όντως τα primitives του `main`.
+  - Δημιουργήθηκε το branch `recovery/visual-consolidation` και έγινε merge του `fix/outreach-hard-bounces`.
+    Επαληθεύτηκε ότι το UI branch είναι **superset** ως προς το compliance: ίδια migration `0031`, ίδια
+    fail-closed defaults, ίδια 3 σημεία ελέγχου `outreach_enabled()`, κανένα αρχείο δεν χάθηκε.
+  - Το `product-ui.css` επεκτάθηκε με δύο **scoped** layers, `body.public-body` και `body.admin-body`,
+    ώστε τίποτα από τις δημόσιες/admin επιφάνειες να μην μπορεί να αγγίξει τα εγκεκριμένα authenticated
+    screens. Τα `.product-*` primitives επαναχρησιμοποιούνται αυτούσια.
+  - **Landing** (`templates/home.html`): δημόσιο header από το ίδιο brand mark· hero proof = το Signals
+    register (`.product-signal`), όχι terminal panel· αλυσίδα EVENT → INFORMATION → CRITERIA → RELEVANCE
+    → LEAD· συνθετικά `.demo` παραδείγματα.
+  - **Pricing** (`templates/pricing.html`): κάθε πλάνο είναι operational definition row στη γραμματική
+    των Radars. Πλήρης factual audit — βλ. πίνακα παρακάτω.
+  - **Superadmin**: το rail είναι το product rail με ένα επιπλέον επίπεδο ομαδοποίησης. Το outreach
+    μεταφέρθηκε από «Growth» σε **COMPLIANCE / ARCHIVE** και οι φόρμες send/test/queue **δεν
+    αποδίδονται πλέον καθόλου** (ήταν disabled αλλά με ενεργό POST target).
+  - Το `SAMPLE_LEADS` διατηρεί το συνθετικό σύνολο που αφαίρεσε ονόματα φυσικών προσώπων.
+  - `check`, `makemigrations --check`, `build:css`, `collectstatic` καθαρά· **646 tests OK**.
+    Καμία εντολή deployment δεν εκτελέστηκε.
+
+### Pricing claim → source of truth
+
+| Ισχυρισμός | Πηγή αλήθειας | Κατάσταση |
+|---|---|---|
+| Pro / Business / Enterprise / Custom | `UserSubscription.TIERS` (`models.py`) | επιβεβαιωμένο |
+| Όρια Ραντάρ 5 / 10 / 15 / 15 | `RADAR_LIMITS` (`models.py`) | επιβεβαιωμένο |
+| €19 / €49 / €99 | `PLAN_PRICES` (`superadmin/services.py`) + README | επιβεβαιωμένο |
+| Custom «κατόπιν συμφωνίας», εκτός checkout | `SELECTABLE_TIERS` (`billing.py`) | επιβεβαιωμένο |
+| Ενημερώσεις ανά 3 ώρες, 08:00 - 23:00 | `DigestDelivery.FREQUENCIES` + `apps.SCHEDULES` cron | επιβεβαιωμένο |
+| Priority Alerts μόνο Enterprise/Custom | `TOP_TIERS` (`services.py`) | επιβεβαιωμένο |
+| Ημερήσιο digest 09:00 | `apps.SCHEDULES` cron `0 9 * * *` | επιβεβαιωμένο |
+| Εξαγωγή CSV σε κάθε πληρωμένο πλάνο | `views.export_csv` (`radar_limit > 0`) | επιβεβαιωμένο |
+| 9.651 κωδικοί ΚΑΔ | `gemiapp/data/kad_2025.json` | επιβεβαιωμένο |
+| «Οι πληρωμές δεν είναι ακόμη ενεργές» | `LEGAL_BILLING_ACTIVE` (default `0`) | επιβεβαιωμένο |
+| API Webhooks / dedicated database sync | — καμία υλοποίηση | **αφαιρέθηκε** |
+| «Απεριόριστα Leads» | — δεν υπάρχει τέτοιο όριο στο μοντέλο | **αφαιρέθηκε** |
+
 - **Ολοκληρώθηκε ο έλεγχος και η παραγωγή review captures για τις εμπορικές επιφάνειες & το Superadmin (2026-09-09).** Δημιουργήθηκαν τα νέα captures στο `docs/gemi-leads-ui-study/screenshots/` και στα artifacts: `marketing_superadmin_desktop.png` & `marketing_superadmin_users_desktop.png` (INTERNAL REVIEW ONLY), `marketing_pricing_desktop.png` (PUBLIC MARKETING SAFE), `marketing_landing_desktop.png` (PUBLIC MARKETING SAFE), `marketing_landing_full_desktop.png`, `marketing_landing_mobile.png` & `marketing_landing_full_mobile.png`. Διενεργήθηκε πλήρης έλεγχος copy στη δημόσια landing page, επιβεβαιώνοντας ότι δεν υπάρχουν υπόνοιες ή αναφορές σε αυτόματη αποστολή cold outreach email προς νέες εταιρείες. Το Signal Ledger UI και το backend διατηρήθηκαν 100% ανέγγιχτα.
 - **Ολοκληρώθηκε η δημιουργία του privacy-safe marketing/demo dataset & review captures για το NORVA (2026-09-09).** Δημιουργήθηκε η νέα reversible εντολή διαχείρισης `seed_demo_marketing_data` (`gemiapp/management/commands/seed_demo_marketing_data.py`), η οποία εισάγει 4 συνθετικά, 100% εικονικά παραδείγματα ελληνικών επιχειρήσεων (`ΑΙΓΑΙΟ LOGISTICS ΜΟΝ. Ι.Κ.Ε.`, `HELLAS CLOUD & DATA LABS Α.Ε.`, `GREEN GRID SOLAR SOLUTIONS Ι.Κ.Ε.`, `KALYPSO HOSPITALITY & TRADING Ε.Ε.`) με εικονικά GEMI (`999000101000`..`999000104000`), εικονικά ΑΦΜ, εικονικές διευθύνσεις/emails, KAD records, διαχειριστές και αντιπροσωπευτικές καταστάσεις lead/matches/notes. Υποστηρίζεται και παράμετρος `--clean` για άμεση, μη καταστροφική αφαίρεση. Δημιουργήθηκαν τα νέα review captures στο `docs/marketing-demo-data.md` και στα artifacts: `marketing_signals_desktop` (1440x900), `marketing_radars_desktop` (1440x900), `marketing_dossier_desktop` (1440x900), `marketing_leads_desktop` (1440x900), `marketing_signals_mobile` (390x844) και `marketing_dossier_mobile` (390x844). Το production Signal Ledger UI διατηρήθηκε ακέραιο χωρίς καμία εικαστική αλλαγή.
 - **Ολοκληρώθηκε ο έλεγχος συμμόρφωσης, ασφάλειας και οριστικής απενεργοποίησης του cold outreach subsystem (2026-09-09).** Ο fail-closed master switch `OUTREACH_ENABLED` (default `0`) και το `OUTREACH_DAILY_SEND_CAP` (`0`) ελέγχουν κάθε σημείο εισόδου. Με τη νέα migration `0031_cancel_pending_outreach.py`, όλες οι παλιές εγγραφές `pending` και `sending` μεταφέρθηκαν οριστικά σε `status="cancelled"` («Ακυρώθηκε») με αιτιολογία compliance shutdown, ώστε να μην μπορούν να ξανασταλούν ακόμα κι αν άλλαζε μελλοντικά το `OUTREACH_ENABLED`. Οι εντολές διαχείρισης `requeue_dropped_outreach` και `prune_bot_suppressions` θωρακίστηκαν με `outreach_enabled()` checks. Δημιουργήθηκε το επίσημο έγγραφο περιστατικού/συμμόρφωσης στο `docs/compliance/cold-outreach-shutdown.md` με checklists για Brevo Dashboard και Render Deployment, data-retention classification και prerequisites. Προστέθηκαν νέα regression tests στο `gemiapp/tests.py` και όλα τα **646 tests** περνούν καθαρά (`OK`), μαζί με καθαρά `manage.py check` και `makemigrations --check`.
