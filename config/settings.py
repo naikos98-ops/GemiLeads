@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import sys
 import dj_database_url
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
@@ -217,9 +218,18 @@ EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Gemi Leads <notifications@send.gemileads.gr>")
 EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "info@gemileads.gr")
 
+# Skips the outreach MX pre-check (gemiapp.email_validation) and treats every address as
+# deliverable. On only under `manage.py test`: a test that hits real DNS is slow, fails
+# offline, and silently changes verdict when some example.gr domain lapses. MXValidationTests
+# overrides it back to False to exercise the real logic against a stubbed resolver. Never
+# set outside tests -- it turns the hard-bounce guard off entirely.
+SKIP_MX_VALIDATION = "test" in sys.argv
+
 # Default recipient for the "Δοκιμαστική αποστολή" button on the Εύρεση Πελατών page.
 OUTREACH_TEST_EMAIL = os.getenv("OUTREACH_TEST_EMAIL", "naikos98@gmail.com")
 
+# Emergency/master switch for every cold-outreach path. Fail closed: production must opt in
+# explicitly before a manual queue, background worker, daily drain, or test outreach can send.
 OUTREACH_ENABLED = os.getenv("OUTREACH_ENABLED", "0") == "1"
 
 # Max cold-outreach emails per rolling 24h. Past the Brevo plan's daily quota the SMTP relay

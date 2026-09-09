@@ -1,0 +1,117 @@
+/* Focused Signal Ledger refinement pass — hierarchy and state grammar only. */
+:root { --state-rule: #8e9793; }
+
+/* Source metadata: factual product provenance, not financial-terminal theatre. */
+.intake-meta { min-width: 0; display: flex; align-items: center; gap: 16px; padding-left: 22px; font: 500 9px 'IBM Plex Mono', monospace; color: var(--muted); }
+.intake-meta > span + span { border-left: 1px solid var(--line); padding-left: 16px; }
+.intake-meta .intake-source { color: var(--ink); font-weight: 600; letter-spacing: .11em; }
+.intake-meta .sync { margin-left: auto; padding-right: 22px; }
+.intake-meta .live-dot { margin: 0 6px 0 0; vertical-align: 1px; }
+
+/* Navigation follows the actual Gemi Leads sequence: market → criteria → outcome. */
+.rail > a { min-height: 70px; display: grid; grid-template-columns: 48px 1fr; grid-template-rows: auto auto; column-gap: 8px; align-content: center; padding: 0 15px; }
+.rail > a span { grid-row: 1 / 3; align-self: center; font-size: 7px; letter-spacing: .09em; }
+.rail > a b { font-size: 13px; line-height: 1.1; }
+.rail > a small { font: 400 8px 'IBM Plex Mono', monospace; color: var(--muted); line-height: 1.2; }
+.rail > a.active { box-shadow: inset 3px 0 var(--amber); }
+.rail > a.active span, .rail > a.active small { color: #bdc5c1; }
+.rail > a.active b { color: var(--white); }
+.rail-flow { margin: 18px 15px 0; padding-top: 12px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; font: 600 7px 'IBM Plex Mono', monospace; color: var(--muted); }
+.rail-flow i { width: 13px; height: 1px; background: var(--line); position: relative; }
+.rail-flow i::after { content: ''; position: absolute; right: 0; top: -2px; width: 4px; height: 4px; border-top: 1px solid var(--line); border-right: 1px solid var(--line); transform: rotate(45deg); }
+.rail-foot small { display: block; margin-top: 7px; font: 400 8px 'IBM Plex Mono', monospace; color: var(--muted); }
+
+/* Signal-state grammar. Position and rule weight carry meaning before color. */
+.signal { min-height: 84px; grid-template-columns: 58px 4px minmax(240px, 1fr) 94px; padding-block: 11px; }
+.signal .state { align-self: stretch; min-width: 82px; display: flex; flex-direction: column; justify-content: center; padding: 0; border: 0; text-align: left; }
+.signal .state i { display: block; width: 100%; height: 1px; margin-bottom: 8px; background: var(--state-rule); }
+.signal .state b { font: 600 8px 'IBM Plex Mono', monospace; letter-spacing: .07em; }
+.signal .state small { display: block; margin-top: 3px; font: 400 7px 'IBM Plex Mono', monospace; color: var(--muted); }
+.signal.is-signal .state i { width: 28px; opacity: .6; }
+.signal.is-signal .state b { color: var(--muted); font-weight: 500; }
+.signal.is-new .state i { height: 3px; background: var(--amber); }
+.signal.is-new .state b { font-weight: 600; }
+.signal.is-viewed .state i { width: 55%; }
+.signal.is-viewed .state b { color: var(--muted); font-weight: 500; }
+.signal.is-contacted .state i { height: 3px; background: repeating-linear-gradient(to bottom, var(--ink) 0 1px, transparent 1px 2px, var(--ink) 2px 3px); }
+.signal.is-contacted .state b { font-weight: 600; }
+.signal.is-interested .state i { height: 4px; background: var(--ink); position: relative; }
+.signal.is-interested .state i::after { content: ''; width: 15px; height: 4px; position: absolute; right: 0; top: 0; background: var(--amber); }
+.signal.is-interested .state b { font-weight: 700; }
+.signal.is-matched .match-stroke { height: 51px; }
+.signal.is-matched .signal-copy em { font-weight: 500; }
+.signal.selected { box-shadow: inset 3px 0 var(--amber); }
+.mobile-selection { display: none; }
+
+/* Selected record: quieter metadata, more space for the matching evidence. */
+.inspect { padding: 22px 24px 26px; }
+.inspect h2 { margin-top: 26px; font-size: 23px; }
+.inspect .identity { margin: 9px 0 0; }
+.inspect-meta { margin: 22px 0 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.inspect-meta div { display: grid; grid-template-columns: 100px 1fr; padding: 9px 0; }
+.inspect-meta div + div { border-top: 1px solid var(--line); }
+.inspect-meta dt { font: 500 8px 'IBM Plex Mono', monospace; color: var(--muted); }
+.inspect-meta dd { margin: 0; font-size: 11px; font-weight: 600; }
+.chain { margin: 22px 0 0; padding: 14px 0; background: transparent; color: var(--ink); border-bottom: 1px solid var(--ink); }
+.chain span b { display: block; font: 600 8px 'IBM Plex Mono', monospace; }
+.chain span small { color: var(--muted); }
+.chain i { color: var(--amber); font-weight: 700; }
+.reason { padding: 26px 0 24px; }
+.reason > p { margin: 0 0 8px; color: #775215; }
+.reason h3 { margin: 0; font-size: 18px; }
+.reason-intro { display: block; max-width: 30ch; margin-top: 8px; color: var(--muted); line-height: 1.5; }
+.reason dl { margin-top: 20px; }
+.reason dl div { grid-template-columns: 92px 1fr; padding: 10px 0; }
+.reason dd { line-height: 1.45; }
+.next { padding-top: 22px; }
+.next > p { margin-bottom: 10px; }
+.next button { background: var(--ink); color: var(--white); border: 1px solid var(--ink); }
+.next button:hover { background: var(--green); }
+.next .favorite { margin-top: 10px; color: var(--ink); border-color: var(--line); }
+
+/* The dossier keeps relevance ahead of lead administration on small screens. */
+.match-proof { box-shadow: inset 3px 0 var(--amber); }
+
+@media (max-width: 900px) {
+  .brandbar { display: flex; justify-content: space-between; padding-right: 14px; }
+  .intake-meta { display: block; padding: 0; text-align: right; }
+  .intake-meta > span { display: none; }
+  .intake-meta .sync { display: block; padding: 0; border: 0; font-size: 7px; }
+  .workgrid { display: block; }
+  .inspect { display: none; }
+  .signal { min-height: 88px; grid-template-columns: 42px 3px 1fr 78px; padding: 10px 12px; gap: 9px; }
+  .signal .state { grid-column: 4; grid-row: 1; margin: 0; align-self: center; min-width: 68px; }
+  .signal .state small { display: none; }
+  .signal .state i { margin-bottom: 6px; }
+  .signal-copy small { max-width: 190px; }
+  .signal-copy em { line-height: 1.35; }
+  .mobile-selection { display: block; padding: 15px 14px 16px 68px; border-bottom: 1px solid var(--ink); background: var(--white); box-shadow: inset 3px 0 var(--amber); }
+  .mobile-selection > p { margin: 0 0 10px; font: 600 8px 'IBM Plex Mono', monospace; color: #775215; }
+  .mobile-selection h3 { margin: 0 0 11px; font-size: 13px; line-height: 1.3; }
+  .mobile-selection dl { margin: 0 0 12px; }
+  .mobile-selection dl div { display: grid; grid-template-columns: 48px 1fr; padding: 5px 0; border-top: 1px solid var(--line); }
+  .mobile-selection dt { font: 500 7px 'IBM Plex Mono', monospace; color: var(--muted); }
+  .mobile-selection dd { margin: 0; font-size: 10px; }
+  .mobile-selection button { width: 100%; border: 0; background: var(--ink); color: var(--white); padding: 11px; font: 600 8px 'IBM Plex Mono', monospace; }
+  .dossier-grid { display: flex; flex-direction: column; }
+  .lead-work { order: 1; border-top: 0; }
+  .public-record { order: 2; }
+  .lead-work .match-proof { order: 1; }
+  .lead-work .lead-control { order: 2; }
+  .lead-work .notes { order: 3; }
+  .lead-work .history { order: 4; }
+  .lead-work { display: flex; flex-direction: column; }
+  .proof-row { padding-block: 11px; }
+}
+
+@media (max-width: 460px) {
+  .pagehead { gap: 14px; }
+  .pagehead .facts { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+  .facts span { font-size: 7px; }
+  .signal { grid-template-columns: 38px 3px minmax(0,1fr) 70px; }
+  .signal-copy b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .signal-copy small { max-width: 165px; }
+  .mobile-selection { padding-left: 62px; }
+  .dossier-head .record-no { font-size: 8px; }
+  .match-proof h2 { margin-bottom: 14px; }
+}
