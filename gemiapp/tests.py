@@ -72,7 +72,7 @@ class AppTests(TestCase):
         self.client.login(username="member@example.com", password="StrongPass123")
         dashboard = self.client.get(reverse("dashboard"))
         self.assertEqual(dashboard.status_code, 200)
-        self.assertContains(dashboard, "Dashboard · Gemi Leads")
+        self.assertContains(dashboard, "Signals · Gemi Leads")
 
     @patch("gemiapp.services.fetch_companies", return_value=[SAMPLE])
     def test_idempotent_import(self, _fetch):
@@ -4136,7 +4136,7 @@ class CompanyPeopleTests(TestCase):
         self.client.force_login(self._user("paid@example.com", "pro"))
         html = self.client.get(reverse("company_detail", args=[company.gemi_number])).content.decode()
         self.assertIn("ΓΕΩΡΓΙΟΥ ΝΙΚΟΛΑΟΣ", html)
-        self.assertIn("Εκπροσωπεί μόνος", html)
+        self.assertIn("ΕΚΠΡΟΣΩΠΕΙ ΜΟΝΟΣ", html)
 
     def test_every_paid_tier_sees_the_names(self):
         for tier in ("pro", "business", "enterprise", "custom"):
