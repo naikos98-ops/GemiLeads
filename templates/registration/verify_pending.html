@@ -4,16 +4,13 @@
 {% block content %}
 <div class="auth-shell">
   <div class="auth-head">
-    <p class="product-eyebrow">ΛΟΓΑΡΙΑΣΜΟΣ</p>
     <h1>Ελέγξτε το email σας</h1>
   </div>
   <div class="auth-notice">
-    <b>Εκκρεμεί επιβεβαίωση</b>
-    Στείλαμε μήνυμα επιβεβαίωσης στο <b style="display:inline;font-family:inherit;font-size:inherit;letter-spacing:0;text-transform:none;">{{ email }}</b>.
-    Πάτησε τον σύνδεσμο που περιέχει για να ενεργοποιήσεις τον λογαριασμό σου.
+    Στείλαμε ένα μήνυμα επιβεβαίωσης στο <b style="display:inline;letter-spacing:0;text-transform:none;font-family:inherit;font-size:inherit;">{{ email }}</b>. Παρακαλώ κάντε κλικ στον σύνδεσμο που περιέχει για να ενεργοποιήσετε τον λογαριασμό σας.
   </div>
   <div class="auth-actions">
-    <a href="{% url 'login' %}" class="product-ink-button" style="width:100%;">ΕΠΙΣΤΡΟΦΗ ΣΤΗ ΣΥΝΔΕΣΗ</a>
+    <a href="{% url 'login' %}" class="product-ink-button" style="width:100%;">Επιστροφή στη σύνδεση</a>
   </div>
   <p class="auth-links">Δεν έλαβες το email; <a href="{% url 'resend_verification' %}">Στείλε ξανά τον σύνδεσμο</a></p>
 </div>

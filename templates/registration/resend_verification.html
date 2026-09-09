@@ -4,20 +4,19 @@
 {% block content %}
 <div class="auth-shell">
   <div class="auth-head">
-    <p class="product-eyebrow">ΛΟΓΑΡΙΑΣΜΟΣ</p>
     <h1>Επαναποστολή επιβεβαίωσης</h1>
-    <p>Αν ο λογαριασμός σου δεν έχει επιβεβαιωθεί ακόμη, γράψε το email σου και θα σου στείλουμε
-       νέο σύνδεσμο. Ο σύνδεσμος ισχύει για 3 ημέρες.</p>
+    <p>Αν ο λογαριασμός σου δεν έχει επιβεβαιωθεί ακόμη, γράψε το email σου και θα σου στείλουμε νέο σύνδεσμο.
+       Ο σύνδεσμος ισχύει για 3 ημέρες.</p>
   </div>
 
   <form method="post" class="auth-form">
     {% csrf_token %}
     <div class="auth-field">
-      <label for="id_email">EMAIL</label>
+      <label for="id_email">Email</label>
       <input type="email" name="email" id="id_email" required autofocus placeholder="you@example.com" autocomplete="email">
     </div>
     <div class="auth-actions">
-      <button type="submit" class="product-ink-button">ΣΤΕΙΛΕ ΝΕΟ ΣΥΝΔΕΣΜΟ</button>
+      <button type="submit" class="product-ink-button">Στείλε μου νέο σύνδεσμο</button>
     </div>
   </form>
 

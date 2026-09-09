@@ -72,7 +72,7 @@
     <span>SUPERADMIN IMPERSONATION — Προβολή ως <strong>{{ user.email }}</strong></span>
     <form action="{% url 'superadmin:impersonate_stop' %}" method="post" class="inline">
       {% csrf_token %}
-      <button class="product-ink-button">ΕΞΟΔΟΣ IMPERSONATION</button>
+      <button class="product-ink-button">Έξοδος Impersonation</button>
     </form>
   </div>
   {% endif %}
@@ -113,13 +113,13 @@
       {% if beta_mode %}<small>Beta</small>{% endif %}
     </a>
     <nav class="public-nav" aria-label="Δημόσια πλοήγηση">
-      <a href="{% url 'home' %}#sample-leads">ΔΕΙΓΜΑ LEADS</a>
-      <a href="{% url 'home' %}#how-it-works">ΠΩΣ ΛΕΙΤΟΥΡΓΕΙ</a>
-      <a href="{% url 'pricing' %}"{% if request.resolver_match.url_name == 'pricing' %} class="is-current"{% endif %}>ΤΙΜΕΣ</a>
+      <a href="{% url 'home' %}#sample-leads">Δείγμα leads</a>
+      <a href="{% url 'home' %}#how-it-works">Πώς λειτουργεί</a>
+      <a href="{% url 'pricing' %}"{% if request.resolver_match.url_name == 'pricing' %} class="is-current"{% endif %}>Τιμές</a>
     </nav>
     <div class="public-actions">
-      <a href="{% url 'login' %}" class="product-text-button">ΣΥΝΔΕΣΗ</a>
-      <a href="{% url 'signup' %}" class="product-ink-button">ΞΕΚΙΝΑ ΤΩΡΑ</a>
+      <a href="{% url 'login' %}" class="product-text-button">Σύνδεση</a>
+      <a href="{% url 'signup' %}" class="product-ink-button">Ξεκίνα τώρα</a>
     </div>
     <button id="menuButton" class="public-menu-toggle" aria-label="Μενού">
       <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -129,11 +129,11 @@
      primary CTA as a full-width ink button. app.js closes the panel on selection so an
      in-page anchor no longer leaves the menu covering the section it scrolled to. {% endcomment %}
   <div id="mobileMenu" class="public-menu hidden">
-    <a href="{% url 'home' %}#sample-leads">ΔΕΙΓΜΑ LEADS</a>
-    <a href="{% url 'home' %}#how-it-works">ΠΩΣ ΛΕΙΤΟΥΡΓΕΙ</a>
-    <a href="{% url 'pricing' %}">ΤΙΜΕΣ</a>
-    <a href="{% url 'login' %}">ΣΥΝΔΕΣΗ</a>
-    <a href="{% url 'signup' %}" data-menu-cta class="public-menu-cta">ΞΕΚΙΝΑ ΤΩΡΑ →</a>
+    <a href="{% url 'home' %}#sample-leads">Δείγμα leads</a>
+    <a href="{% url 'home' %}#how-it-works">Πώς λειτουργεί</a>
+    <a href="{% url 'pricing' %}">Τιμές</a>
+    <a href="{% url 'login' %}">Σύνδεση</a>
+    <a href="{% url 'signup' %}" data-menu-cta class="public-menu-cta">Ξεκίνα τώρα →</a>
   </div>
   {% endif %}
   {% if messages %}<div class="fixed right-5 top-24 z-50 space-y-2">{% for message in messages %}<div data-toast class="ledger-toast">{{ message }}</div>{% endfor %}</div>{% endif %}

@@ -5,25 +5,19 @@
 <div class="auth-shell">
   {% if error %}
   <div class="auth-head">
-    <p class="product-eyebrow">ΕΠΙΚΟΙΝΩΝΙΑ</p>
     <h1>Σφάλμα</h1>
   </div>
-  <div class="auth-notice error">
-    <b>Η απεγγραφή δεν ολοκληρώθηκε</b>
-    {{ error }}
-  </div>
+  <div class="auth-notice error">{{ error }}</div>
   {% else %}
   <div class="auth-head">
-    <p class="product-eyebrow">ΕΠΙΚΟΙΝΩΝΙΑ</p>
     <h1>Απεγγραφή επιτυχής</h1>
   </div>
   <div class="auth-notice ok">
-    <b>Ολοκληρώθηκε</b>
-    {% if message %}{{ message }}{% else %}Δεν θα λαμβάνεις πλέον αυτοματοποιημένα email (digests) από εμάς. Μπορείς να ενεργοποιήσεις ξανά τις ειδοποιήσεις οποιαδήποτε στιγμή από τις Ρυθμίσεις του λογαριασμού σου.{% endif %}
+    {% if message %}{{ message }}{% else %}Δεν θα λαμβάνετε πλέον αυτοματοποιημένα emails (digests) από εμάς. Μπορείτε να ενεργοποιήσετε ξανά τις ειδοποιήσεις οποιαδήποτε στιγμή από τις Ρυθμίσεις του λογαριασμού σας.{% endif %}
   </div>
   {% endif %}
   <div class="auth-actions">
-    <a href="{% url 'home' %}" class="product-ink-button" style="width:100%;">ΕΠΙΣΤΡΟΦΗ ΣΤΗΝ ΑΡΧΙΚΗ</a>
+    <a href="{% url 'home' %}" class="product-ink-button" style="width:100%;">Επιστροφή στην αρχική</a>
   </div>
 </div>
 {% endblock %}

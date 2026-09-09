@@ -2731,8 +2731,15 @@ body.admin-body input:focus-visible {
 
 .prose-page p { margin: 0 0 13px; }
 
+/* Tailwind's preflight sets list-style:none, and the original markup restored the markers
+   with a list-disc / list-decimal utility class. Those classes were stripped with the rest of
+   the presentational ones, so the markers are re-declared here instead. */
 .prose-page ul,
-.prose-page ol { margin: 0 0 15px; padding-left: 20px; }
+.prose-page ol { margin: 0 0 15px; padding-left: 22px; }
+
+.prose-page ul { list-style: disc outside; }
+.prose-page ol { list-style: decimal outside; }
+.prose-page li::marker { color: var(--product-muted); }
 
 .prose-page li { margin-bottom: 6px; }
 
@@ -3042,4 +3049,27 @@ body.admin-body input:focus-visible {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
+}
+
+/* ---------- CONTROL LETTERCASE (appearance only) ----------
+   The ledger renders controls in uppercase. That is done here, not by rewriting the copy in
+   the templates, so the underlying wording stays exactly as it was authored and reviewed.
+   Scoped to the public/auth/admin shells -- .product-ink-button on the approved authenticated
+   screens keeps its own casing. */
+.public-nav a,
+.public-menu a,
+.public-actions .product-ink-button,
+.public-actions .product-text-button,
+.public-hero-cta .product-ink-button,
+.public-hero-cta .product-text-button,
+.public-plan-row .plan-action a.outline,
+.auth-shell .product-ink-button,
+.auth-shell .product-text-button,
+.auth-social a,
+.cookie-banner button,
+.admin-filters .product-ink-button,
+.admin-filters .product-text-button,
+.admin-btn,
+.admin-modal-actions .admin-btn {
+  text-transform: uppercase;
 }

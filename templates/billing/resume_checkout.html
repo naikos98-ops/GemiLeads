@@ -4,7 +4,6 @@
 {% block content %}
 <div class="auth-shell">
   <div class="auth-head">
-    <p class="product-eyebrow">ΣΥΝΔΡΟΜΗ</p>
     <h1>Συνεχίζουμε την εγγραφή σου</h1>
     <p>Σε μεταφέρουμε στη σελίδα ασφαλούς πληρωμής για το πλάνο που επέλεξες.</p>
   </div>
@@ -16,7 +15,7 @@
   <form id="resumeCheckout" action="{% url 'create_checkout_session' %}" method="post" class="auth-actions">
     {% csrf_token %}
     <input type="hidden" name="tier" value="{{ tier }}">
-    <button type="submit" class="product-ink-button">ΣΥΝΕΧΕΙΑ ΣΤΗΝ ΠΛΗΡΩΜΗ →</button>
+    <button type="submit" class="product-ink-button">Συνέχεια στην πληρωμή →</button>
   </form>
 
   <p class="auth-links">Δεν θέλεις να συνεχίσεις; <a href="{% url 'pricing' %}">Επιστροφή στα πλάνα</a></p>

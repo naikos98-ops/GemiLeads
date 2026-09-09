@@ -6,21 +6,18 @@
 {% block content %}
 <div class="auth-shell">
   <div class="auth-head">
-    <p class="product-eyebrow">ΛΟΓΑΡΙΑΣΜΟΣ</p>
+    <p class="product-eyebrow">Καλώς ήρθες ξανά</p>
     <h1>Σύνδεση</h1>
   </div>
 
   <form method="post" class="auth-form">
     {% csrf_token %}
     {% if form.errors %}
-    <div class="auth-notice error" role="alert">
-      <b>Αποτυχία σύνδεσης</b>
-      Τα στοιχεία σύνδεσης δεν είναι σωστά.
-    </div>
+    <div class="auth-notice error" role="alert">Τα στοιχεία σύνδεσης δεν είναι σωστά.</div>
     {% endif %}
 
     <div class="auth-field">
-      <label for="login-username">EMAIL / USERNAME</label>
+      <label for="login-username">Email / Username</label>
       <input id="login-username" name="username" type="text" autofocus required autocomplete="username">
     </div>
 
@@ -31,19 +28,19 @@
       the other recovery action.
       {% endcomment %}
       <div class="auth-row">
-        <label for="login-password" class="auth-label">ΚΩΔΙΚΟΣ ΠΡΟΣΒΑΣΗΣ</label>
+        <label for="login-password" class="auth-label">Κωδικός πρόσβασης</label>
         <a href="{% url 'password_reset' %}">Ξέχασες τον κωδικό;</a>
       </div>
       <div class="auth-reveal">
         <input id="login-password" name="password" type="password" required autocomplete="current-password">
         <button type="button" data-password-toggle="login-password" aria-controls="login-password" aria-pressed="false" aria-label="Εμφάνιση κωδικού">
-          <span aria-hidden="true">👁</span>
+          <span aria-hidden="true">👁️</span>
         </button>
       </div>
     </div>
 
     <div class="auth-actions">
-      <button type="submit" class="product-ink-button">ΣΥΝΔΕΣΗ</button>
+      <button type="submit" class="product-ink-button">Σύνδεση</button>
     </div>
 
     {% include "registration/_social_login.html" %}

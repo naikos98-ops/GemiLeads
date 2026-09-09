@@ -6,20 +6,13 @@
 {% block content %}
 <div class="auth-shell">
   <div class="auth-head">
-    <p class="product-eyebrow">ΛΟΓΑΡΙΑΣΜΟΣ</p>
+    <p class="product-eyebrow">Ξεκίνα σήμερα</p>
     <h1>Δημιουργία λογαριασμού</h1>
-    <p>Ημερήσιο digest και πλήρες ιστορικό νέων δημοσιευμένων εγγραφών ΓΕΜΗ.</p>
+    <p>Καθημερινό digest και πλήρες ιστορικό νέων επιχειρήσεων.</p>
   </div>
 
   <form method="post" class="auth-form">
     {% csrf_token %}
-    {% if form.non_field_errors %}
-    <div class="auth-notice error" role="alert">
-      <b>Έλεγξε τα στοιχεία</b>
-      {{ form.non_field_errors|striptags }}
-    </div>
-    {% endif %}
-
     {% for field in form %}
     <div class="auth-field">
       <label for="{{ field.id_for_label }}">{{ field.label }}</label>
@@ -27,7 +20,7 @@
       <div class="auth-reveal">
         {{ field }}
         <button type="button" data-password-toggle="{{ field.id_for_label }}" aria-controls="{{ field.id_for_label }}" aria-pressed="false" aria-label="Εμφάνιση κωδικού">
-          <span aria-hidden="true">👁</span>
+          <span aria-hidden="true">👁️</span>
         </button>
       </div>
       {% else %}
@@ -37,22 +30,18 @@
       <p class="auth-help" style="color:#99443b;font-weight:600;">{{ field.errors|striptags }}</p>
       {% endif %}
       {% if field.help_text %}
-      <div class="auth-help">{{ field.help_text|safe }}</div>
+      <div class="auth-help">🔒 {{ field.help_text }}</div>
       {% endif %}
     </div>
     {% endfor %}
 
     <div class="auth-actions">
-      <button type="submit" class="product-ink-button">ΔΗΜΙΟΥΡΓΙΑ ΛΟΓΑΡΙΑΣΜΟΥ</button>
+      <button type="submit" class="product-ink-button">Δημιουργία λογαριασμού</button>
     </div>
 
     {% include "registration/_social_login.html" %}
   </form>
 
-  <p class="auth-links">
-    Με την εγγραφή αποδέχεσαι τους <a href="{% url 'terms' %}">Όρους Χρήσης</a> και την
-    <a href="{% url 'privacy' %}">Πολιτική Απορρήτου</a>.<br>
-    Έχεις ήδη λογαριασμό; <a href="{% url 'login' %}">Σύνδεση</a>
-  </p>
+  <p class="auth-links">Με την εγγραφή αποδέχεσαι τους όρους χρήσης της υπηρεσίας.</p>
 </div>
 {% endblock %}

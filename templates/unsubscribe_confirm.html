@@ -4,18 +4,16 @@
 {% block content %}
 <div class="auth-shell">
   <div class="auth-head">
-    <p class="product-eyebrow">ΕΠΙΚΟΙΝΩΝΙΑ</p>
-    <h1>Απεγγραφή από τα email</h1>
+    <h1>Απεγγραφή από τα emails</h1>
   </div>
   <div class="auth-notice">
-    <b>Επιβεβαίωση</b>
-    Πάτησε το κουμπί για να αφαιρέσεις τη διεύθυνση
-    <b style="display:inline;font-family:inherit;font-size:inherit;letter-spacing:0;text-transform:none;">{{ email }}</b>
-    από τη λίστα μας. Δεν θα λαμβάνεις άλλα ενημερωτικά email από το Gemi Leads.
+    Πατήστε το κουμπί για να αφαιρέσετε τη διεύθυνση
+    <b style="display:inline;letter-spacing:0;text-transform:none;font-family:inherit;font-size:inherit;">{{ email }}</b>
+    από τη λίστα μας. Δεν θα λαμβάνετε άλλα ενημερωτικά emails από το Gemi Leads.
   </div>
   <form method="post" class="auth-actions">
     {% csrf_token %}
-    <button type="submit" class="product-ink-button">ΕΠΙΒΕΒΑΙΩΣΗ ΑΠΕΓΓΡΑΦΗΣ</button>
+    <button type="submit" class="product-ink-button">Επιβεβαίωση απεγγραφής</button>
   </form>
   <p class="auth-links"><a href="{% url 'home' %}">Άκυρο</a></p>
 </div>
