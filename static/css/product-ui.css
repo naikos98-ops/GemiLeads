@@ -2444,3 +2444,602 @@ body.admin-body input:focus-visible {
   .admin-pagehead { padding: 14px 16px; }
   .admin-account span { display: none; }
 }
+
+/* ============================================================================
+   AUTH, ACCOUNT & LEGAL SURFACES
+   ----------------------------------------------------------------------------
+   Simpler than the application, but unmistakably the same product: same paper,
+   same ink, same mono labels, same rectangular controls. Deliberately NOT a
+   centred floating card -- the form sits on the page canvas between two ink
+   rules, the way a record does in the product.
+   Scoped under body.public-body, so the authenticated screens are untouched.
+   ========================================================================== */
+
+.auth-shell {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 52px 28px 64px;
+}
+
+.auth-shell.wide { max-width: 720px; }
+
+.auth-head {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--product-ink);
+}
+
+.auth-head h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  line-height: 1.1;
+  color: var(--product-ink);
+}
+
+.auth-head p {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--product-muted);
+}
+
+.auth-form { margin: 0; }
+
+.auth-field {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.auth-field > label,
+.auth-field .auth-label {
+  display: block;
+  margin-bottom: 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+}
+
+.auth-field input[type="text"],
+.auth-field input[type="email"],
+.auth-field input[type="password"],
+.auth-field input[type="number"],
+.auth-field select,
+.auth-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--product-ink);
+  border-radius: 0;
+  background: var(--product-white);
+  color: var(--product-ink);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.auth-field input:focus,
+.auth-field select:focus,
+.auth-field textarea:focus {
+  /* Kills the legacy Tailwind focus ring that ships on the shared INPUT widget class,
+     which is still emitted by forms.py for the approved Settings/Radars screens. */
+  box-shadow: none;
+  border-color: var(--product-ink);
+}
+
+.auth-field input:focus-visible,
+.auth-field select:focus-visible,
+.auth-field textarea:focus-visible {
+  outline: 2px solid var(--product-amber);
+  outline-offset: 1px;
+}
+
+.auth-field .auth-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auth-field .auth-row a {
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.auth-field .auth-row a:hover { color: var(--product-ink); }
+
+/* Password reveal sits inside the field, square, no chip */
+.auth-reveal { position: relative; }
+
+.auth-reveal input { padding-right: 44px; }
+
+.auth-reveal button {
+  position: absolute;
+  right: 1px;
+  top: 1px;
+  bottom: 1px;
+  width: 40px;
+  border: 0;
+  border-left: 1px solid var(--product-line);
+  background: transparent;
+  color: var(--product-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.auth-reveal button:hover { background: var(--product-paper); color: var(--product-ink); }
+
+.auth-help {
+  margin: 7px 0 0;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--product-muted);
+}
+
+.auth-help ul { margin: 4px 0 0; padding-left: 16px; }
+
+.auth-actions { padding: 20px 0 0; }
+
+.auth-actions .product-ink-button { width: 100%; padding: 13px 16px; }
+
+.auth-links {
+  margin: 0;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--product-line);
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: var(--product-muted);
+}
+
+.auth-links a {
+  font-weight: 700;
+  color: var(--product-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.auth-links a:hover { border-bottom-color: var(--product-amber); }
+
+/* Notices: reuse the settings/pricing notice grammar */
+.auth-notice {
+  margin: 18px 0 0;
+  padding: 12px 15px;
+  border: 1px solid var(--product-ink);
+  border-left: 3px solid var(--product-amber);
+  background: var(--product-white);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--product-ink);
+}
+
+.auth-notice.error { border-left-color: #99443b; }
+.auth-notice.ok { border-left-color: var(--product-green); }
+
+.auth-notice b {
+  display: block;
+  margin-bottom: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+/* Social sign-in: same rectangular control language */
+.auth-social {
+  padding: 18px 0 0;
+  border-top: 1px solid var(--product-line);
+  margin-top: 18px;
+}
+
+.auth-social > p {
+  margin: 0 0 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+  text-align: center;
+}
+
+.auth-social a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 14px;
+  border: 1px solid var(--product-ink);
+  background: var(--product-white);
+  color: var(--product-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-decoration: none;
+}
+
+.auth-social a:hover { background: var(--product-paper); }
+
+/* ---------- LEGAL / PROSE PAGES ---------- */
+.prose-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 46px 28px 66px;
+}
+
+.prose-page > header {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--product-ink);
+  margin-bottom: 12px;
+}
+
+.prose-page > header h1 {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  line-height: 1.1;
+  color: var(--product-ink);
+}
+
+.prose-page > header p {
+  margin: 9px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+}
+
+.prose-page h2 {
+  margin: 34px 0 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--product-line);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--product-ink);
+}
+
+.prose-page h3 {
+  margin: 22px 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--product-ink);
+}
+
+.prose-page p,
+.prose-page li {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--product-ink);
+}
+
+.prose-page p { margin: 0 0 13px; }
+
+.prose-page ul,
+.prose-page ol { margin: 0 0 15px; padding-left: 20px; }
+
+.prose-page li { margin-bottom: 6px; }
+
+.prose-page a {
+  color: var(--product-ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.prose-page a:hover { border-bottom-color: var(--product-amber); }
+
+.prose-page strong { font-weight: 700; }
+
+.prose-page table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 18px;
+  border-top: 1px solid var(--product-ink);
+}
+
+.prose-page th {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--product-ink);
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+}
+
+.prose-page td {
+  padding: 10px;
+  border-bottom: 1px solid var(--product-line);
+  font-size: 13px;
+  line-height: 1.6;
+  vertical-align: top;
+}
+
+/* ---------- COOKIE CONSENT BANNER ---------- */
+.cookie-banner {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 60;
+  border-top: 1px solid var(--product-ink);
+  background: var(--product-white);
+  padding: 14px 22px;
+}
+
+.cookie-banner > div {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cookie-banner p {
+  margin: 0;
+  max-width: 76ch;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--product-muted);
+}
+
+.cookie-banner p a {
+  color: var(--product-ink);
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.cookie-banner .cookie-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.cookie-banner button {
+  padding: 9px 14px;
+  border: 1px solid var(--product-ink);
+  background: transparent;
+  color: var(--product-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  cursor: pointer;
+}
+
+.cookie-banner button.primary {
+  background: var(--product-ink);
+  color: var(--product-white);
+}
+
+.cookie-banner button:hover { background: var(--product-paper); }
+.cookie-banner button.primary:hover { background: var(--product-green); border-color: var(--product-green); color: var(--product-white); }
+
+/* ---------- SHARED TOAST (all surfaces) ---------- */
+.ledger-toast {
+  border: 1px solid var(--product-ink);
+  border-left: 3px solid var(--product-amber);
+  background: var(--product-white);
+  padding: 12px 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--product-ink);
+  max-width: 380px;
+}
+
+@media (max-width: 600px) {
+  .auth-shell { padding: 34px 18px 48px; }
+  .auth-head h1 { font-size: 25px; }
+  .prose-page { padding: 32px 18px 48px; }
+  .prose-page > header h1 { font-size: 25px; }
+  .cookie-banner > div { flex-direction: column; align-items: stretch; }
+  .cookie-banner .cookie-actions button { flex: 1; }
+}
+
+/* ---------- ADMIN PANEL: a flat grouped surface, not a floating card ---------- */
+.admin-panel {
+  border: 1px solid var(--product-ink);
+  background: var(--product-white);
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+
+.admin-panel > h2,
+.admin-panel > h3 {
+  margin: 0 0 12px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--product-line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  color: var(--product-ink);
+}
+
+.admin-panel p { font-size: 12.5px; line-height: 1.6; color: var(--product-ink); }
+
+.admin-panel dl { margin: 0; }
+
+.admin-panel a { color: var(--product-ink); }
+
+/* A sub-block inside a panel (complimentary access, criteria summary, ...) */
+.admin-subpanel {
+  border: 1px solid var(--product-line);
+  border-left: 3px solid var(--product-amber);
+  background: var(--product-paper);
+  padding: 14px 16px;
+  margin: 12px 0;
+}
+
+.admin-subpanel.quiet { border-left-color: var(--product-line); }
+
+/* Key/value rows inside panels */
+.admin-kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--product-line);
+  font-size: 12.5px;
+}
+
+.admin-kv:last-child { border-bottom: 0; }
+
+/* ---------- ADMIN BUTTONS ---------- */
+.admin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 13px;
+  border: 1px solid var(--product-ink);
+  background: transparent;
+  color: var(--product-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.admin-btn:hover { background: var(--product-ink); color: var(--product-white); }
+
+.admin-btn.primary { background: var(--product-ink); color: var(--product-white); }
+.admin-btn.primary:hover { background: var(--product-green); border-color: var(--product-green); }
+
+.admin-btn.danger { border-color: #99443b; color: #99443b; }
+.admin-btn.danger:hover { background: #99443b; color: var(--product-white); }
+
+.admin-btn.ok { border-color: var(--product-green); color: var(--product-green); }
+.admin-btn.ok:hover { background: var(--product-green); color: var(--product-white); }
+
+/* Inline form controls inside panels use the same rectangular language as the filters */
+.admin-panel input[type="text"],
+.admin-panel input[type="email"],
+.admin-panel input[type="date"],
+.admin-panel input[type="number"],
+.admin-panel input[type="password"],
+.admin-panel select,
+.admin-panel textarea,
+.admin-subpanel input[type="text"],
+.admin-subpanel input[type="email"],
+.admin-subpanel input[type="date"],
+.admin-subpanel input[type="number"],
+.admin-subpanel select,
+.admin-subpanel textarea {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--product-ink);
+  border-radius: 0;
+  background: var(--product-white);
+  color: var(--product-ink);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.admin-panel input:focus,
+.admin-panel select:focus,
+.admin-panel textarea:focus,
+.admin-subpanel input:focus,
+.admin-subpanel select:focus,
+.admin-subpanel textarea:focus {
+  /* Same reason as .auth-field: forms.py still emits the shared INPUT class here. */
+  box-shadow: none;
+  border-color: var(--product-ink);
+  outline: 2px solid var(--product-amber);
+  outline-offset: 1px;
+}
+
+.admin-panel label,
+.admin-subpanel label {
+  display: block;
+  margin-bottom: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+}
+
+/* ---------- ADMIN MODAL (pipeline run confirmation) ---------- */
+.admin-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(18, 32, 30, .55);
+}
+
+/* product-ui.css loads after app.css, so .admin-modal-backdrop's display:flex would beat
+   Tailwind's .hidden at equal specificity and leave the dialog permanently open. */
+.admin-modal-backdrop.hidden { display: none !important; }
+
+.admin-modal {
+  width: 100%;
+  max-width: 520px;
+  border: 1px solid var(--product-ink);
+  background: var(--product-white);
+  padding: 22px 24px;
+}
+
+.admin-modal h2,
+.admin-modal h3 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--product-ink);
+}
+
+.admin-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--product-line);
+}
+
+/* ---------- ADMIN PAGE HEAD ACTION ROW ---------- */
+.admin-headrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--product-line);
+  margin-bottom: 4px;
+}
+
+.admin-headrow .admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}

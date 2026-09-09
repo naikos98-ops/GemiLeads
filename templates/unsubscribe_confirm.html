@@ -2,26 +2,21 @@
 {% block title %}Επιβεβαίωση απεγγραφής · Gemi Leads{% endblock %}
 {% block robots %}noindex, nofollow{% endblock %}
 {% block content %}
-<section class="flex min-h-screen items-center justify-center bg-sand-50 px-5 py-12">
-  <div class="w-full max-w-md rounded-card border border-navy-900/10 bg-white p-8 text-center shadow-soft">
-    <div class="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-sand-100 text-3xl">
-      ✉️
-    </div>
-    <h1 class="text-2xl font-extrabold">Απεγγραφή από τα emails</h1>
-    <p class="mt-4 text-sm text-navy-700/60">
-      Πατήστε το κουμπί για να αφαιρέσετε τη διεύθυνση
-      <span class="font-bold text-navy-900">{{ email }}</span>
-      από τη λίστα μας. Δεν θα λαμβάνετε άλλα ενημερωτικά emails από το Gemi Leads.
-    </p>
-    <form method="post" class="mt-8">
-      {% csrf_token %}
-      <button type="submit" class="w-full rounded-full bg-blue-600 px-8 py-3.5 font-bold text-white transition hover:bg-blue-700">
-        Επιβεβαίωση απεγγραφής
-      </button>
-    </form>
-    <a href="{% url 'home' %}" class="mt-4 inline-block text-sm font-bold text-navy-700/50 hover:text-navy-900">
-      Άκυρο
-    </a>
+<div class="auth-shell">
+  <div class="auth-head">
+    <p class="product-eyebrow">ΕΠΙΚΟΙΝΩΝΙΑ</p>
+    <h1>Απεγγραφή από τα email</h1>
   </div>
-</section>
+  <div class="auth-notice">
+    <b>Επιβεβαίωση</b>
+    Πάτησε το κουμπί για να αφαιρέσεις τη διεύθυνση
+    <b style="display:inline;font-family:inherit;font-size:inherit;letter-spacing:0;text-transform:none;">{{ email }}</b>
+    από τη λίστα μας. Δεν θα λαμβάνεις άλλα ενημερωτικά email από το Gemi Leads.
+  </div>
+  <form method="post" class="auth-actions">
+    {% csrf_token %}
+    <button type="submit" class="product-ink-button">ΕΠΙΒΕΒΑΙΩΣΗ ΑΠΕΓΓΡΑΦΗΣ</button>
+  </form>
+  <p class="auth-links"><a href="{% url 'home' %}">Άκυρο</a></p>
+</div>
 {% endblock %}

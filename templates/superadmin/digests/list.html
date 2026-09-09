@@ -4,18 +4,17 @@
 {% block page_title %}Email Digest Deliveries{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div>
   <!-- Filters Bar -->
-  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-    <form method="get" class="grid gap-4 md:grid-cols-3">
+  <form method="get" class="admin-filters">
       <div>
-        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Search User Email</label>
-        <input type="text" name="q" value="{{ search }}" placeholder="Email..." class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+        <label>Search User Email</label>
+        <input type="text" name="q" value="{{ search }}" placeholder="Email...">
       </div>
 
       <div>
-        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Delivery Status</label>
-        <select name="status" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+        <label>Delivery Status</label>
+        <select name="status">
           <option value="">Όλα τα Statuses</option>
           <option value="sent" {% if status_filter == 'sent' %}selected{% endif %}>Sent (Εστάλη)</option>
           <option value="skipped" {% if status_filter == 'skipped' %}selected{% endif %}>Skipped (Προσπεράστηκε)</option>
@@ -23,62 +22,61 @@
         </select>
       </div>
 
-      <div class="flex items-end gap-2">
-        <button class="flex-1 rounded-xl bg-navy-950 px-4 py-2.5 font-bold text-white text-sm hover:bg-navy-800 transition">Φιλτράρισμα</button>
-        <a href="{% url 'superadmin:digest_list' %}" class="rounded-xl border border-navy-900/10 px-4 py-2.5 font-bold text-sm hover:bg-sand-100 transition">Καθαρισμός</a>
+      <div style="display:flex;gap:7px;">
+        <button type="submit" class="product-ink-button">Φιλτράρισμα</button>
+        <a class="product-text-button" href="{% url 'superadmin:digest_list' %}">Καθαρισμός</a>
       </div>
     </form>
   </div>
 
   <!-- Deliveries Table -->
-  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-    <div class="overflow-x-auto">
-      <table class="w-full text-left text-sm">
-        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+  <div class="admin-scroll">
+      <table class="admin-register">
+        <thead>
           <tr>
-            <th class="p-3">Recipient User</th>
-            <th class="p-3">Digest Date</th>
-            <th class="p-3">Frequency</th>
-            <th class="p-3">Status</th>
-            <th class="p-3 text-center">Company Count</th>
-            <th class="p-3">Sent At</th>
-            <th class="p-3">Engagement (Brevo)</th>
-            <th class="p-3">Details / Error</th>
-            <th class="p-3 text-right">Actions</th>
+            <th>Recipient User</th>
+            <th>Digest Date</th>
+            <th>Frequency</th>
+            <th>Status</th>
+            <th>Company Count</th>
+            <th>Sent At</th>
+            <th>Engagement (Brevo)</th>
+            <th>Details / Error</th>
+            <th>Actions</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-navy-900/5">
+        <tbody>
           {% for d in page_obj %}
-          <tr class="hover:bg-sand-50/50 transition">
-            <td class="p-3 font-bold text-navy-950">{{ d.user.email }}</td>
-            <td class="p-3 font-bold text-navy-950">{{ d.digest_date }}</td>
-            <td class="p-3 text-xs font-bold uppercase text-navy-700/70">{{ d.frequency }}</td>
-            <td class="p-3">
-              <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-bold {% if d.status == 'sent' %}bg-emerald-50 text-emerald-700{% elif d.status == 'failed' %}bg-red-50 text-red-700{% else %}bg-sand-100 text-navy-700/60{% endif %}">
+          <tr>
+            <td>{{ d.user.email }}</td>
+            <td>{{ d.digest_date }}</td>
+            <td>{{ d.frequency }}</td>
+            <td>
+              <span class="admin-tag {% if d.status == 'sent' %}on{% elif d.status == 'failed' %}off{% else %}{% endif %}">
                 {{ d.status }}
               </span>
             </td>
-            <td class="p-3 text-center font-bold">{{ d.company_count }}</td>
-            <td class="p-3 text-xs text-navy-700/70">{{ d.sent_at|date:"d/m/Y H:i:s" }}</td>
-            <td class="p-3 text-xs">
+            <td>{{ d.company_count }}</td>
+            <td>{{ d.sent_at|date:"d/m/Y H:i:s" }}</td>
+            <td>
               {% if d.status == 'sent' %}
               <div class="flex flex-wrap gap-1.5">
-                <span class="inline-block rounded-full bg-blue-50 px-2 py-0.5 font-bold text-blue-700" title="Delivered">📬 {{ d.engagement.delivered|default:0 }}</span>
-                <span class="inline-block rounded-full bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700" title="Opened">👀 {{ d.engagement.opened|default:0 }}</span>
-                <span class="inline-block rounded-full bg-purple-50 px-2 py-0.5 font-bold text-purple-700" title="Clicked">🖱️ {{ d.engagement.clicked|default:0 }}</span>
+                <span class="admin-tag warn" title="Delivered">📬 {{ d.engagement.delivered|default:0 }}</span>
+                <span class="admin-tag on" title="Opened">👀 {{ d.engagement.opened|default:0 }}</span>
+                <span class="admin-tag warn" title="Clicked">🖱️ {{ d.engagement.clicked|default:0 }}</span>
                 {% if d.engagement.unsubscribed %}
-                <span class="inline-block rounded-full bg-red-50 px-2 py-0.5 font-bold text-red-700" title="Unsubscribed">🚫 {{ d.engagement.unsubscribed }}</span>
+                <span class="admin-tag off" title="Unsubscribed">🚫 {{ d.engagement.unsubscribed }}</span>
                 {% endif %}
                 {% if d.engagement.bounced %}
-                <span class="inline-block rounded-full bg-amber-50 px-2 py-0.5 font-bold text-amber-700" title="Bounced">⚠️ {{ d.engagement.bounced }}</span>
+                <span class="admin-tag warn" title="Bounced">⚠️ {{ d.engagement.bounced }}</span>
                 {% endif %}
               </div>
               {% else %}
               <span class="text-navy-700/30">—</span>
               {% endif %}
             </td>
-            <td class="p-3 text-xs text-navy-700/60 font-mono">{{ d.error_message|default:"—" }}</td>
-            <td class="p-3 text-right">
+            <td class="mono">{{ d.error_message|default:"—" }}</td>
+            <td>
               {% if d.status == 'failed' %}
               <form action="{% url 'superadmin:digest_retry' d.id %}" method="post" class="inline">
                 {% csrf_token %}
@@ -90,7 +88,7 @@
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="9" class="p-8 text-center text-navy-700/50">Δεν βρέθηκαν εγγραφές αποστολής digest.</td></tr>
+          <tr><td class="empty" colspan="9">Δεν βρέθηκαν εγγραφές αποστολής digest.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -98,14 +96,14 @@
 
     <!-- Pagination -->
     {% if page_obj.has_other_pages %}
-    <div class="mt-6 flex items-center justify-between border-t border-navy-900/5 pt-4 text-xs font-bold text-navy-700/60">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;">
       <span>Σελίδα {{ page_obj.number }} από {{ page_obj.paginator.num_pages }}</span>
-      <div class="flex gap-2">
+      <span style="display:flex;gap:7px;">
         {% if page_obj.has_previous %}
-        <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&status={{ status_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
+        <a class="admin-tag" href="?page={{ page_obj.previous_page_number }}&q={{ search }}&status={{ status_filter }}">← Προηγούμενη</a>
         {% endif %}
         {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&status={{ status_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
+        <a class="admin-tag" href="?page={{ page_obj.next_page_number }}&q={{ search }}&status={{ status_filter }}">Επόμενη →</a>
         {% endif %}
       </div>
     </div>

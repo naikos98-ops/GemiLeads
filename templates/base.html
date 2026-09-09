@@ -68,11 +68,11 @@
 </head>
 <body class="min-h-screen font-sans antialiased{% if user.is_authenticated %} product-body{% else %} public-body{% endif %}">
   {% if request.session.impersonator_id %}
-  <div class="bg-amber-500 text-navy-950 px-4 py-2.5 text-center text-sm font-bold flex items-center justify-center gap-4 z-[100] relative shadow-md">
+  <div class="admin-impersonation">
     <span>SUPERADMIN IMPERSONATION — Προβολή ως <strong>{{ user.email }}</strong></span>
     <form action="{% url 'superadmin:impersonate_stop' %}" method="post" class="inline">
       {% csrf_token %}
-      <button class="rounded-full bg-navy-950 px-4 py-2 text-xs text-white hover:bg-navy-800 transition font-bold">Έξοδος Impersonation</button>
+      <button class="product-ink-button">ΕΞΟΔΟΣ IMPERSONATION</button>
     </form>
   </div>
   {% endif %}
@@ -136,7 +136,7 @@
     <a href="{% url 'signup' %}" data-menu-cta class="public-menu-cta">ΞΕΚΙΝΑ ΤΩΡΑ →</a>
   </div>
   {% endif %}
-  {% if messages %}<div class="fixed right-5 top-24 z-50 space-y-2">{% for message in messages %}<div data-toast class="rounded-control bg-navy-900 px-5 py-4 text-sm text-white shadow-soft">{{ message }}</div>{% endfor %}</div>{% endif %}
+  {% if messages %}<div class="fixed right-5 top-24 z-50 space-y-2">{% for message in messages %}<div data-toast class="ledger-toast">{{ message }}</div>{% endfor %}</div>{% endif %}
   <main class="{% if user.is_authenticated %}product-main{% else %}public-main{% endif %}">{% block content %}{% endblock %}</main>
   {% if not user.is_authenticated %}
   <footer class="public-footer">

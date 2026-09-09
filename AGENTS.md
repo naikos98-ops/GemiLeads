@@ -43,7 +43,60 @@
 
 Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 
+## Το ΕΓΚΥΡΟ design system (διάβασέ το πριν αγγίξεις UI)
+
+> **`static/css/product-ui.css` μαζί με τις αποδοθείσες οθόνες του Signal Ledger είναι το
+> αυθεντικό design system του προϊόντος.** Κάθε νέα ή τροποποιημένη επιφάνεια — authenticated,
+> public ή admin — πρέπει να χτίζεται από τα primitives αυτού του αρχείου.
+
+Τα τρία scoped layers του `product-ui.css`:
+
+| Scope | Επιφάνειες | Primitives |
+|---|---|---|
+| `body.product-body` | Signals, Radars, Leads, Dossier, Settings | `.product-rail`, `.product-signal`, `.product-radar-row`, `.product-ink-button`, … |
+| `body.public-body` | Landing, Pricing, auth, legal | `.public-topbar`, `.public-plan-row`, `.auth-field`, `.prose-page`, … |
+| `body.admin-body` | Superadmin | `.admin-rail`, `.admin-register`, `.admin-panel`, `.admin-tag`, `.admin-btn`, … |
+
+Tokens (μία πηγή): `--product-ink #12201e`, `--product-paper #f3f2ec`, `--product-white #fbfbf7`,
+`--product-amber #e6a029`, `--product-green #295c4c`, `--product-line`, `--product-muted`.
+
+### ΜΗ ΕΓΚΥΡΑ (legacy) primitives
+
+Τα παρακάτω ανήκουν στο **παλιό, μη εγκεκριμένο** SaaS σύστημα και **δεν** αποτελούν πηγή
+αλήθειας για UI του προϊόντος:
+
+- `rounded-card`, `rounded-chip`, `shadow-glow` — **αφαιρέθηκαν** από το `tailwind.config.js`.
+  Αν τα γράψεις, δεν παράγονται καν από το Tailwind.
+- `shadow-soft`, `rounded-control`, `rounded-panel` — παραμένουν **μόνο** για το
+  `includes/kad_picker.html` και το `static/js/app.js`. Μην τα χρησιμοποιείς αλλού.
+- `bg-signal` / `text-signal` / μπλε CTA, generic stat cards, floating auth cards,
+  rounded-full κουμπιά: **μην τα εισάγεις ξανά.**
+- Το `static/src/input.css` και οι generic Tailwind utilities **δεν** είναι το design system.
+  Προηγούμενοι agents το συμπέραναν από εκεί και επανέφεραν το παλιό look.
+
+Η μόνη επιφάνεια που κρατά legacy classes σκόπιμα είναι το `includes/kad_picker.html`, επειδή
+αποδίδεται μέσα στις **εγκεκριμένες** οθόνες Signals και Radar-form.
+
 ## Τρέχουσα κατάσταση
+
+- **Final consolidation pass — όλες οι υπόλοιπες επιφάνειες (2026-09-10).** Μεταφέρθηκαν στο
+  Signal Ledger system και οι 24 εναπομείνασες σελίδες: 11 Superadmin subpages
+  (Subscriptions, Radars, Leads, GEMI Pipeline, Email Digests, System Health, Audit Log,
+  Accounts, User/Radar/Lead detail), 8 auth/account σελίδες (Login, Signup, password reset ×4,
+  resend verification, verify pending), οι 2 legal σελίδες, τα unsubscribe/resume-checkout και
+  το cookie consent banner. Προστέθηκαν τα `.auth-*`, `.prose-page`, `.cookie-banner`,
+  `.admin-panel`, `.admin-btn`, `.admin-modal` primitives στο `product-ui.css`.
+  - Οι μεταφορές έγιναν με transformers που **επαληθεύουν** ότι το ορατό κείμενο και η
+    ακολουθία των Django tags μένουν ίδια (`.recovery/migrate_admin*.py`), ώστε να μην αλλάξει
+    καμία λογική, καμία διεύθυνση και κανένα νομικό κείμενο.
+  - Έλεγχος διαδρομών: `.recovery/route_audit.py` κάνει GET σε κάθε προσβάσιμη σελίδα και
+    ελέγχει status, διαρροή template source, legacy classes και σύνδεση του `product-ui.css`.
+    **ALL ROUTES CLEAN.**
+  - Εκκρεμότητα προς γνώση: τα `.h-18` / `.pt-18` παράγονται πλέον μόνο επειδή το
+    `gemiapp/**/*.py` είναι στα content globs του Tailwind και το ίδιο το `tests.py` τα
+    αναφέρει (`test_the_nav_height_class_is_generated`). Κανένα template δεν τα χρησιμοποιεί.
+  - `check`, `makemigrations --check`, `build:css`, `collectstatic` καθαρά· **646 tests OK**.
+    Καμία εντολή deployment δεν εκτελέστηκε.
 
 - **Forensic recovery & visual system consolidation (2026-09-09).** Εντοπίστηκε ότι το εγκεκριμένο
   Signal Ledger UI (`static/css/product-ui.css` + τα authenticated templates) **δεν υπήρχε καθόλου στο

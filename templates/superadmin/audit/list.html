@@ -4,44 +4,43 @@
 {% block page_title %}Administrative Audit Logs{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div>
   <!-- Search Bar -->
-  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
+  <div class="admin-panel">
     <form method="get" class="flex gap-4">
-      <input type="text" name="q" value="{{ search }}" placeholder="Search action, admin email, target..." class="flex-1 rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
-      <button class="rounded-xl bg-navy-950 px-6 py-2.5 font-bold text-white text-sm hover:bg-navy-800 transition">Αναζήτηση</button>
-      <a href="{% url 'superadmin:audit_list' %}" class="rounded-xl border border-navy-900/10 px-4 py-2.5 font-bold text-sm hover:bg-sand-100 transition flex items-center">Καθαρισμός</a>
+      <input type="text" name="q" value="{{ search }}" placeholder="Search action, admin email, target...">
+      <button type="submit" class="product-ink-button">Αναζήτηση</button>
+      <a class="product-text-button" href="{% url 'superadmin:audit_list' %}">Καθαρισμός</a>
     </form>
   </div>
 
   <!-- Audit Table -->
-  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-    <div class="overflow-x-auto">
-      <table class="w-full text-left text-sm">
-        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+  <div class="admin-scroll">
+      <table class="admin-register">
+        <thead>
           <tr>
-            <th class="p-3">Timestamp</th>
-            <th class="p-3">Admin User</th>
-            <th class="p-3">Action</th>
-            <th class="p-3">Target Type / ID</th>
-            <th class="p-3">Target Representation</th>
-            <th class="p-3">Metadata JSON</th>
+            <th>Timestamp</th>
+            <th>Admin User</th>
+            <th>Action</th>
+            <th>Target Type / ID</th>
+            <th>Target Representation</th>
+            <th>Metadata JSON</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-navy-900/5">
+        <tbody>
           {% for a in page_obj %}
-          <tr class="hover:bg-sand-50/50 transition">
-            <td class="p-3 text-xs font-mono font-bold text-navy-950">{{ a.timestamp|date:"d/m/Y H:i:s" }}</td>
-            <td class="p-3 font-bold text-navy-950">{{ a.admin_user.email|default:"System" }}</td>
-            <td class="p-3">
-              <span class="inline-block rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700">{{ a.action }}</span>
+          <tr>
+            <td class="mono">{{ a.timestamp|date:"d/m/Y H:i:s" }}</td>
+            <td>{{ a.admin_user.email|default:"System" }}</td>
+            <td>
+              <span class="admin-tag warn">{{ a.action }}</span>
             </td>
-            <td class="p-3 text-xs text-navy-700/70">{{ a.target_type }} #{{ a.target_id }}</td>
-            <td class="p-3 font-bold text-navy-950 text-xs">{{ a.target_repr }}</td>
-            <td class="p-3 text-[11px] font-mono text-navy-700/60 max-w-xs truncate">{{ a.metadata }}</td>
+            <td>{{ a.target_type }} #{{ a.target_id }}</td>
+            <td>{{ a.target_repr }}</td>
+            <td class="mono">{{ a.metadata }}</td>
           </tr>
           {% empty %}
-          <tr><td colspan="6" class="p-8 text-center text-navy-700/50">Δεν υπάρχουν εγγραφές audit log.</td></tr>
+          <tr><td class="empty" colspan="6">Δεν υπάρχουν εγγραφές audit log.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -49,14 +48,14 @@
 
     <!-- Pagination -->
     {% if page_obj.has_other_pages %}
-    <div class="mt-6 flex items-center justify-between border-t border-navy-900/5 pt-4 text-xs font-bold text-navy-700/60">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;">
       <span>Σελίδα {{ page_obj.number }} από {{ page_obj.paginator.num_pages }}</span>
-      <div class="flex gap-2">
+      <span style="display:flex;gap:7px;">
         {% if page_obj.has_previous %}
-        <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
+        <a class="admin-tag" href="?page={{ page_obj.previous_page_number }}&q={{ search }}">← Προηγούμενη</a>
         {% endif %}
         {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}&q={{ search }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
+        <a class="admin-tag" href="?page={{ page_obj.next_page_number }}&q={{ search }}">Επόμενη →</a>
         {% endif %}
       </div>
     </div>
