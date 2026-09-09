@@ -1381,3 +1381,1066 @@ body.product-body {
     text-overflow: ellipsis;
   }
 }
+
+/* ============================================================================
+   PUBLIC & ADMIN SURFACES — Signal Ledger extended outward
+   ----------------------------------------------------------------------------
+   Everything below reuses the SAME tokens and the SAME primitives as the
+   authenticated product (--product-ink / --product-paper / --product-amber,
+   .product-signal, .product-radar-row, .product-ink-button, .product-eyebrow).
+   It is scoped to body.public-body / body.admin-body so nothing here can reach
+   the approved authenticated screens, which stay visually identical.
+   ========================================================================== */
+
+body.public-body,
+body.admin-body {
+  margin: 0;
+  background-color: var(--product-paper) !important;
+  color: var(--product-ink) !important;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+}
+
+body.public-body .font-mono,
+body.admin-body .font-mono,
+body.public-body .mono-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+}
+
+/* ---------- PUBLIC HEADER: same brand family as .product-topbar ---------- */
+.public-topbar {
+  position: fixed;
+  z-index: 40;
+  top: 0; left: 0; right: 0;
+  height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--product-ink);
+  background: var(--product-white);
+}
+
+.public-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--product-ink);
+  text-decoration: none;
+  font-size: 13px;
+  letter-spacing: .08em;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.public-brand b { font-weight: 800; }
+
+.public-brand small {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  background: var(--product-amber-soft);
+  color: #775215;
+  border-radius: 2px;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.public-nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-left: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .07em;
+}
+
+.public-nav a {
+  color: var(--product-muted);
+  text-decoration: none;
+  padding: 4px 0;
+  border-bottom: 1px solid transparent;
+}
+
+.public-nav a:hover,
+.public-nav a:focus-visible {
+  color: var(--product-ink);
+  border-bottom-color: var(--product-amber);
+}
+
+.public-nav a.is-current {
+  color: var(--product-ink);
+  border-bottom-color: var(--product-amber);
+}
+
+.public-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 20px;
+  border-left: 1px solid var(--product-line);
+}
+
+.public-menu-toggle {
+  display: none;
+  margin-left: auto;
+  padding: 7px 9px;
+  border: 1px solid var(--product-ink);
+  background: transparent;
+  color: var(--product-ink);
+  cursor: pointer;
+}
+
+.public-menu {
+  position: fixed;
+  z-index: 39;
+  top: 58px; left: 0; right: 0;
+  border-bottom: 1px solid var(--product-ink);
+  background: var(--product-white);
+  padding: 6px 0 14px;
+}
+
+.public-menu a {
+  display: block;
+  min-height: 44px;
+  line-height: 44px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--product-line);
+  color: var(--product-ink);
+  text-decoration: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+}
+
+.public-menu a:last-child { border-bottom: 0; }
+
+.public-menu .public-menu-cta {
+  margin: 12px 22px 0;
+  padding: 0;
+  text-align: center;
+  background: var(--product-ink);
+  color: var(--product-white);
+  border-bottom: 0;
+}
+
+/* ---------- PUBLIC PAGE SHELL ---------- */
+.public-main { padding-top: 58px; }
+
+.public-section { border-bottom: 1px solid var(--product-ink); }
+
+.public-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+.public-section-head { padding: 34px 0 18px; }
+
+.public-section-head h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  color: var(--product-ink);
+}
+
+.public-section-head p {
+  margin: 8px 0 0;
+  max-width: 62ch;
+  font-size: 13px;
+  color: var(--product-muted);
+  line-height: 1.6;
+}
+
+/* ---------- HERO ---------- */
+.public-hero { padding: 46px 0 0; }
+
+.public-hero h1 {
+  margin: 0;
+  max-width: 20ch;
+  font-size: 44px;
+  line-height: 1.06;
+  letter-spacing: -.035em;
+  font-weight: 700;
+  color: var(--product-ink);
+}
+
+.public-hero-copy {
+  margin: 16px 0 0;
+  max-width: 58ch;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--product-muted);
+}
+
+.public-hero-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin: 26px 0 0;
+}
+
+/* Structural metadata — factual labels only, never invented metrics */
+.public-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 34px 0 0;
+  border-top: 1px solid var(--product-ink);
+  border-bottom: 1px solid var(--product-ink);
+}
+
+.public-meta > div {
+  padding: 14px 20px 16px;
+  border-right: 1px solid var(--product-line);
+}
+
+.public-meta > div:last-child { border-right: 0; }
+
+.public-meta span {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  color: var(--product-muted);
+  text-transform: uppercase;
+}
+
+.public-meta b {
+  display: block;
+  margin-top: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--product-ink);
+}
+
+/* ---------- PUBLIC INTAKE REGISTER (reuses .product-signal) ---------- */
+.public-intake {
+  border: 1px solid var(--product-ink);
+  background: var(--product-paper);
+  margin: 30px 0 40px;
+}
+
+.public-intake > header {
+  height: 44px;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--product-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  color: var(--product-muted);
+  text-transform: uppercase;
+}
+
+.public-intake > header b { color: var(--product-ink); }
+
+.public-intake .product-signal:last-child { border-bottom: 0; }
+
+/* ---------- PRODUCT MODEL CHAIN (scaled .product-flow grammar) ---------- */
+.public-chain {
+  display: flex;
+  align-items: stretch;
+  border-top: 1px solid var(--product-ink);
+}
+
+.public-chain > div {
+  flex: 1;
+  min-width: 0;
+  padding: 18px 20px 22px;
+  border-right: 1px solid var(--product-line);
+}
+
+.public-chain > div:last-child { border-right: 0; }
+
+.public-chain i {
+  display: block;
+  width: 26px;
+  height: 3px;
+  margin-bottom: 10px;
+  background: var(--product-amber);
+}
+
+.public-chain span {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  color: var(--product-muted);
+}
+
+.public-chain b {
+  display: block;
+  margin: 6px 0 5px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--product-ink);
+}
+
+.public-chain p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--product-muted);
+}
+
+/* ---------- FACT LIST (audience, faq, dossier preview) ---------- */
+.public-list { border-top: 1px solid var(--product-ink); }
+
+.public-list > div {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--product-line);
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+.public-list > div > b {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .09em;
+  color: var(--product-muted);
+  text-transform: uppercase;
+  line-height: 1.6;
+}
+
+.public-list > div > p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--product-ink);
+}
+
+/* ---------- NOTICE (beta / billing truth) ---------- */
+.public-notice {
+  padding: 14px 18px;
+  border: 1px solid var(--product-ink);
+  border-left: 3px solid var(--product-amber);
+  background: var(--product-white);
+}
+
+.public-notice b {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--product-ink);
+}
+
+.public-notice p {
+  margin: 5px 0 0;
+  max-width: 88ch;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--product-muted);
+}
+
+/* ---------- PRICING REGISTER (derived from .product-radar-register) ---------- */
+.public-plan-register { padding: 0 0 46px; }
+
+.public-plan-register > header,
+.public-plan-row {
+  display: grid;
+  grid-template-columns: 1.05fr 1.5fr .62fr .62fr 205px;
+  gap: 22px;
+}
+
+.public-plan-register > header {
+  padding: 14px 13px;
+  border-bottom: 1px solid var(--product-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--product-muted);
+  text-transform: uppercase;
+  letter-spacing: .09em;
+}
+
+.public-plan-row {
+  padding: 22px 13px;
+  border-bottom: 1px solid var(--product-ink);
+  align-items: start;
+}
+
+.public-plan-row.featured {
+  background: var(--product-white);
+  box-shadow: inset 3px 0 var(--product-amber);
+}
+
+.public-plan-row h2 {
+  margin: 7px 0 4px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--product-ink);
+}
+
+.public-plan-row .plan-state {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--product-muted);
+  text-transform: uppercase;
+}
+
+.public-plan-row .plan-state.on { color: var(--product-green); }
+
+.public-plan-row ul { margin: 0; padding: 0; list-style: none; }
+
+.public-plan-row ul li {
+  position: relative;
+  margin: 0 0 5px;
+  padding-left: 14px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--product-ink);
+}
+
+.public-plan-row ul li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  width: 6px;
+  height: 1px;
+  background: var(--product-state-rule);
+}
+
+.public-plan-row .plan-price strong,
+.public-plan-row .plan-radars strong {
+  display: block;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--product-ink);
+  line-height: 1.1;
+}
+
+.public-plan-row .plan-price span,
+.public-plan-row .plan-radars span {
+  font-size: 10px;
+  color: var(--product-muted);
+}
+
+.public-plan-row .plan-action {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.public-plan-row .plan-action .plan-note {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  line-height: 1.5;
+  color: var(--product-muted);
+}
+
+.public-plan-row .plan-action a.outline {
+  padding: 9px 12px;
+  border: 1px solid var(--product-ink);
+  background: transparent;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  color: var(--product-ink);
+  text-decoration: none;
+  text-align: center;
+}
+
+.public-plan-row .plan-action a.outline:hover {
+  background: var(--product-ink);
+  color: var(--product-white);
+}
+
+/* ---------- PUBLIC FOOTER ---------- */
+.public-footer {
+  padding: 26px 0 34px;
+  background: var(--product-white);
+}
+
+.public-footer .public-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 30px;
+  justify-content: space-between;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9.5px;
+  color: var(--product-muted);
+  line-height: 1.7;
+}
+
+.public-footer a {
+  color: var(--product-muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.public-footer a:hover { color: var(--product-ink); }
+
+/* ---------- FOCUS VISIBILITY (shared, all surfaces) ---------- */
+body.public-body a:focus-visible,
+body.public-body button:focus-visible,
+body.admin-body a:focus-visible,
+body.admin-body button:focus-visible,
+body.admin-body select:focus-visible,
+body.admin-body input:focus-visible {
+  outline: 2px solid var(--product-amber);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+   PUBLIC RESPONSIVE
+   ========================================================================== */
+@media (max-width: 900px) {
+  .public-nav,
+  .public-actions { display: none; }
+
+  .public-menu-toggle { display: block; }
+
+  .public-hero { padding: 30px 0 0; }
+  .public-hero h1 { font-size: 32px; max-width: none; }
+  .public-hero-copy { font-size: 14px; }
+
+  .public-meta { grid-template-columns: 1fr; }
+
+  .public-meta > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--product-line);
+  }
+
+  .public-meta > div:last-child { border-bottom: 0; }
+
+  .public-chain { display: block; }
+
+  .public-chain > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--product-line);
+  }
+
+  .public-chain > div:last-child { border-bottom: 0; }
+
+  .public-list > div { grid-template-columns: 1fr; gap: 6px; }
+
+  /* Pricing becomes a structured vertical record, not a SaaS card */
+  .public-plan-register > header { display: none; }
+
+  .public-plan-row {
+    display: block;
+    padding: 20px 0;
+  }
+
+  .public-plan-row > div { margin-bottom: 14px; }
+  .public-plan-row > div:last-child { margin-bottom: 0; }
+
+  .public-plan-row .plan-price,
+  .public-plan-row .plan-radars {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--product-line);
+  }
+
+  .public-plan-row .plan-price strong,
+  .public-plan-row .plan-radars strong { font-size: 21px; }
+
+  .public-plan-row .plan-action { padding-top: 4px; }
+}
+
+@media (max-width: 460px) {
+  .public-inner { padding: 0 18px; }
+  .public-hero h1 { font-size: 27px; }
+  .public-topbar { padding: 0 18px; }
+}
+
+/* ============================================================================
+   SUPERADMIN — the same product, at higher operational density
+   ----------------------------------------------------------------------------
+   The admin rail is the .product-rail component with one extra level of
+   grouping and a slightly wider measure. Same canvas, same ink rule, same mono
+   eyebrows, same inset-amber active state. "Operations Ledger" describes the
+   information architecture here, not a second visual identity.
+   ========================================================================== */
+
+:root { --admin-rail-width: 218px; }
+
+/* Admin topbar reuses .product-topbar's proportions, with a rail-width column */
+.admin-topbar {
+  height: 58px;
+  position: fixed;
+  z-index: 40;
+  top: 0; left: 0; right: 0;
+  display: grid;
+  grid-template-columns: var(--admin-rail-width) 1fr auto;
+  align-items: center;
+  border-bottom: 1px solid var(--product-ink);
+  background: var(--product-white);
+}
+
+.admin-brand {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 17px;
+  border-right: 1px solid var(--product-ink);
+  color: var(--product-ink);
+  text-decoration: none;
+  font-size: 13px;
+  letter-spacing: .08em;
+  font-weight: 600;
+}
+
+.admin-brand b { font-weight: 800; }
+
+.admin-brand small {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  background: var(--product-ink);
+  color: var(--product-white);
+  border-radius: 2px;
+  letter-spacing: .05em;
+}
+
+.admin-topbar-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding-left: 22px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--product-muted);
+}
+
+.admin-topbar-meta b {
+  color: var(--product-ink);
+  font-weight: 700;
+  letter-spacing: .11em;
+}
+
+.admin-topbar-meta > span + span {
+  border-left: 1px solid var(--product-line);
+  padding-left: 16px;
+}
+
+.admin-account {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border-left: 1px solid var(--product-ink);
+  padding: 0 22px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--product-ink);
+}
+
+.admin-account a { color: var(--product-muted); text-decoration: none; }
+.admin-account a:hover { color: var(--product-ink); }
+
+/* ---------- ADMIN RAIL ---------- */
+.admin-rail {
+  position: fixed;
+  z-index: 30;
+  left: 0;
+  top: 58px;
+  bottom: 0;
+  width: var(--admin-rail-width);
+  border-right: 1px solid var(--product-ink);
+  background: var(--product-white);
+  overflow-y: auto;
+}
+
+.admin-rail-group { border-bottom: 1px solid var(--product-line); }
+
+.admin-rail-group > p {
+  margin: 0;
+  padding: 11px 15px 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: .13em;
+  color: var(--product-muted);
+  text-transform: uppercase;
+}
+
+.admin-rail a,
+.admin-rail button {
+  width: 100%;
+  min-height: 34px;
+  display: block;
+  padding: 8px 15px;
+  border: 0;
+  background: transparent;
+  color: var(--product-ink);
+  text-decoration: none;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.admin-rail a:hover,
+.admin-rail button:hover { background: var(--product-paper); }
+
+.admin-rail a[aria-current="page"] {
+  background: var(--product-ink);
+  color: var(--product-white);
+  box-shadow: inset 3px 0 var(--product-amber);
+}
+
+/* Disabled compliance entries stay readable — they are audit surfaces, not dead links */
+.admin-rail a .admin-off {
+  display: block;
+  margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  color: #99443b;
+}
+
+.admin-rail-foot {
+  border-top: 1px solid var(--product-ink);
+  padding: 12px 15px;
+}
+
+.admin-rail-foot a {
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  color: var(--product-muted);
+}
+
+.admin-rail-foot a:hover { background: transparent; color: var(--product-ink); }
+
+/* ---------- ADMIN MAIN ---------- */
+.admin-main {
+  margin-left: var(--admin-rail-width);
+  padding-top: 58px;
+  min-height: calc(100vh - 58px);
+}
+
+.admin-pagehead {
+  min-height: 84px;
+  padding: 18px 26px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 26px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--product-ink);
+  background: var(--product-paper);
+}
+
+.admin-pagehead h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  line-height: 1.1;
+  color: var(--product-ink);
+}
+
+.admin-body-inner { padding: 0 26px 46px; }
+
+/* ---------- ADMIN FACT STRIP (open facts, not KPI cards) ---------- */
+.admin-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  border-bottom: 1px solid var(--product-ink);
+  background: var(--product-white);
+}
+
+.admin-facts > div {
+  padding: 14px 20px 16px;
+  border-right: 1px solid var(--product-line);
+}
+
+.admin-facts > div:last-child { border-right: 0; }
+
+.admin-facts span {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .11em;
+  color: var(--product-muted);
+  text-transform: uppercase;
+}
+
+.admin-facts b {
+  display: block;
+  margin-top: 5px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--product-ink);
+  line-height: 1.1;
+}
+
+.admin-facts small {
+  display: block;
+  margin-top: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  color: var(--product-muted);
+}
+
+/* ---------- ADMIN SECTION ---------- */
+.admin-section { padding: 26px 0 0; }
+
+.admin-section > h2 {
+  margin: 0 0 4px;
+  font-size: 9px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--product-green);
+}
+
+.admin-section > p {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--product-muted);
+}
+
+/* ---------- ADMIN REGISTER (Leads register grammar) ---------- */
+.admin-register {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid var(--product-ink);
+}
+
+.admin-register thead th {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--product-ink);
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+  white-space: nowrap;
+}
+
+.admin-register tbody td {
+  padding: 12px;
+  border-bottom: 1px solid var(--product-line);
+  font-size: 12.5px;
+  color: var(--product-ink);
+  vertical-align: top;
+}
+
+.admin-register tbody tr:hover { background: var(--product-white); }
+
+.admin-register .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: var(--product-muted);
+}
+
+.admin-register b { font-weight: 700; }
+
+.admin-register .empty {
+  padding: 26px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--product-muted);
+}
+
+/* ---------- STATE TAGS (same restraint as the product state column) ---------- */
+.admin-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px solid var(--product-line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+  white-space: nowrap;
+}
+
+.admin-tag.on { color: var(--product-green); border-color: var(--product-green); }
+.admin-tag.warn { color: #775215; border-color: var(--product-amber); }
+.admin-tag.off { color: #99443b; border-color: #99443b; }
+
+/* ---------- FILTERS (Leads filter grammar) ---------- */
+.admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.admin-filters label {
+  display: block;
+  margin-bottom: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+}
+
+.admin-filters input[type="text"],
+.admin-filters input[type="search"],
+.admin-filters select {
+  min-height: 32px;
+  padding: 6px 9px;
+  border: 1px solid var(--product-ink);
+  border-radius: 0;
+  background: var(--product-white);
+  color: var(--product-ink);
+  font-family: inherit;
+  font-size: 12px;
+}
+
+/* ---------- COMPLIANCE BANNER ---------- */
+.admin-compliance {
+  margin: 22px 0 0;
+  border: 1px solid var(--product-ink);
+  border-left: 3px solid #99443b;
+  background: var(--product-white);
+  padding: 15px 18px;
+}
+
+.admin-compliance p:first-child {
+  margin: 0 0 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--product-ink);
+}
+
+.admin-compliance dl {
+  margin: 0 0 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+}
+
+.admin-compliance dt { color: var(--product-muted); letter-spacing: .08em; }
+.admin-compliance dd { margin: 0 0 0 6px; font-weight: 700; color: #99443b; }
+.admin-compliance dl > div { display: flex; }
+
+.admin-compliance > p:last-child {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--product-muted);
+  max-width: 92ch;
+}
+
+/* ---------- MESSAGES ---------- */
+.admin-message {
+  margin: 14px 0 0;
+  padding: 11px 15px;
+  border: 1px solid var(--product-ink);
+  border-left: 3px solid var(--product-amber);
+  background: var(--product-white);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.admin-message.error { border-left-color: #99443b; }
+.admin-message.success { border-left-color: var(--product-green); }
+
+/* ---------- IMPERSONATION BAR ---------- */
+.admin-impersonation {
+  position: relative;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: var(--product-amber);
+  color: var(--product-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+.admin-impersonation button {
+  padding: 5px 10px;
+  border: 1px solid var(--product-ink);
+  background: var(--product-ink);
+  color: var(--product-white);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ---------- ADMIN RESPONSIVE ---------- */
+.admin-rail-toggle { display: none; }
+
+@media (max-width: 1024px) {
+  .admin-topbar { grid-template-columns: auto 1fr auto; }
+  .admin-brand { border-right: 0; }
+
+  .admin-rail {
+    transform: translateX(-100%);
+    transition: transform .18s ease;
+    box-shadow: 0 0 0 100vmax rgba(18, 32, 30, 0);
+  }
+
+  .admin-rail.open { transform: translateX(0); }
+
+  .admin-main { margin-left: 0; }
+
+  .admin-rail-toggle {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 9px;
+    margin-left: 14px;
+    border: 1px solid var(--product-ink);
+    background: transparent;
+    color: var(--product-ink);
+    cursor: pointer;
+  }
+
+  .admin-topbar-meta { display: none; }
+
+  /* Registers stay readable by scrolling inside their own container */
+  .admin-scroll { overflow-x: auto; }
+  .admin-register { min-width: 720px; }
+}
+
+@media (max-width: 600px) {
+  .admin-body-inner { padding: 0 16px 40px; }
+  .admin-pagehead { padding: 14px 16px; }
+  .admin-account span { display: none; }
+}

@@ -46,18 +46,12 @@ logger = logging.getLogger(__name__)
 # landing-page hit. The shape mirrors what a subscriber actually receives — website and email are
 # deliberately absent on some rows because the registry does not publish them for every company.
 SAMPLE_LEADS = [
-    {"name": "ΝΕΑ ΕΣΤΙΑΣΗ ΙΚΕ", "kad": "56.10", "sector": "Εστιατόρια", "region": "Θεσσαλονίκη", "founded": "18/08/2026", "website": "neaestiasi.gr", "email": "info@neaestiasi.gr"},
-    {"name": "ΔΕΛΤΑ ΣΥΜΒΟΥΛΕΥΤΙΚΗ Ο.Ε.", "kad": "70.22", "sector": "Επιχειρηματικές συμβουλές", "region": "Αθήνα", "founded": "18/08/2026", "website": "", "email": "contact@delta-consulting.gr"},
-    {"name": "ΑΝΔΡΕΟΥ ΜΑΡΙΑ", "kad": "47.71", "sector": "Λιανικό ένδυσης", "region": "Πάτρα", "founded": "17/08/2026", "website": "", "email": ""},
-    {"name": "CLOUDWORKS ΜΟΝ. ΙΚΕ", "kad": "62.01", "sector": "Ανάπτυξη λογισμικού", "region": "Αθήνα", "founded": "17/08/2026", "website": "cloudworks.io", "email": "hello@cloudworks.io"},
-    {"name": "ΠΑΠΑΔΑΚΗΣ & ΣΙΑ Ε.Ε.", "kad": "43.32", "sector": "Ξυλουργικές εργασίες", "region": "Ηράκλειο", "founded": "17/08/2026", "website": "", "email": ""},
-    {"name": "ΓΑΛΑΝΟΥ ΕΛΕΝΗ", "kad": "96.02", "sector": "Κομμωτήριο", "region": "Λάρισα", "founded": "16/08/2026", "website": "", "email": "elenih.studio@gmail.com"},
-    {"name": "ΒΟΡΕΙΟ ΑΙΓΑΙΟ LOGISTICS Α.Ε.", "kad": "52.29", "sector": "Υπηρεσίες μεταφορών", "region": "Μυτιλήνη", "founded": "16/08/2026", "website": "va-logistics.gr", "email": "ops@va-logistics.gr"},
-    {"name": "ΚΑΦΕ ΤΟ ΣΤΕΚΙ ΙΚΕ", "kad": "56.30", "sector": "Καφετέριες & μπαρ", "region": "Ιωάννινα", "founded": "15/08/2026", "website": "", "email": ""},
-    {"name": "GREEN ENERGY SOLUTIONS Α.Ε.", "kad": "43.21", "sector": "Ηλεκτρολογικές εγκαταστάσεις", "region": "Αθήνα", "founded": "15/08/2026", "website": "greenenergy.gr", "email": "sales@greenenergy.gr"},
-    {"name": "ΚΩΝΣΤΑΝΤΙΝΙΔΗΣ ΓΕΩΡΓΙΟΣ", "kad": "71.11", "sector": "Αρχιτεκτονικές δραστηριότητες", "region": "Καβάλα", "founded": "14/08/2026", "website": "", "email": "gk.architects@gmail.com"},
-    {"name": "ΑΜΠΕΛΩΝΕΣ ΝΟΤΟΥ Ο.Ε.", "kad": "11.02", "sector": "Οινοποιία", "region": "Ναύπλιο", "founded": "14/08/2026", "website": "ampelonesnotou.gr", "email": ""},
-    {"name": "ΜΙΚΡΟΒΙΟΜΗΧΑΝΙΑ ΤΡΟΦΙΜΩΝ ΙΚΕ", "kad": "10.89", "sector": "Παραγωγή τροφίμων", "region": "Σέρρες", "founded": "13/08/2026", "website": "", "email": "info@mvt-foods.gr"},
+    {"name": "ΑΙΓΑΙΟ LOGISTICS ΜΟΝ. Ι.Κ.Ε.", "kad": "52.29", "sector": "Υπηρεσίες μεταφορών & logistics", "region": "Πειραιάς", "founded": "08/09/2026", "website": "aegean-logistics.demo", "email": "contact@aegean-logistics.demo"},
+    {"name": "HELLAS CLOUD & DATA LABS Α.Ε.", "kad": "62.01", "sector": "Ανάπτυξη λογισμικού & cloud", "region": "Αθήνα", "founded": "07/09/2026", "website": "hellascloud.demo", "email": "info@hellascloud.demo"},
+    {"name": "GREEN GRID SOLAR SOLUTIONS Ι.Κ.Ε.", "kad": "43.21", "sector": "Ηλεκτρολογικές εγκαταστάσεις & ΑΠΕ", "region": "Θεσσαλονίκη", "founded": "06/09/2026", "website": "greengrid.demo", "email": "contact@greengrid.demo"},
+    {"name": "KALYPSO HOSPITALITY & TRADING Ε.Ε.", "kad": "56.10", "sector": "Υπηρεσίες εστίασης & φιλοξενίας", "region": "Χανιά", "founded": "05/09/2026", "website": "kalypso.demo", "email": "info@kalypso.demo"},
+    {"name": "MINOAN FLEET TRADING Ι.Κ.Ε.", "kad": "50.20", "sector": "Θαλάσσιες μεταφορές & ναυτιλία", "region": "Ηράκλειο", "founded": "04/09/2026", "website": "minoanfleet.demo", "email": "info@minoanfleet.demo"},
+    {"name": "PONTUS MARINE TRADE Ι.Κ.Ε.", "kad": "46.90", "sector": "Μη εξειδικευμένο χονδρικό εμπόριο", "region": "Ρόδος", "founded": "03/09/2026", "website": "pontusmarine.demo", "email": "contact@pontusmarine.demo"},
 ]
 
 MAX_SELECTED_KADS = 25

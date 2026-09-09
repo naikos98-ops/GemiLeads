@@ -1,146 +1,149 @@
 {% extends 'superadmin/base.html' %}
 
-{% block title %}Ιστορικό Αποστολών · Superadmin Control Center{% endblock %}
-{% block page_title %}Ιστορικό Αποστολών (Outreach){% endblock %}
+{% block title %}Outreach History · Compliance Archive · Superadmin{% endblock %}
+{% block page_title %}Outreach History — Compliance Archive{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+{% comment %} Read-only compliance archive. There is no send, test-send, queue, retry or requeue control
+   on this page and there must not be one: cold outreach is permanently disabled and the
+   historical rows exist for audit only. Cancelled rows are the migration-0031 records. {% endcomment %}
 
-  <div class="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 text-xs text-navy-700/70">
-    Engagement (Brevo): 📬 delivered · 👀 opened · 🖱️ clicked · 🚫 unsubscribed · ⚠️ bounced.
-    Πάτα «Ανάλυση» σε μια γραμμή για να δεις σε ποιο URL έγινε κάθε click και ποιοι έκαναν
-    απεγγραφή. Αποστολές πριν την ενεργοποίηση του tracking ενδέχεται να μην έχουν πλήρη δεδομένα.
-  </div>
+<div class="admin-compliance" style="margin-top:0;">
+  <p>COMPLIANCE STATE</p>
+  <dl>
+    <div><dt>COLD OUTREACH:</dt><dd>DISABLED</dd></div>
+    <div><dt>ARCHIVE:</dt><dd>READ ONLY</dd></div>
+  </dl>
+  <p>
+    Το ιστορικό διατηρείται αποκλειστικά για έλεγχο και συμμόρφωση. Οι εγγραφές με κατάσταση
+    «Ακυρώθηκε» μεταφέρθηκαν εκεί οριστικά από τη migration του compliance shutdown και δεν
+    μπορούν να επανενεργοποιηθούν. Τα στοιχεία engagement προέρχονται από ιστορικά webhook
+    events του Brevo και δεν παράγονται πλέον νέα.
+  </p>
+</div>
 
-  <div class="flex justify-end">
-    <a href="{% url 'superadmin:client_finder' %}" class="rounded-xl border border-navy-900/10 bg-white px-4 py-2.5 text-sm font-bold text-navy-700 hover:bg-sand-100 transition">
-      ← Εύρεση Πελατών
-    </a>
-  </div>
-
-  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-    <form method="get" class="grid gap-3 md:grid-cols-5">
-      <input type="text" name="hq" value="{{ history_search }}" placeholder="Επωνυμία, ΓΕΜΗ, email..." class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
-      <select name="hstatus" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
-        <option value="">Όλα τα statuses</option>
-        <option value="sent" {% if history_status_filter == 'sent' %}selected{% endif %}>Εστάλη</option>
-        <option value="pending" {% if history_status_filter == 'pending' %}selected{% endif %}>Σε ουρά</option>
-        <option value="failed" {% if history_status_filter == 'failed' %}selected{% endif %}>Απέτυχε</option>
+<section class="admin-section">
+  <h2>ΚΡΙΤΗΡΙΑ ΑΝΑΖΗΤΗΣΗΣ</h2>
+  <form method="get" class="admin-filters">
+    <div>
+      <label for="oh-q">ΑΝΑΖΗΤΗΣΗ</label>
+      <input type="search" id="oh-q" name="hq" value="{{ history_search }}" placeholder="Επωνυμία, ΓΕΜΗ, email" style="min-width:200px;">
+    </div>
+    <div>
+      <label for="oh-status">ΚΑΤΑΣΤΑΣΗ</label>
+      <select id="oh-status" name="hstatus">
+        <option value="">Όλες</option>
+        <option value="sent" {% if history_status_filter == 'sent' %}selected{% endif %}>Εστάλη (ιστορικό)</option>
         <option value="cancelled" {% if history_status_filter == 'cancelled' %}selected{% endif %}>Ακυρώθηκε</option>
+        <option value="failed" {% if history_status_filter == 'failed' %}selected{% endif %}>Απέτυχε</option>
+        <option value="pending" {% if history_status_filter == 'pending' %}selected{% endif %}>Σε ουρά</option>
       </select>
-      <input type="text" name="hkad" value="{{ history_kad_filter }}" placeholder="ΚΑΔ π.χ. 47" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
-      <select name="sort" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+    </div>
+    <div>
+      <label for="oh-kad">ΚΑΔ</label>
+      <input type="text" id="oh-kad" name="hkad" value="{{ history_kad_filter }}" style="max-width:110px;">
+    </div>
+    <div>
+      <label for="oh-sort">ΤΑΞΙΝΟΜΗΣΗ</label>
+      <select id="oh-sort" name="sort">
         <option value="recent" {% if sort == 'recent' %}selected{% endif %}>Πιο πρόσφατα</option>
         <option value="opens" {% if sort == 'opens' %}selected{% endif %}>Περισσότερα opens</option>
         <option value="clicks" {% if sort == 'clicks' %}selected{% endif %}>Περισσότερα clicks</option>
       </select>
-      <div class="flex items-end gap-2">
-        <button class="flex-1 rounded-xl bg-navy-950 px-4 py-2.5 font-bold text-white text-sm hover:bg-navy-800 transition">Φιλτράρισμα</button>
-        <a href="{% url 'superadmin:outreach_history' %}" class="rounded-xl border border-navy-900/10 px-4 py-2.5 font-bold text-sm hover:bg-sand-100 transition">Καθαρισμός</a>
-      </div>
-    </form>
-  </div>
+    </div>
+    <div style="display:flex;gap:7px;">
+      <button type="submit" class="product-ink-button">ΦΙΛΤΡΑΡΙΣΜΑ</button>
+      <a href="{% url 'superadmin:outreach_history' %}" class="product-text-button">ΚΑΘΑΡΙΣΜΟΣ</a>
+    </div>
+  </form>
+</section>
 
-  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-    <div class="overflow-x-auto">
-      <table class="w-full text-left text-sm">
-        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
-          <tr>
-            <th class="p-3">Επιχείρηση</th>
-            <th class="p-3">Προς</th>
-            <th class="p-3">Status</th>
-            <th class="p-3">Ημερομηνία</th>
-            <th class="p-3">Engagement (Brevo)</th>
-            <th class="p-3">Λεπτομέρειες</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-navy-900/5">
-          {% for o in history_page_obj %}
-          <tr class="hover:bg-sand-50/50 transition">
-            <td class="p-3">
-              <span class="block font-bold text-navy-950">{{ o.company.name }}</span>
-              <span class="text-xs text-navy-700/50">ΓΕΜΗ: {{ o.company.gemi_number }}</span>
-            </td>
-            <td class="p-3 text-xs text-navy-700/80 font-medium">{{ o.sent_to }}</td>
-            <td class="p-3">
-              <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-bold {% if o.status == 'sent' %}bg-emerald-50 text-emerald-700{% elif o.status == 'failed' %}bg-red-50 text-red-700{% elif o.status == 'cancelled' %}bg-amber-50 text-amber-800{% else %}bg-sand-100 text-navy-700/60{% endif %}">
-                {{ o.get_status_display }}
+<section class="admin-section">
+  <h2>ΑΡΧΕΙΟ ΕΓΓΡΑΦΩΝ</h2>
+  <p>Engagement: delivered · opened · clicked · unsub · bounced (ιστορικά δεδομένα Brevo).</p>
+
+  <div class="admin-scroll">
+    <table class="admin-register">
+      <thead>
+        <tr>
+          <th>ΕΠΙΧΕΙΡΗΣΗ</th>
+          <th>ΠΡΟΣ</th>
+          <th>ΚΑΤΑΣΤΑΣΗ</th>
+          <th>ΗΜΕΡΟΜΗΝΙΑ</th>
+          <th>ENGAGEMENT</th>
+          <th>ΣΗΜΕΙΩΣΗ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in history_page_obj %}
+        <tr>
+          <td>
+            <b>{{ o.company.name }}</b>
+            <span class="mono" style="display:block;">ΓΕΜΗ {{ o.company.gemi_number }}</span>
+          </td>
+          <td class="mono">{{ o.sent_to }}</td>
+          <td>
+            {% if o.status == 'sent' %}<span class="admin-tag on">{{ o.get_status_display|upper }}</span>
+            {% elif o.status == 'cancelled' %}<span class="admin-tag off">{{ o.get_status_display|upper }}</span>
+            {% elif o.status == 'failed' %}<span class="admin-tag off">{{ o.get_status_display|upper }}</span>
+            {% else %}<span class="admin-tag warn">{{ o.get_status_display|upper }}</span>{% endif %}
+          </td>
+          <td class="mono">{{ o.created_at|date:"d/m/Y H:i" }}</td>
+          <td>
+            {% if o.status == 'sent' %}
+              <span class="mono">
+                del {{ o.engagement.delivered|default:0 }} ·
+                open {{ o.engagement.opened|default:0 }} ·
+                click {{ o.engagement.clicked|default:0 }}{% if o.engagement.unsubscribed %} ·
+                unsub {{ o.engagement.unsubscribed }}{% endif %}{% if o.engagement.bounced %} ·
+                bounce {{ o.engagement.bounced }}{% endif %}
               </span>
-            </td>
-            <td class="p-3 text-xs text-navy-700/70">{{ o.created_at|date:"d/m/Y H:i:s" }}</td>
-            <td class="p-3 text-xs">
-              {% if o.status == 'sent' %}
-              <div class="flex flex-wrap gap-1.5">
-                <span class="inline-block rounded-full bg-blue-50 px-2 py-0.5 font-bold text-blue-700" title="Delivered">📬 {{ o.engagement.delivered|default:0 }}</span>
-                <span class="inline-block rounded-full bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700" title="Opened">👀 {{ o.engagement.opened|default:0 }}</span>
-                <span class="inline-block rounded-full bg-purple-50 px-2 py-0.5 font-bold text-purple-700" title="Clicked">🖱️ {{ o.engagement.clicked|default:0 }}</span>
-                {% if o.engagement.unsubscribed %}
-                <span class="inline-block rounded-full bg-red-50 px-2 py-0.5 font-bold text-red-700" title="Unsubscribed">🚫 {{ o.engagement.unsubscribed }}</span>
-                {% endif %}
-                {% if o.engagement.bounced %}
-                <span class="inline-block rounded-full bg-amber-50 px-2 py-0.5 font-bold text-amber-700" title="Bounced">⚠️ {{ o.engagement.bounced }}</span>
-                {% endif %}
-              </div>
               {% if o.engagement_detail.clicks or o.engagement_detail.unsubscribes %}
-              <details class="mt-1.5">
-                <summary class="cursor-pointer text-[11px] font-bold text-blue-700 hover:underline">Ανάλυση ▾</summary>
-                <div class="mt-1.5 space-y-2 rounded-lg bg-sand-50 p-2">
+              <details style="margin-top:5px;">
+                <summary style="cursor:pointer;font-family:ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--product-muted);">ΑΝΑΛΥΣΗ ▾</summary>
+                <div style="margin-top:7px;padding:9px;border-left:1px solid var(--product-line);">
                   {% if o.engagement_detail.clicks %}
-                  <div>
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-navy-700/40">Clicks ανά URL</p>
-                    <ul class="mt-1 space-y-0.5">
-                      {% for c in o.engagement_detail.clicks %}
-                      <li class="flex items-baseline gap-1.5">
-                        <span class="font-bold text-purple-700">{{ c.count }}×</span>
-                        <a href="{{ c.url }}" target="_blank" rel="noopener" class="break-all font-mono text-[11px] text-navy-700/70 hover:text-blue-700 hover:underline">{{ c.url }}</a>
-                        <span class="whitespace-nowrap text-[10px] text-navy-700/40">{{ c.last_at }}</span>
-                      </li>
-                      {% endfor %}
-                    </ul>
-                  </div>
+                  <p style="margin:0 0 4px;font-family:ui-monospace,monospace;font-size:8px;letter-spacing:.1em;color:var(--product-muted);">CLICKS ΑΝΑ URL</p>
+                  <ul style="margin:0 0 8px;padding:0;list-style:none;">
+                    {% for c in o.engagement_detail.clicks %}
+                    <li class="mono" style="word-break:break-all;">{{ c.count }}× {{ c.url }} <span style="color:var(--product-muted);">{{ c.last_at }}</span></li>
+                    {% endfor %}
+                  </ul>
                   {% endif %}
                   {% if o.engagement_detail.unsubscribes %}
-                  <div>
-                    <p class="text-[10px] font-bold uppercase tracking-wider text-navy-700/40">Απεγγραφές</p>
-                    <ul class="mt-1 space-y-0.5">
-                      {% for u in o.engagement_detail.unsubscribes %}
-                      <li class="flex items-baseline gap-1.5">
-                        <span class="font-medium text-red-700">{{ u.email|default:"(χωρίς email)" }}</span>
-                        <span class="whitespace-nowrap text-[10px] text-navy-700/40">{{ u.at }}</span>
-                      </li>
-                      {% endfor %}
-                    </ul>
-                  </div>
+                  <p style="margin:0 0 4px;font-family:ui-monospace,monospace;font-size:8px;letter-spacing:.1em;color:var(--product-muted);">ΑΠΕΓΓΡΑΦΕΣ</p>
+                  <ul style="margin:0;padding:0;list-style:none;">
+                    {% for u in o.engagement_detail.unsubscribes %}
+                    <li class="mono">{{ u.email|default:"(χωρίς email)" }} <span style="color:var(--product-muted);">{{ u.at }}</span></li>
+                    {% endfor %}
+                  </ul>
                   {% endif %}
                 </div>
               </details>
               {% endif %}
-              {% else %}
-              <span class="text-navy-700/30">—</span>
-              {% endif %}
-            </td>
-            <td class="p-3 text-xs text-navy-700/60 font-mono">{{ o.error_message|default:"—" }}</td>
-          </tr>
-          {% empty %}
-          <tr><td colspan="6" class="p-8 text-center text-navy-700/50">Δεν υπάρχει ακόμη ιστορικό αποστολών.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    {% if history_page_obj.has_other_pages %}
-    <div class="mt-6 flex items-center justify-between border-t border-navy-900/5 pt-4 text-xs font-bold text-navy-700/60">
-      <span>Σελίδα {{ history_page_obj.number }} από {{ history_page_obj.paginator.num_pages }}</span>
-      <div class="flex gap-2">
-        {% if history_page_obj.has_previous %}
-        <a href="?history_page={{ history_page_obj.previous_page_number }}&hq={{ history_search }}&hstatus={{ history_status_filter }}&hkad={{ history_kad_filter }}&sort={{ sort }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
-        {% endif %}
-        {% if history_page_obj.has_next %}
-        <a href="?history_page={{ history_page_obj.next_page_number }}&hq={{ history_search }}&hstatus={{ history_status_filter }}&hkad={{ history_kad_filter }}&sort={{ sort }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
+            {% else %}
+              <span class="mono">—</span>
+            {% endif %}
+          </td>
+          <td class="mono">{{ o.error_message|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td class="empty" colspan="6">Δεν υπάρχει ιστορικό αποστολών.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
-</div>
+
+  {% if history_page_obj.has_other_pages %}
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;">
+    <span style="font-family:ui-monospace,monospace;font-size:9px;color:var(--product-muted);letter-spacing:.08em;">
+      ΣΕΛΙΔΑ {{ history_page_obj.number }} / {{ history_page_obj.paginator.num_pages }}
+    </span>
+    <span style="display:flex;gap:7px;">
+      {% if history_page_obj.has_previous %}<a class="admin-tag" href="?history_page={{ history_page_obj.previous_page_number }}&hq={{ history_search }}&hstatus={{ history_status_filter }}&hkad={{ history_kad_filter }}&sort={{ sort }}">← ΠΡΟΗΓΟΥΜΕΝΗ</a>{% endif %}
+      {% if history_page_obj.has_next %}<a class="admin-tag" href="?history_page={{ history_page_obj.next_page_number }}&hq={{ history_search }}&hstatus={{ history_status_filter }}&hkad={{ history_kad_filter }}&sort={{ sort }}">ΕΠΟΜΕΝΗ →</a>{% endif %}
+    </span>
+  </div>
+  {% endif %}
+</section>
 {% endblock %}

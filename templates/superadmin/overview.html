@@ -1,201 +1,226 @@
 {% extends 'superadmin/base.html' %}
-
-{% block title %}Executive Overview · Superadmin Control Center{% endblock %}
+{% block title %}System Overview · Superadmin{% endblock %}
 {% block page_title %}Executive Overview{% endblock %}
 
 {% block content %}
-<div class="space-y-8">
-  <!-- SaaS Revenue & User High-Level Indicators -->
-  <div class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-    <!-- Calculated MRR Card -->
-    <div class="rounded-[1.8rem] bg-navy-950 p-6 text-white shadow-soft">
-      <div class="flex items-center justify-between text-white/50 text-xs font-bold uppercase tracking-widest">
-        <span>Subscription MRR</span>
-        <span class="rounded-full bg-blue-500/20 px-2 py-0.5 text-blue-300">Live Calculated</span>
-      </div>
-      <div class="mt-4 flex items-baseline gap-2">
-        <span class="text-4xl font-extrabold">€{{ metrics.mrr }}</span>
-        <span class="text-xs text-white/50">/μήνα</span>
-      </div>
-      <p class="mt-2 text-xs text-white/50 font-medium">ARR: €{{ metrics.arr }} · {{ metrics.active_paid_users }} ενεργές συνδρομές</p>
-    </div>
+{% comment %} Open operational facts, aligned on rules -- not a KPI card grid. Every figure below is a
+   real aggregate from get_saas_overview_metrics(); nothing here is decorative. {% endcomment %}
 
-    <!-- Active Paid Users -->
-    <div class="rounded-[1.8rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-      <div class="flex items-center justify-between text-navy-700/50 text-xs font-bold uppercase tracking-widest">
-        <span>Active Paid Users</span>
-        <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 font-bold">Pro / Business</span>
-      </div>
-      <div class="mt-4 flex items-baseline gap-2">
-        <span class="text-4xl font-extrabold text-navy-950">{{ metrics.active_paid_users }}</span>
-        <span class="text-xs text-navy-700/50">/ {{ metrics.total_users }} σύνολο</span>
-      </div>
-      <p class="mt-2 text-xs text-navy-700/50">Pro: {{ metrics.active_pro_count }} · Business: {{ metrics.active_business_count }}</p>
-    </div>
+<section class="admin-section">
+  <h2>SYSTEM STATE</h2>
+  <p>Τρέχουσα κατάσταση λογαριασμών, συνδρομών και ροής δεδομένων.</p>
 
-    <!-- Generated Leads Today -->
-    <div class="rounded-[1.8rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-      <div class="flex items-center justify-between text-navy-700/50 text-xs font-bold uppercase tracking-widest">
-        <span>Leads Σήμερα</span>
-        <span class="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 font-bold">7d: {{ metrics.leads_7d }}</span>
-      </div>
-      <div class="mt-4 flex items-baseline gap-2">
-        <span class="text-4xl font-extrabold text-navy-950">{{ metrics.leads_today }}</span>
-        <span class="text-xs text-navy-700/50">νέα leads</span>
-      </div>
-      <p class="mt-2 text-xs text-navy-700/50">Matches σήμερα: {{ metrics.matches_today }} · Σύνολο: {{ metrics.total_leads }}</p>
+  <div class="admin-facts">
+    <div>
+      <span>Χρήστες</span>
+      <b>{{ metrics.total_users }}</b>
+      <small>{{ metrics.verified_users }} επιβεβαιωμένοι · {{ metrics.unverified_users }} εκκρεμείς</small>
     </div>
-
-    <!-- GEMI Import Status -->
-    <div class="rounded-[1.8rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-      <div class="flex items-center justify-between text-navy-700/50 text-xs font-bold uppercase tracking-widest">
-        <span>GEMI Imports</span>
-        <span class="rounded-full bg-purple-50 px-2 py-0.5 text-purple-700 font-bold">7d: {{ metrics.companies_7d }}</span>
-      </div>
-      <div class="mt-4 flex items-baseline gap-2">
-        <span class="text-4xl font-extrabold text-navy-950">{{ metrics.companies_today }}</span>
-        <span class="text-xs text-navy-700/50">εταιρείες σήμερα</span>
-      </div>
-      <p class="mt-2 text-xs text-navy-700/50">Τελ. εγγραφή: {{ metrics.latest_registration_date|date:"d/m/Y"|default:"—" }}</p>
+    <div>
+      <span>Ενεργές συνδρομές</span>
+      <b>{{ metrics.active_paid_users }}</b>
+      <small>{{ metrics.complimentary_count }} complimentary</small>
+    </div>
+    <div>
+      <span>MRR</span>
+      <b>€{{ metrics.mrr }}</b>
+      <small>ARR €{{ metrics.arr }}</small>
+    </div>
+    <div>
+      <span>Ενεργά Ραντάρ</span>
+      <b>{{ metrics.active_radars }}</b>
+      <small>{{ metrics.total_radars }} συνολικά</small>
+    </div>
+    <div>
+      <span>Νέοι χρήστες</span>
+      <b>{{ metrics.new_today }}</b>
+      <small>{{ metrics.new_7d }} / 7ημ · {{ metrics.new_30d }} / 30ημ</small>
     </div>
   </div>
+</section>
 
-  <!-- Secondary Metrics Bar -->
-  <div class="grid gap-5 sm:grid-cols-3 lg:grid-cols-6">
-    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
-      <span class="block text-xs text-navy-700/50 font-bold uppercase">Νέοι Users 30d</span>
-      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.new_30d }}</span>
+<section class="admin-section">
+  <h2>MARKET INTAKE</h2>
+  <p>Ροή δημοσιευμένων εγγραφών από το Open Data API του ΓΕΜΗ.</p>
+
+  <div class="admin-facts">
+    <div>
+      <span>Εγγραφές συνολικά</span>
+      <b>{{ metrics.total_companies }}</b>
+      <small>{{ metrics.total_company_activities }} δραστηριότητες ΚΑΔ</small>
     </div>
-    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
-      <span class="block text-xs text-navy-700/50 font-bold uppercase">Verified Users</span>
-      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.verified_users }}</span>
+    <div>
+      <span>Εγγραφές σήμερα</span>
+      <b>{{ metrics.companies_today }}</b>
+      <small>{{ metrics.companies_7d }} τις τελευταίες 7 ημέρες</small>
     </div>
-    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
-      <span class="block text-xs text-navy-700/50 font-bold uppercase">Complimentary</span>
-      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.complimentary_count }}</span>
+    <div>
+      <span>Τελευταία σύσταση</span>
+      <b>{{ metrics.latest_registration_date|date:"d/m/Y"|default:"—" }}</b>
+      <small>τελευταία ημερομηνία στο μητρώο</small>
     </div>
-    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
-      <span class="block text-xs text-navy-700/50 font-bold uppercase">Active Radars</span>
-      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.eligible_radars_count }} <span class="text-xs font-normal text-navy-700/40">/ {{ metrics.total_radars }}</span></span>
+    <div>
+      <span>Matches</span>
+      <b>{{ metrics.total_matches }}</b>
+      <small>{{ metrics.matches_today }} σήμερα</small>
     </div>
-    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
-      <span class="block text-xs text-navy-700/50 font-bold uppercase">Digests Σήμερα</span>
-      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.sent_today }}</span>
-    </div>
-    <div class="rounded-2xl border border-navy-900/10 bg-white p-4 text-center">
-      <span class="block text-xs text-navy-700/50 font-bold uppercase">Κατάλογος ΚΑΔ</span>
-      <span class="mt-1 block text-2xl font-extrabold text-navy-950">{{ metrics.total_kads }}</span>
+    <div>
+      <span>Leads</span>
+      <b>{{ metrics.total_leads }}</b>
+      <small>{{ metrics.leads_today }} σήμερα · {{ metrics.leads_7d }} / 7ημ</small>
     </div>
   </div>
+</section>
 
-  <!-- SVG Metric Visualizations (User Growth & Leads 30 Days) -->
-  <div class="grid gap-6 lg:grid-cols-2">
-    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h3 class="font-extrabold text-navy-950">User Growth & Leads</h3>
-          <p class="text-xs text-navy-700/50">Τελευταίες 30 ημέρες (Ημερήσιοι αριθμοί)</p>
-        </div>
-        <span class="text-xs font-bold text-blue-600">Live Trend</span>
-      </div>
+<section class="admin-section">
+  <h2>DIGEST STATE</h2>
+  <p>Κατάσταση αποστολών digest προς συνδρομητές. Οι αποστολές αυτές είναι transactional και δεν επηρεάζονται από το shutdown του cold outreach.</p>
 
-      <div class="h-44 w-full flex items-end justify-between gap-1 pt-6 pb-2 px-2 border-b border-navy-900/10">
-        {% for day in chart_data %}
-        <div class="flex flex-1 flex-col items-center gap-1 group relative">
-          <div class="w-full flex items-end justify-center gap-0.5 h-32">
-            <div class="w-1.5 rounded-t bg-blue-500 transition-all" style="height: {{ day.users_height }}px; min-height: 2px;"></div>
-            <div class="w-1.5 rounded-t bg-emerald-500 transition-all" style="height: {{ day.leads_height }}px; min-height: 2px;"></div>
-          </div>
-          <!-- Tooltip -->
-          <div class="absolute bottom-full mb-2 hidden group-hover:block z-20 rounded-lg bg-navy-950 px-3 py-1.5 text-[11px] text-white whitespace-nowrap shadow-xl">
-            <strong>{{ day.date }}</strong>: {{ day.users }} users, {{ day.leads }} leads, {{ day.companies }} GEMI
-          </div>
-        </div>
-        {% endfor %}
-      </div>
-      <div class="mt-4 flex items-center justify-center gap-6 text-xs font-bold">
-        <span class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-blue-500"></span> Νέοι Users</span>
-        <span class="flex items-center gap-2"><span class="h-3 w-3 rounded-full bg-emerald-500"></span> Generated Leads</span>
-      </div>
+  <div class="admin-facts">
+    <div>
+      <span>Στάλθηκαν σήμερα</span>
+      <b>{{ metrics.sent_today }}</b>
+      <small>{{ metrics.sent_7d }} τις τελευταίες 7 ημέρες</small>
     </div>
+    <div>
+      <span>Απέτυχαν σήμερα</span>
+      <b>{{ metrics.failed_today }}</b>
+      <small>παραλείφθηκαν {{ metrics.skipped_today }}</small>
+    </div>
+    <div>
+      <span>Τελευταία αποστολή</span>
+      <b>{{ metrics.last_delivery_at|date:"d/m H:i"|default:"—" }}</b>
+      <small>τελευταίο DigestDelivery</small>
+    </div>
+    <div>
+      <span>Επιλέξιμα Ραντάρ</span>
+      <b>{{ metrics.eligible_radars_count }}</b>
+      <small>με ενεργή συνδρομή</small>
+    </div>
+  </div>
+</section>
 
-    <!-- Recent Audit Logs -->
-    <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-      <div class="flex items-center justify-between mb-4">
-        <div>
-          <h3 class="font-extrabold text-navy-950">Τελευταίες Admin Ενέργειες</h3>
-          <p class="text-xs text-navy-700/50">Audit log activity</p>
-        </div>
-        <a href="{% url 'superadmin:audit_list' %}" class="text-xs font-bold text-blue-600 hover:underline">Όλο το log →</a>
-      </div>
+<section class="admin-section">
+  <h2>SUBSCRIPTION BREAKDOWN</h2>
+  <div class="admin-scroll">
+    <table class="admin-register">
+      <thead>
+        <tr>
+          <th>ΠΛΑΝΟ</th>
+          <th>ΕΝΕΡΓΕΣ</th>
+          <th>ΤΙΜΗ / ΜΗΝΑ</th>
+          <th>ΟΡΙΟ ΡΑΝΤΑΡ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Pro</b></td>
+          <td class="mono">{{ metrics.active_pro_count }}</td>
+          <td class="mono">€19</td>
+          <td class="mono">5</td>
+        </tr>
+        <tr>
+          <td><b>Business</b></td>
+          <td class="mono">{{ metrics.active_business_count }}</td>
+          <td class="mono">€49</td>
+          <td class="mono">10</td>
+        </tr>
+        <tr>
+          <td><b>Enterprise</b></td>
+          <td class="mono">{{ metrics.active_enterprise_count }}</td>
+          <td class="mono">€99</td>
+          <td class="mono">15</td>
+        </tr>
+        <tr>
+          <td><b>Custom</b></td>
+          <td class="mono">{{ metrics.active_custom_count }}</td>
+          <td class="mono">κατόπιν συμφωνίας</td>
+          <td class="mono">15 / custom</td>
+        </tr>
+        <tr>
+          <td><span class="admin-tag warn">ΜΗ ΕΝΕΡΓΕΣ</span></td>
+          <td class="mono" colspan="3">
+            canceled {{ metrics.canceled_count }} · past_due {{ metrics.past_due_count }} ·
+            unpaid {{ metrics.unpaid_count }} · inactive {{ metrics.inactive_count }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
 
-      <div class="space-y-3">
-        {% for audit in recent_audits %}
-        <div class="flex items-center justify-between rounded-xl bg-sand-50 p-3 text-xs">
-          <div>
-            <span class="font-bold text-navy-950">{{ audit.action }}</span>
-            <span class="text-navy-700/60 font-medium"> → {{ audit.target_repr }}</span>
-          </div>
-          <span class="text-navy-700/40 font-mono">{{ audit.timestamp|date:"d/m H:i" }}</span>
-        </div>
+<section class="admin-section">
+  <h2>CUSTOMER ACTIVITY</h2>
+  <div class="admin-scroll">
+    <table class="admin-register">
+      <thead>
+        <tr>
+          <th>ΧΡΗΣΤΗΣ</th>
+          <th>ΕΓΓΡΑΦΗ</th>
+          <th>ΠΛΑΝΟ</th>
+          <th>ΚΑΤΑΣΤΑΣΗ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in recent_users %}
+        <tr>
+          <td><b>{{ u.email|default:u.username }}</b></td>
+          <td class="mono">{{ u.date_joined|date:"d/m/Y H:i" }}</td>
+          <td class="mono">{{ u.subscription.effective_tier|default:"—"|upper }}</td>
+          <td>
+            {% if u.is_active %}<span class="admin-tag on">ΕΝΕΡΓΟΣ</span>
+            {% else %}<span class="admin-tag warn">ΜΗ ΕΠΙΒΕΒΑΙΩΜΕΝΟ EMAIL</span>{% endif %}
+          </td>
+        </tr>
         {% empty %}
-        <p class="text-xs text-navy-700/50 text-center py-6">Δεν υπάρχουν πρόσφατες admin ενέργειες.</p>
+        <tr><td class="empty" colspan="4">Καμία εγγραφή.</td></tr>
         {% endfor %}
-      </div>
-    </div>
+      </tbody>
+    </table>
   </div>
+</section>
 
-  <!-- Recent Users Table -->
-  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h3 class="font-extrabold text-navy-950">Πρόσφατες Εγγραφές Χρηστών</h3>
-        <p class="text-xs text-navy-700/50">Τελευταίοι 5 εγγεγραμμένοι χρήστες</p>
-      </div>
-      <a href="{% url 'superadmin:user_list' %}" class="rounded-full bg-navy-950 px-4 py-2 text-xs font-bold text-white transition hover:bg-navy-800">Προβολή όλων των Χρηστών →</a>
-    </div>
-
-    <div class="overflow-x-auto">
-      <table class="w-full text-left text-sm">
-        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
-          <tr>
-            <th class="p-3">User</th>
-            <th class="p-3">Date Joined</th>
-            <th class="p-3">State</th>
-            <th class="p-3">Subscription</th>
-            <th class="p-3 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-navy-900/5">
-          {% for u in recent_users %}
-          <tr class="hover:bg-sand-50/50 transition">
-            <td class="p-3">
-              <span class="block font-bold text-navy-950">{{ u.email }}</span>
-              <span class="text-xs text-navy-700/50">{{ u.first_name }} {{ u.last_name }}</span>
-            </td>
-            <td class="p-3 text-xs text-navy-700/70">{{ u.date_joined|date:"d/m/Y H:i" }}</td>
-            <td class="p-3">
-              <span class="inline-block rounded-full px-2.5 py-0.5 text-xs font-bold {% if u.is_active %}bg-emerald-50 text-emerald-700{% else %}bg-amber-50 text-amber-700{% endif %}">
-                {% if u.is_active %}Active{% else %}Unverified/Inactive{% endif %}
-              </span>
-            </td>
-            <td class="p-3">
-              {% if u.subscription.has_active_paid_subscription %}
-              <span class="inline-block rounded-full bg-signal/10 px-2.5 py-0.5 text-xs font-bold text-signal">PAID {{ u.subscription.tier|upper }}</span>
-              {% elif u.subscription.has_valid_complimentary_access %}
-              <span class="inline-block rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-bold text-purple-700">COMPLIMENTARY {{ u.subscription.complimentary_tier|upper }}</span>
-              {% else %}
-              <span class="inline-block rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-bold text-navy-700/50">UNPAID (0 Radars)</span>
-              {% endif %}
-            </td>
-            <td class="p-3 text-right">
-              <a href="{% url 'superadmin:user_detail' u.id %}" class="rounded-lg bg-navy-950 px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-800 transition">Διαχείριση</a>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+<section class="admin-section">
+  <h2>SYSTEM ACTIVITY</h2>
+  <div class="admin-scroll">
+    <table class="admin-register">
+      <thead>
+        <tr>
+          <th>ΩΡΑ</th>
+          <th>ΔΙΑΧΕΙΡΙΣΤΗΣ</th>
+          <th>ΕΝΕΡΓΕΙΑ</th>
+          <th>ΣΤΟΧΟΣ</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in recent_audits %}
+        <tr>
+          <td class="mono">{{ a.timestamp|date:"d/m H:i" }}</td>
+          <td class="mono">{{ a.admin_user.email|default:"—" }}</td>
+          <td><b>{{ a.action }}</b></td>
+          <td class="mono">{{ a.target_repr|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td class="empty" colspan="4">Καμία καταγεγραμμένη ενέργεια.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
+</section>
+
+{% comment %} The compliance state is part of the system's operating state, so it is reported here and
+   not only on the archive pages. {% endcomment %}
+<div class="admin-compliance">
+  <p>COMPLIANCE STATE</p>
+  <dl>
+    <div><dt>COLD OUTREACH:</dt><dd>DISABLED</dd></div>
+    <div><dt>ARCHIVE:</dt><dd>READ ONLY</dd></div>
+  </dl>
+  <p>
+    Η αποστολή cold outreach είναι οριστικά απενεργοποιημένη. Οι εκκρεμείς εγγραφές έχουν
+    ακυρωθεί και το ιστορικό διατηρείται αποκλειστικά για λόγους ελέγχου και συμμόρφωσης.
+    Τα transactional email (επιβεβαίωση, επαναφορά κωδικού) και τα digest των συνδρομητών
+    δεν επηρεάζονται.
+  </p>
 </div>
 {% endblock %}

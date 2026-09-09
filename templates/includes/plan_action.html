@@ -1,0 +1,46 @@
+{% comment %}
+The action cell of one pricing row. Expects `tier` (a SELECTABLE_TIERS slug) and `label`
+(the checkout label used when the visitor has no paid subscription).
+
+This consolidates the per-tier branching that used to be copy-pasted into each of the three
+plan cards. The behaviour is unchanged, including the two rules that are easy to lose:
+
+  * Complimentary access must never hide a real checkout button. A complimentary-only user
+    has no paid Stripe subscription, so they fall through to the checkout branch like anyone
+    else; the notice at the top of the page is what announces their access.
+  * A scheduled cancellation (`active_until`) or a scheduled downgrade (`scheduled_tier`)
+    must be resolved from Settings first. The backend blocks a change_plan POST in that
+    state anyway, so the button is replaced by the notice rather than sent to a guaranteed
+    failure.
+
+Tier ranks mirror billing.TIER_RANK (pro 1 < business 2 < enterprise 3). They are written out
+as explicit pairs because a template cannot do the arithmetic, and there are only three
+selectable tiers.
+{% endcomment %}
+{% if user.is_authenticated and user.subscription.has_active_paid_subscription %}
+  {% if user.subscription.tier == tier %}
+    {% if user.subscription.active_until %}
+      {% include "includes/pending_change_notice.html" %}
+    {% else %}
+      <form action="{% url 'customer_portal' %}" method="post">
+        {% csrf_token %}
+        <button class="product-ink-button" style="width:100%;">Διαχείριση</button>
+      </form>
+      <p class="plan-note">Τρέχον πλάνο.</p>
+    {% endif %}
+  {% elif user.subscription.active_until or user.subscription.scheduled_tier %}
+    {% include "includes/pending_change_notice.html" %}
+  {% else %}
+    <form action="{% url 'change_plan' %}" method="post">
+      {% csrf_token %}
+      <input type="hidden" name="target_tier" value="{{ tier }}">
+      {% if tier == "business" and user.subscription.tier == "pro" or tier == "enterprise" and user.subscription.tier == "pro" or tier == "enterprise" and user.subscription.tier == "business" %}
+        <button class="product-ink-button" style="width:100%;">Αναβάθμιση</button>
+      {% else %}
+        <button class="outline" style="width:100%;">Υποβάθμιση στο τέλος περιόδου</button>
+      {% endif %}
+    </form>
+  {% endif %}
+{% else %}
+  {% include "includes/checkout_button.html" with tier=tier label=label %}
+{% endif %}
