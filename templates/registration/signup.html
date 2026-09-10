@@ -13,6 +13,14 @@
 
   <form method="post" class="auth-form">
     {% csrf_token %}
+    {% comment %}
+    Errors that belong to the form rather than to one field -- the password-mismatch check is
+    the common one -- had no output here at all, so a rejected signup re-rendered with no
+    visible reason. Same notice treatment the login and password-reset forms already use.
+    {% endcomment %}
+    {% if form.non_field_errors %}
+    <div class="auth-notice error" role="alert">{{ form.non_field_errors|striptags }}</div>
+    {% endif %}
     {% for field in form %}
     <div class="auth-field">
       <label for="{{ field.id_for_label }}">{{ field.label }}</label>
