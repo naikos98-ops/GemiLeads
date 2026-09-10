@@ -1752,11 +1752,14 @@ body.public-body .mono-text {
 /* ---------- PRICING REGISTER (derived from .product-radar-register) ---------- */
 .public-plan-register { padding: 0 0 46px; }
 
+/* Six columns -- PLAN / TARGET / RADARS / FREQUENCY / PRICE / ACTION -- against the Radars
+   register's four. Targeting and frequency are separate facts about a plan, so they get
+   separate aligned columns rather than being buried in a feature list. */
 .public-plan-register > header,
 .public-plan-row {
   display: grid;
-  grid-template-columns: 1.05fr 1.5fr .62fr .62fr 205px;
-  gap: 22px;
+  grid-template-columns: .95fr 1.15fr .5fr .72fr .5fr 180px;
+  gap: 18px;
 }
 
 .public-plan-register > header {
@@ -1818,6 +1821,22 @@ body.public-body .mono-text {
   width: 6px;
   height: 1px;
   background: var(--product-state-rule);
+}
+
+/* Frequency is a phrase, not a numeral, so it takes the same slot at a smaller size --
+   the figure grammar stays for the two columns that really are figures. */
+.public-plan-row .plan-frequency strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--product-ink);
+  line-height: 1.2;
+}
+
+.public-plan-row .plan-frequency span {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  color: var(--product-muted);
 }
 
 .public-plan-row .plan-price strong,
@@ -1947,13 +1966,16 @@ body.admin-body input:focus-visible {
   .public-plan-row > div:last-child { margin-bottom: 0; }
 
   .public-plan-row .plan-price,
-  .public-plan-row .plan-radars {
+  .public-plan-row .plan-radars,
+  .public-plan-row .plan-frequency {
     display: flex;
     align-items: baseline;
     gap: 10px;
     padding-top: 12px;
     border-top: 1px solid var(--product-line);
   }
+
+  .public-plan-row .plan-frequency strong { font-size: 15px; }
 
   .public-plan-row .plan-price strong,
   .public-plan-row .plan-radars strong { font-size: 21px; }
@@ -2114,10 +2136,17 @@ body.admin-body input:focus-visible {
   display: block;
   margin-top: 2px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 7px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: .1em;
-  color: #99443b;
+  color: var(--product-red);
+}
+
+/* On the active rail item the ground is ink, and --product-red on ink measures 2.59:1.
+   A lightened tint of the same red keeps "red means disabled" while reading at ~7:1.
+   These labels are compliance state, so they have to stay legible in every state. */
+.admin-rail a[aria-current="page"] .admin-off {
+  color: #e9a79f;
 }
 
 .admin-rail-foot {
@@ -2126,7 +2155,7 @@ body.admin-body input:focus-visible {
 }
 
 .admin-rail-foot a {
-  padding: 0;
+  padding: 6px 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 9px;
   font-weight: 600;
@@ -2284,6 +2313,19 @@ body.admin-body input:focus-visible {
   text-transform: uppercase;
   color: var(--product-muted);
   white-space: nowrap;
+}
+
+/* .admin-tag doubles as a status chip and as a row action link. As a link it needs a
+   usable target, so anchors get extra padding without changing the chip's look. */
+a.admin-tag {
+  padding: 6px 9px;
+  text-decoration: none;
+}
+
+a.admin-tag:hover {
+  background: var(--product-ink);
+  color: var(--product-white);
+  border-color: var(--product-ink);
 }
 
 .admin-tag.on { color: var(--product-green); border-color: var(--product-green); }
