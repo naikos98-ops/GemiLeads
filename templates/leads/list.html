@@ -30,12 +30,12 @@
     <!-- Filter Form -->
     <form method="get" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end;">
       <div>
-        <label style="display: block; font-family: ui-monospace, monospace; font-size: 8px; font-weight: 600; color: var(--product-muted); margin-bottom: 4px;">ΑΝΑΖΗΤΗΣΗ</label>
-        <input name="q" value="{{ request.GET.q }}" placeholder="Επωνυμία, ΓΕΜΗ ή ΑΦΜ" style="width: 100%; padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-white); color: var(--product-ink); font-size: 12px; box-sizing: border-box;">
+        <label style="display: block; font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 600; color: var(--product-muted); margin-bottom: 4px;">ΑΝΑΖΗΤΗΣΗ</label>
+        <input name="q" value="{{ request.GET.q }}" placeholder="Επωνυμία, ΓΕΜΗ ή ΑΦΜ" style="width: 100%; padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-white); color: var(--product-ink); font-size: var(--type-body); box-sizing: border-box;">
       </div>
       <div>
-        <label style="display: block; font-family: ui-monospace, monospace; font-size: 8px; font-weight: 600; color: var(--product-muted); margin-bottom: 4px;">ΚΑΤΑΣΤΑΣΗ</label>
-        <select name="status" style="width: 100%; padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-white); color: var(--product-ink); font-size: 12px; box-sizing: border-box;">
+        <label style="display: block; font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 600; color: var(--product-muted); margin-bottom: 4px;">ΚΑΤΑΣΤΑΣΗ</label>
+        <select name="status" style="width: 100%; padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-white); color: var(--product-ink); font-size: var(--type-body); box-sizing: border-box;">
           <option value="">Όλες οι καταστάσεις</option>
           {% for value, label in lead_statuses %}
           <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
@@ -43,16 +43,16 @@
         </select>
       </div>
       <div>
-        <label style="display: block; font-family: ui-monospace, monospace; font-size: 8px; font-weight: 600; color: var(--product-muted); margin-bottom: 4px;">RADAR</label>
-        <select name="radar" style="width: 100%; padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-white); color: var(--product-ink); font-size: 12px; box-sizing: border-box;">
+        <label style="display: block; font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 600; color: var(--product-muted); margin-bottom: 4px;">RADAR</label>
+        <select name="radar" style="width: 100%; padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-white); color: var(--product-ink); font-size: var(--type-body); box-sizing: border-box;">
           <option value="">Όλα τα Radars</option>
           {% for radar in radars %}
           <option value="{{ radar.pk }}" {% if selected_radar.pk == radar.pk %}selected{% endif %}>{{ radar.name }}</option>
           {% endfor %}
         </select>
       </div>
-      <div style="display: flex; gap: 10px; align-items: center;">
-        <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; cursor: pointer; height: 38px; padding: 0 12px; background: var(--product-white); border: 1px solid var(--product-line);">
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+        <label style="display: flex; align-items: center; gap: 6px; font-size: var(--type-secondary); font-weight: 600; cursor: pointer; height: 38px; padding: 0 12px; background: var(--product-white); border: 1px solid var(--product-line);">
           <input type="checkbox" name="favorite" value="1" {% if favorites_only %}checked{% endif %}> ★ Αγαπημένα
         </label>
         <button type="submit" class="product-ink-button" style="height: 38px;">Εφαρμογή</button>
@@ -65,7 +65,7 @@
 
   <!-- Leads List Register -->
   <div style="background: var(--product-white); min-height: calc(100vh - 260px);">
-    <div style="padding: 12px 28px; border-bottom: 1px solid var(--product-line); font-family: ui-monospace, monospace; font-size: 9px; font-weight: 600; color: var(--product-muted);">
+    <div style="padding: 12px 28px; border-bottom: 1px solid var(--product-line); font-family: ui-monospace, monospace; font-size: var(--type-meta); font-weight: 600; color: var(--product-muted);">
       <b>{{ result_count }}</b> ΜΟΝΑΔΙΚΑ LEADS
     </div>
 
@@ -73,15 +73,15 @@
       {% for lead in leads %}
       <div style="padding: 14px 28px; border-bottom: 1px solid var(--product-line); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div style="display: flex; align-items: flex-start; gap: 12px;">
-          <span style="font-size: 16px; color: #775215;">{% if lead.is_favorite %}★{% else %}☆{% endif %}</span>
+          <span style="font-size: var(--type-lead); color: #775215;">{% if lead.is_favorite %}★{% else %}☆{% endif %}</span>
           <div>
-            <strong style="font-size: 14px; color: var(--product-ink); display: block;">{{ lead.company.name }}</strong>
-            <p style="margin: 3px 0 0; font-family: ui-monospace, monospace; font-size: 9px; color: var(--product-muted);">
+            <strong style="font-size: var(--type-body); color: var(--product-ink); display: block;">{{ lead.company.name }}</strong>
+            <p style="margin: 3px 0 0; font-family: ui-monospace, monospace; font-size: var(--type-meta); color: var(--product-muted);">
               ΓΕΜΗ {{ lead.company.gemi_number }}{% if lead.company.vat_number %} · ΑΦΜ {{ lead.company.vat_number }}{% endif %} · {{ lead.company.city|default:lead.company.prefecture|default:'—' }}
             </p>
             <div style="margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap;">
               {% for match in lead.radar_matches.all %}
-              <span style="font-family: ui-monospace, monospace; font-size: 8px; font-weight: 600; padding: 2px 6px; background: var(--product-paper); border: 1px solid var(--product-line); color: var(--product-ink);">
+              <span style="font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 600; padding: 2px 6px; background: var(--product-paper); border: 1px solid var(--product-line); color: var(--product-ink);">
                 ⌁ {{ match.radar.name }}
               </span>
               {% endfor %}
@@ -91,21 +91,21 @@
 
         <div style="display: flex; align-items: center; gap: 20px;">
           <div style="text-align: right;">
-            <span style="display: block; font-family: ui-monospace, monospace; font-size: 8px; font-weight: 700; color: var(--product-muted); text-transform: uppercase;">
+            <span style="display: block; font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 700; color: var(--product-muted); text-transform: uppercase;">
               {{ lead.get_status_display }}
             </span>
-            <small style="font-family: ui-monospace, monospace; font-size: 8px; color: var(--product-muted);">
+            <small style="font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">
               {{ lead.first_seen_at|date:'d/m/Y' }}
             </small>
           </div>
-          <a href="{% url 'company_detail' lead.company.gemi_number %}" class="product-ink-button" style="padding: 8px 14px; font-size: 9px;">
+          <a href="{% url 'company_detail' lead.company.gemi_number %}" class="product-ink-button" style="padding: 8px 14px; font-size: var(--type-meta);">
             Dossier →
           </a>
         </div>
       </div>
       {% empty %}
-      <div style="padding: 60px 20px; text-align: center; color: var(--product-muted); font-family: ui-monospace, monospace; font-size: 11px;">
-        <p style="font-size: 14px; font-weight: 600; color: var(--product-ink); margin: 0 0 6px;">Δεν βρέθηκαν leads.</p>
+      <div style="padding: 60px 20px; text-align: center; color: var(--product-muted); font-family: ui-monospace, monospace; font-size: var(--type-small);">
+        <p style="font-size: var(--type-body); font-weight: 600; color: var(--product-ink); margin: 0 0 6px;">Δεν βρέθηκαν leads.</p>
         Δοκίμασε διαφορετικά φίλτρα ή περίμενε την επόμενη εισαγωγή ΓΕΜΗ.
       </div>
       {% endfor %}

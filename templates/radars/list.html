@@ -20,7 +20,7 @@
       {% elif radar_count >= radar_limit %}
       <div style="text-align: right;">
         <button type="button" disabled class="product-ink-button" style="opacity: 0.5; cursor: not-allowed;">+ Νέο Radar</button>
-        <p style="margin-top: 4px; font-family: ui-monospace, monospace; font-size: 8px; color: var(--product-muted);">
+        <p style="margin-top: 4px; font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">
           Όριο {{ radar_limit }} Ραντάρ. <a href="{% url 'pricing' %}" style="color: var(--product-ink); font-weight: 700;">Αναβάθμιση</a>
         </p>
       </div>
@@ -33,8 +33,8 @@
   {% if not has_active_paid_subscription %}
   <div style="margin: 16px 28px; padding: 16px 20px; background: var(--product-white); border: 2px solid var(--product-amber); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
     <div>
-      <strong style="font-size: 15px; color: var(--product-ink);">Απαιτείται ενεργή συνδρομή</strong>
-      <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">Επίλεξε συνδρομητικό πλάνο (Pro ή Business) για να δημιουργήσεις και να ενεργοποιήσεις τα Ραντάρ σου.</p>
+      <strong style="font-size: var(--type-name); color: var(--product-ink);">Απαιτείται ενεργή συνδρομή</strong>
+      <p style="margin: 4px 0 0; font-size: var(--type-secondary); color: var(--product-muted);">Επίλεξε συνδρομητικό πλάνο (Pro ή Business) για να δημιουργήσεις και να ενεργοποιήσεις τα Ραντάρ σου.</p>
     </div>
     <a href="{% url 'pricing' %}" class="product-amber-button">Επιλογή Πλάνου →</a>
   </div>
@@ -43,8 +43,8 @@
   {% if user.subscription.effective_tier != "enterprise" and user.subscription.effective_tier != "custom" %}
   <div style="margin: 16px 28px 0; padding: 14px 20px; background: var(--product-white); border-bottom: 1px solid var(--product-ink); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
     <div>
-      <strong style="font-size: 13px;">Enterprise / Priority Alerts (€99/mo)</strong>
-      <p style="margin: 4px 0 0; font-size: 11px; color: var(--product-muted); font-family: ui-monospace, monospace;">
+      <strong style="font-size: var(--type-body);">Enterprise / Priority Alerts (€99/mo)</strong>
+      <p style="margin: 4px 0 0; font-size: var(--type-small); color: var(--product-muted); font-family: ui-monospace, monospace;">
         15 Ενεργά Ραντάρ &amp; αυτόματη ενημέρωση ανά 3 ώρες.
       </p>
     </div>
@@ -95,8 +95,8 @@
     </article>
     {% empty %}
     <div style="padding: 60px 20px; text-align: center; background: var(--product-white); border-bottom: 1px solid var(--product-ink);">
-      <h2 style="font-size: 20px; margin: 0 0 8px;">Δεν έχεις δημιουργήσει Radar.</h2>
-      <p style="color: var(--product-muted); font-size: 13px; margin: 0 0 20px;">Ξεκίνα με έναν κλάδο (ΚΑΔ) ή μία περιοχή που σε ενδιαφέρει.</p>
+      <h2 style="font-size: var(--type-h4); margin: 0 0 8px;">Δεν έχεις δημιουργήσει Radar.</h2>
+      <p style="color: var(--product-muted); font-size: var(--type-body); margin: 0 0 20px;">Ξεκίνα με έναν κλάδο (ΚΑΔ) ή μία περιοχή που σε ενδιαφέρει.</p>
       <a href="{% url 'radar_create' %}" class="product-ink-button">Δημιουργία πρώτου Radar</a>
     </div>
     {% endfor %}

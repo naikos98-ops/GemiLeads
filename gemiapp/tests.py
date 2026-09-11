@@ -9280,3 +9280,121 @@ class RadarLimitEntitlementTests(TestCase):
         client.post(reverse("radar_toggle", args=[radar.pk]))
         radar.refresh_from_db()
         self.assertTrue(radar.is_active)
+
+
+
+class SignalsHistoricalPaginationTests(TestCase):
+    """Signals browses the whole published archive 20 registrations at a time.
+
+    The backend pagination survived the Signal Ledger redesign; the frontend trigger did not.
+    These pin both halves: the paged endpoint (page size, order, no overlap, filters carried,
+    end-of-results) and the template hooks the loader depends on, so the register cannot go
+    back to showing only its first 20 rows.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="pager@example.com", email="pager@example.com", password="pw")
+        self.client.force_login(self.user)
+        self.today = timezone.localdate()
+        # 65 registrations spread over 13 days, newest first, two legal forms interleaved.
+        for i in range(65):
+            Company.objects.create(
+                gemi_number=f"77{i:010d}",
+                name=f"ΔΟΚΙΜΗ {i:03d}",
+                incorporation_date=self.today - timedelta(days=i // 5),
+                legal_type="ΙΚΕ" if i % 2 == 0 else "ΑΕ",
+                prefecture="ΑΤΤΙΚΗΣ",
+            )
+
+    def _page(self, page, **params):
+        return self.client.get(
+            reverse("dashboard"), {"page": page, **params}, HTTP_X_REQUESTED_WITH="XMLHttpRequest"
+        ).json()
+
+    @staticmethod
+    def _gemis(html):
+        return re.findall(r'data-gemi="([^"]+)"', html)
+
+    @staticmethod
+    def _dates(html):
+        return [date(int(y), int(m), int(d)) for d, m, y in
+                (x.split("/") for x in re.findall(r'data-date="([^"]+)"', html))]
+
+    def test_first_render_shows_twenty_and_arms_the_loader(self):
+        response = self.client.get(reverse("dashboard"))
+        html = response.content.decode()
+        self.assertEqual(len(response.context["companies"]), 20)
+        self.assertIn("data-signals-sentinel", html)
+        self.assertIn('data-next-page="2"', html)
+        # The trigger app.js sized to max-height:none must not come back.
+        self.assertNotIn("data-company-scroll", html)
+
+    def test_next_page_returns_the_next_twenty(self):
+        first = self._gemis(self.client.get(reverse("dashboard")).content.decode())
+        second = self._page(2)
+        self.assertEqual(len(self._gemis(second["html"])), 20)
+        self.assertTrue(second["has_next"])
+        self.assertEqual(second["next_page"], 3)
+        self.assertEqual(second["total_count"], 65)
+        self.assertEqual(len(first), 20)
+
+    def test_pages_never_overlap_and_cover_the_archive_exactly(self):
+        seen = []
+        page, pages = 1, 0
+        while page:
+            data = self._page(page)
+            seen += self._gemis(data["html"])
+            page = data["next_page"]
+            pages += 1
+        self.assertEqual(pages, 4)                          # 20 + 20 + 20 + 5
+        self.assertEqual(len(seen), 65)
+        self.assertEqual(len(set(seen)), 65, "a registration appeared on two pages")
+
+    def test_later_pages_reach_older_registrations(self):
+        p1, p4 = self._dates(self._page(1)["html"]), self._dates(self._page(4)["html"])
+        self.assertEqual(max(p1), self.today)
+        self.assertEqual(min(p4), self.today - timedelta(days=12))
+        self.assertLess(max(p4), min(p1))
+        everything = []
+        page = 1
+        while page:
+            data = self._page(page)
+            everything += self._dates(data["html"])
+            page = data["next_page"]
+        self.assertEqual(everything, sorted(everything, reverse=True), "dates must never increase")
+
+    def test_filters_are_carried_onto_every_page(self):
+        seen = []
+        page = 1
+        while page:
+            data = self._page(page, legal_type="ΙΚΕ")
+            html = data["html"]
+            self.assertNotIn('data-legal="ΑΕ"', html)
+            seen += self._gemis(html)
+            page = data["next_page"]
+            self.assertEqual(data["total_count"], 33)
+        self.assertEqual(len(seen), 33)
+        self.assertEqual(len(set(seen)), 33)
+
+    def test_date_filter_is_carried_onto_later_pages(self):
+        start = self.today - timedelta(days=8)
+        data = self._page(2, date_from=start.isoformat())
+        self.assertTrue(all(d >= start for d in self._dates(data["html"])))
+
+    def test_end_of_results(self):
+        last = self._page(4)
+        self.assertFalse(last["has_next"])
+        self.assertIsNone(last["next_page"])
+        self.assertEqual(len(self._gemis(last["html"])), 5)
+
+    def test_a_short_result_set_has_nothing_to_load(self):
+        response = self.client.get(reverse("dashboard"), {"q": "ΔΟΚΙΜΗ 00"})
+        html = response.content.decode()
+        self.assertEqual(response.context["result_count"], 10)
+        self.assertIn('data-next-page=""', html)
+        self.assertIn("Τέλος εγγραφών · 10", html)
+
+    def test_appended_rows_do_not_steal_the_selection(self):
+        # Only the very first row of the first render is pre-selected; paged rows never are.
+        self.assertIn("selected", self.client.get(reverse("dashboard")).content.decode())
+        self.assertNotIn("product-signal is-signal selected", self._page(2)["html"])
