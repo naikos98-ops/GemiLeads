@@ -1060,7 +1060,11 @@ body.product-body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 8px;
   font-weight: 700;
-  color: var(--product-amber);
+  /* The product's amber-as-text tone, not the amber fill. --product-amber (#e6a029) is for
+     strokes and rules; as a glyph on white it measured 2.15:1. #775215 is the same amber the
+     signal-reason line and BETA chip already use for text, and reads 6.7:1 here (5.6:1 on the
+     amber-soft ground of .final). */
+  color: #775215;
 }
 
 .product-proof-row p {
@@ -3114,4 +3118,136 @@ a.admin-tag:hover {
 .admin-btn,
 .admin-modal-actions .admin-btn {
   text-transform: uppercase;
+}
+
+/* ---------- django-allauth entrance pages ----------
+   allauth renders its own raw element markup (<h1>, <p>, <form>, <p><label><input>, <button>)
+   with no classes. Scoped to body.allauth-page -- set only by templates/allauth/layouts/
+   entrance.html -- these rules give that markup the same auth grammar as /login/ and /signup/
+   without touching allauth's templates or behaviour. */
+.allauth-page .public-main {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 110px 28px 64px;
+  box-sizing: border-box;
+}
+
+.allauth-page .public-main h1 {
+  margin: 0 0 14px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--product-ink);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -.03em;
+  line-height: 1.1;
+  color: var(--product-ink);
+}
+
+.allauth-page .public-main h2 {
+  margin: 22px 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--product-ink);
+}
+
+.allauth-page .public-main p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--product-muted);
+}
+
+.allauth-page .public-main a {
+  color: var(--product-ink);
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.allauth-page .public-main a:hover { border-bottom-color: var(--product-amber); }
+
+.allauth-page .public-main form > p {
+  margin: 0;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--product-line);
+  color: var(--product-ink);
+}
+
+.allauth-page .public-main label {
+  display: block;
+  margin-bottom: 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+}
+
+.allauth-page .public-main input[type="text"],
+.allauth-page .public-main input[type="email"],
+.allauth-page .public-main input[type="password"],
+.allauth-page .public-main textarea,
+.allauth-page .public-main select {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid var(--product-ink);
+  border-radius: 0;
+  background: var(--product-white);
+  color: var(--product-ink);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.allauth-page .public-main input:focus-visible,
+.allauth-page .public-main textarea:focus-visible,
+.allauth-page .public-main select:focus-visible {
+  outline: 2px solid var(--product-amber);
+  outline-offset: 1px;
+}
+
+.allauth-page .public-main button,
+.allauth-page .public-main a[href][role="button"] {
+  margin-top: 20px;
+  width: 100%;
+  padding: 13px 16px;
+  border: 1px solid var(--product-ink);
+  border-radius: 0;
+  background: var(--product-ink);
+  color: var(--product-white);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.allauth-page .public-main button:hover {
+  background: var(--product-green);
+  border-color: var(--product-green);
+}
+
+.allauth-page .public-main ul.errorlist {
+  margin: 0 0 8px;
+  padding: 10px 14px;
+  list-style: none;
+  border: 1px solid var(--product-ink);
+  border-left: 3px solid var(--product-red);
+  background: var(--product-white);
+  font-size: 12.5px;
+  color: var(--product-ink);
+}
+
+.allauth-page .public-main hr {
+  border: 0;
+  border-top: 1px solid var(--product-line);
+  margin: 20px 0;
+}
+
+@media (max-width: 600px) {
+  .allauth-page .public-main { padding: 88px 18px 48px; }
+  .allauth-page .public-main h1 { font-size: 25px; }
 }

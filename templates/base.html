@@ -66,7 +66,7 @@
 
   {% block head %}{% endblock %}
 </head>
-<body class="min-h-screen font-sans antialiased{% if user.is_authenticated %} product-body{% else %} public-body{% endif %}">
+<body class="min-h-screen font-sans antialiased{% if user.is_authenticated %} product-body{% else %} public-body{% endif %}{% block body_class %}{% endblock %}">
   {% if request.session.impersonator_id %}
   <div class="admin-impersonation">
     <span>SUPERADMIN IMPERSONATION — Προβολή ως <strong>{{ user.email }}</strong></span>

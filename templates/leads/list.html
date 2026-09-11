@@ -73,7 +73,7 @@
       {% for lead in leads %}
       <div style="padding: 14px 28px; border-bottom: 1px solid var(--product-line); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div style="display: flex; align-items: flex-start; gap: 12px;">
-          <span style="font-size: 16px; color: var(--product-amber);">{% if lead.is_favorite %}★{% else %}☆{% endif %}</span>
+          <span style="font-size: 16px; color: #775215;">{% if lead.is_favorite %}★{% else %}☆{% endif %}</span>
           <div>
             <strong style="font-size: 14px; color: var(--product-ink); display: block;">{{ lead.company.name }}</strong>
             <p style="margin: 3px 0 0; font-family: ui-monospace, monospace; font-size: 9px; color: var(--product-muted);">
