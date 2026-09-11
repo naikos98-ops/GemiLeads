@@ -9109,3 +9109,174 @@ class DigestEntitlementTests(TestCase):
             self.assertEqual(queue_company_outreach(admin, [company.id]), 0)
         enqueue.assert_not_called()
         self.assertFalse(CompanyOutreach.objects.filter(company=company).exists())
+
+
+from .models import get_user_radar_limit  # noqa: E402  (used by RadarLimitEntitlementTests)
+
+
+class RadarLimitEntitlementTests(TestCase):
+    """custom_radar_limit is a CAPACITY OVERRIDE, not an entitlement grant.
+
+    Every paid feature gates on radar_limit > 0 -- Radar create / edit / activate / preview and
+    all four CSV exports -- so a stored custom limit on an unentitled account used to reopen the
+    whole paid product. Entitlement (UserSubscription.has_entitlement) must be decided first; the
+    override only sizes an allowance the account already has.
+    """
+
+    CUSTOM = 25
+
+    def _user(self, key, *, tier="free", status="inactive", comp_tier="none", comp_until=None,
+              custom=CUSTOM):
+        user = User.objects.create_user(
+            username=f"{key}@example.com", email=f"{key}@example.com", password="pw", is_active=True
+        )
+        sub = user.subscription
+        sub.tier = tier
+        sub.status = status
+        sub.complimentary_tier = comp_tier
+        sub.complimentary_until = comp_until
+        sub.custom_radar_limit = custom
+        sub.save()
+        return User.objects.get(pk=user.pk)
+
+    UNENTITLED = {
+        "unpaid": {"tier": "free", "status": "inactive"},
+        "cancelled": {"tier": "business", "status": "canceled"},
+        "past_due": {"tier": "business", "status": "past_due"},
+        "unpaid_status": {"tier": "business", "status": "unpaid"},
+        "inactive": {"tier": "enterprise", "status": "inactive"},
+    }
+
+    # -- the limit itself -------------------------------------------------------------------------
+
+    def test_paid_account_uses_its_custom_limit(self):
+        user = self._user("paid", tier="pro", status="active")
+        self.assertTrue(user.subscription.has_entitlement)
+        self.assertEqual(get_user_radar_limit(user), self.CUSTOM)
+
+    def test_complimentary_account_uses_its_custom_limit(self):
+        user = self._user("comp", comp_tier="pro", comp_until=timezone.now() + timedelta(days=30))
+        self.assertEqual(get_user_radar_limit(user), self.CUSTOM)
+
+    def test_custom_tier_with_entitlement_keeps_its_custom_limit(self):
+        user = self._user("custom-tier", tier="custom", status="active", custom=40)
+        self.assertEqual(get_user_radar_limit(user), 40)
+
+    def test_paid_account_without_an_override_uses_the_plan_default(self):
+        user = self._user("paid-default", tier="business", status="active", custom=None)
+        self.assertEqual(get_user_radar_limit(user), RADAR_LIMITS["business"])
+
+    def test_unentitled_accounts_get_no_capacity_from_a_custom_limit(self):
+        for key, sub in self.UNENTITLED.items():
+            with self.subTest(case=key):
+                user = self._user(f"lim-{key}", **sub)
+                self.assertFalse(user.subscription.has_entitlement)
+                self.assertEqual(get_user_radar_limit(user), 0)
+
+    def test_expired_complimentary_gets_no_capacity_from_a_custom_limit(self):
+        user = self._user("comp-expired", comp_tier="pro", comp_until=timezone.now() - timedelta(days=1))
+        self.assertEqual(get_user_radar_limit(user), 0)
+
+    def test_account_without_a_subscription_row_has_no_capacity(self):
+        user = self._user("no-row")
+        UserSubscription.objects.filter(user=user).delete()
+        self.assertEqual(get_user_radar_limit(User.objects.get(pk=user.pk)), 0)
+
+    def test_lapsing_keeps_the_stored_override_and_restoring_reactivates_it(self):
+        user = self._user("restore", tier="pro", status="active")
+        self.assertEqual(get_user_radar_limit(user), self.CUSTOM)
+
+        sub = user.subscription
+        sub.status = "canceled"
+        sub.save()
+        user = User.objects.get(pk=user.pk)
+        self.assertEqual(get_user_radar_limit(user), 0)
+        self.assertEqual(user.subscription.custom_radar_limit, self.CUSTOM, "override must not be cleared")
+
+        sub = user.subscription
+        sub.status = "active"
+        sub.save()
+        self.assertEqual(get_user_radar_limit(User.objects.get(pk=user.pk)), self.CUSTOM)
+
+    def test_complimentary_grant_restores_a_lapsed_accounts_custom_limit(self):
+        user = self._user("restore-comp", tier="pro", status="canceled")
+        self.assertEqual(get_user_radar_limit(user), 0)
+        sub = user.subscription
+        sub.complimentary_tier = "pro"
+        sub.save()
+        self.assertEqual(get_user_radar_limit(User.objects.get(pk=user.pk)), self.CUSTOM)
+
+    # -- every consumer: a custom limit alone must unlock nothing ---------------------------------
+
+    def _radar(self, user):
+        return CustomerRadar.objects.create(user=user, name="Όλοι οι ΚΑΔ", is_active=False)
+
+    def test_csv_exports_cannot_be_unlocked_by_a_custom_limit_alone(self):
+        from .views import make_digest_export_token
+
+        for key, sub in self.UNENTITLED.items():
+            with self.subTest(case=key):
+                user = self._user(f"csv-{key}", **sub)
+                radar = self._radar(user)
+                client = Client()
+                client.force_login(user)
+                for name, url in (
+                    ("export_csv", reverse("export_csv")),
+                    ("lead_export_csv", reverse("lead_export_csv")),
+                    ("radar_export_csv", reverse("radar_export_csv", args=[radar.pk])),
+                ):
+                    response = client.get(url)
+                    self.assertEqual(response.status_code, 302, f"{name} should redirect to pricing")
+                    self.assertEqual(response["Location"], reverse("pricing"), name)
+                    self.assertNotIn("text/csv", response.get("Content-Type", ""), name)
+                token = make_digest_export_token(user.id, timezone.localdate())
+                digest = Client().get(reverse("digest_export_csv", args=[token]))
+                self.assertNotIn("text/csv", digest.get("Content-Type", ""), "digest_export_csv")
+
+    def test_paid_and_complimentary_csv_export_still_works(self):
+        for label, kwargs in (
+            ("paid", {"tier": "pro", "status": "active", "custom": None}),
+            ("paid-custom", {"tier": "pro", "status": "active"}),
+            ("comp", {"comp_tier": "business", "custom": None}),
+        ):
+            with self.subTest(case=label):
+                user = self._user(f"csv-ok-{label}", **kwargs)
+                client = Client()
+                client.force_login(user)
+                response = client.get(reverse("export_csv"))
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("text/csv", response["Content-Type"])
+
+    def test_radar_activation_cannot_be_unlocked_by_a_custom_limit_alone(self):
+        user = self._user("toggle", tier="pro", status="canceled")
+        radar = self._radar(user)
+        client = Client()
+        client.force_login(user)
+        response = client.post(reverse("radar_toggle", args=[radar.pk]))
+        self.assertRedirects(response, reverse("pricing"), fetch_redirect_response=False)
+        radar.refresh_from_db()
+        self.assertFalse(radar.is_active)
+
+    def test_radar_creation_cannot_be_unlocked_by_a_custom_limit_alone(self):
+        user = self._user("create", tier="business", status="past_due")
+        client = Client()
+        client.force_login(user)
+        client.post(reverse("radar_create"), {"name": "Νέο Radar", "frequency": "daily"})
+        self.assertFalse(CustomerRadar.objects.filter(user=user).exists())
+
+    def test_radar_preview_cannot_be_unlocked_by_a_custom_limit_alone(self):
+        user = self._user("preview", tier="free", status="inactive")
+        client = Client()
+        client.force_login(user)
+        response = client.post(reverse("radar_preview"), {"name": "x"})
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()["ok"])
+
+    def test_entitled_account_can_still_activate_with_its_custom_limit(self):
+        user = self._user("toggle-ok", tier="pro", status="active")
+        radar = self._radar(user)
+        client = Client()
+        client.force_login(user)
+        client.post(reverse("radar_toggle", args=[radar.pk]))
+        radar.refresh_from_db()
+        self.assertTrue(radar.is_active)
