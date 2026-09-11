@@ -20,19 +20,22 @@ module.exports = {
       // rounded-card / rounded-panel / rounded-control / rounded-chip instead of the nine
       // ad-hoc values (rounded-[2rem], [1.75rem], [1.6rem], [1.5rem], 3xl, 2xl, xl, lg, md)
       // they had grown into. rounded-full is unchanged and still correct for pills.
+      // `card` and `chip` are gone: the product, public and admin surfaces are all on the
+      // Signal Ledger system now (static/css/product-ui.css), which uses square corners and
+      // thin rules rather than a rounded-card system. Nothing references them any more, and
+      // removing the keys means a future `rounded-card` silently fails to generate instead of
+      // quietly reintroducing the old SaaS look. `control` and `panel` remain because
+      // includes/kad_picker.html and static/js/app.js still use them.
       borderRadius: {
-        chip: 'var(--radius-sm)',
         control: 'var(--radius-lg)',
         panel: 'var(--radius-md)',
-        card: 'var(--radius-xl)',
       },
+      // `glow` is gone with the blue SaaS CTAs that used it. `soft` survives only for
+      // includes/kad_picker.html, which renders inside the approved Signals and Radar-form
+      // screens and is therefore deliberately left alone. Do not reach for either on a new
+      // surface -- the Signal Ledger system is flat.
       boxShadow: {
-        // Was 0 24px 80px: an 80px blur offset 24px down, applied to 58 elements
-        // including flat inline ones. At that size it reads as a template default
-        // rather than elevation. A two-layer shadow at a realistic distance keeps
-        // cards lifted off the cream ground without the haze.
         soft: '0 1px 2px rgba(7,23,37,.06), 0 8px 24px rgba(7,23,37,.08)',
-        glow: '0 0 32px rgba(33,102,224,.28)',
       },
       // `float` was never referenced by any template, and `shine` drove an infinite
       // sweep across the primary hero CTA -- perpetual motion on the one button the

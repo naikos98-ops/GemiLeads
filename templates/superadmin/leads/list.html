@@ -4,18 +4,17 @@
 {% block page_title %}Global User Leads{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div>
   <!-- Filters Bar -->
-  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-    <form method="get" class="grid gap-4 md:grid-cols-4">
+  <form method="get" class="admin-filters">
       <div>
-        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Search Company / User</label>
-        <input type="text" name="q" value="{{ search }}" placeholder="Company name, GEMI, user email..." class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+        <label>Search Company / User</label>
+        <input type="text" name="q" value="{{ search }}" placeholder="Company name, GEMI, user email...">
       </div>
 
       <div>
-        <label class="block text-xs font-bold text-navy-700/50 uppercase mb-1">Lead Lifecycle Status</label>
-        <select name="status" class="w-full rounded-xl border border-navy-900/10 px-4 py-2.5 text-sm focus:border-signal focus:outline-none">
+        <label>Lead Lifecycle Status</label>
+        <select name="status">
           <option value="">Όλα τα Statuses</option>
           <option value="new" {% if status_filter == 'new' %}selected{% endif %}>Νέο (New)</option>
           <option value="viewed" {% if status_filter == 'viewed' %}selected{% endif %}>Προβλήθηκε (Viewed)</option>
@@ -27,55 +26,54 @@
       </div>
 
       <div class="flex items-end gap-2 md:col-span-2">
-        <button class="flex-1 rounded-xl bg-navy-950 px-4 py-2.5 font-bold text-white text-sm hover:bg-navy-800 transition">Φιλτράρισμα</button>
-        <a href="{% url 'superadmin:lead_list' %}" class="rounded-xl border border-navy-900/10 px-4 py-2.5 font-bold text-sm hover:bg-sand-100 transition">Καθαρισμός</a>
+        <button type="submit" class="product-ink-button">Φιλτράρισμα</button>
+        <a class="product-text-button" href="{% url 'superadmin:lead_list' %}">Καθαρισμός</a>
       </div>
     </form>
   </div>
 
   <!-- Leads Table -->
-  <div class="rounded-[2rem] border border-navy-900/10 bg-white p-6 shadow-soft">
-    <div class="overflow-x-auto">
-      <table class="w-full text-left text-sm">
-        <thead class="bg-sand-50 text-xs font-bold uppercase tracking-wider text-navy-700/50">
+  <div class="admin-scroll">
+      <table class="admin-register">
+        <thead>
           <tr>
-            <th class="p-3">Company</th>
-            <th class="p-3">Owner User</th>
-            <th class="p-3">Lead Status</th>
-            <th class="p-3">Favorite</th>
-            <th class="p-3">Matched Radars</th>
-            <th class="p-3">Created Date</th>
-            <th class="p-3 text-right">Actions</th>
+            <th>Company</th>
+            <th>Owner User</th>
+            <th>Lead Status</th>
+            <th>Favorite</th>
+            <th>Matched Radars</th>
+            <th>Created Date</th>
+            <th>Actions</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-navy-900/5">
+        <tbody>
           {% for l in page_obj %}
-          <tr class="hover:bg-sand-50/50 transition">
-            <td class="p-3">
+          <tr>
+            <td>
               <span class="block font-bold text-navy-950">{{ l.company.name }}</span>
               <span class="text-xs text-navy-700/50">ΓΕΜΗ: {{ l.company.gemi_number }}</span>
             </td>
-            <td class="p-3 text-xs text-navy-700/80 font-medium">{{ l.user.email }}</td>
-            <td class="p-3">
-              <span class="inline-block rounded-full bg-sand-100 px-2.5 py-0.5 text-xs font-bold text-navy-950">{{ l.get_status_display }}</span>
+            <td>{{ l.user.email }}</td>
+            <td>
+              <span class="admin-tag">{{ l.get_status_display }}</span>
             </td>
-            <td class="p-3">
+            <td>
               {% if l.is_favorite %}<span class="text-amber-500 font-bold">★ Αγαπημένο</span>{% else %}<span class="text-navy-700/30">—</span>{% endif %}
             </td>
-            <td class="p-3 text-xs">
+            <td>
               {% for match in l.radar_matches.all %}
               <span class="inline-block rounded bg-blue-50 px-2 py-0.5 text-blue-700 font-bold text-[11px] mr-1">{{ match.radar.name }}</span>
               {% empty %}
               —
               {% endfor %}
             </td>
-            <td class="p-3 text-xs text-navy-700/70">{{ l.created_at|date:"d/m/Y H:i" }}</td>
-            <td class="p-3 text-right">
-              <a href="{% url 'superadmin:lead_detail' l.id %}" class="rounded-lg bg-navy-950 px-3 py-1.5 text-xs font-bold text-white hover:bg-navy-800 transition">Λεπτομέρειες →</a>
+            <td>{{ l.created_at|date:"d/m/Y H:i" }}</td>
+            <td>
+              <a class="admin-tag" href="{% url 'superadmin:lead_detail' l.id %}">Λεπτομέρειες →</a>
             </td>
           </tr>
           {% empty %}
-          <tr><td colspan="7" class="p-8 text-center text-navy-700/50">Δεν βρέθηκαν leads.</td></tr>
+          <tr><td class="empty" colspan="7">Δεν βρέθηκαν leads.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -83,14 +81,14 @@
 
     <!-- Pagination -->
     {% if page_obj.has_other_pages %}
-    <div class="mt-6 flex items-center justify-between border-t border-navy-900/5 pt-4 text-xs font-bold text-navy-700/60">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;">
       <span>Σελίδα {{ page_obj.number }} από {{ page_obj.paginator.num_pages }}</span>
-      <div class="flex gap-2">
+      <span style="display:flex;gap:7px;">
         {% if page_obj.has_previous %}
-        <a href="?page={{ page_obj.previous_page_number }}&q={{ search }}&status={{ status_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">← Προηγούμενη</a>
+        <a class="admin-tag" href="?page={{ page_obj.previous_page_number }}&q={{ search }}&status={{ status_filter }}">← Προηγούμενη</a>
         {% endif %}
         {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}&q={{ search }}&status={{ status_filter }}" class="rounded-lg border border-navy-900/10 px-3 py-1.5 hover:bg-sand-50">Επόμενη →</a>
+        <a class="admin-tag" href="?page={{ page_obj.next_page_number }}&q={{ search }}&status={{ status_filter }}">Επόμενη →</a>
         {% endif %}
       </div>
     </div>

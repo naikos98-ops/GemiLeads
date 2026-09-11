@@ -408,6 +408,21 @@ class UserSubscription(models.Model):
 
     @property
     def radar_limit(self):
+        """How many Radars this account may run -- and, because every paid feature gates on
+        radar_limit > 0, whether it may use paid functionality at all (Radar create / edit /
+        activate / preview and all four CSV exports).
+
+        Entitlement is decided first. custom_radar_limit is a CAPACITY OVERRIDE set by the
+        Superadmin, not an entitlement grant: it only changes the size of an allowance the
+        account already has. Without this ordering a cancelled, lapsed or expired account with a
+        stored custom limit kept full paid access, since the tier default already returns 0 for
+        an unentitled account but the custom branch returned before entitlement was consulted.
+
+        The stored value is deliberately left in place when entitlement lapses, so it takes
+        effect again as soon as entitlement is restored.
+        """
+        if not self.has_entitlement:
+            return 0
         if self.custom_radar_limit is not None and self.custom_radar_limit > 0:
             return self.custom_radar_limit
         return RADAR_LIMITS.get(self.effective_tier, 0)

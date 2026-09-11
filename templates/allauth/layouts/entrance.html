@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% comment %}
+Overrides django-allauth's entrance layout -- the parent of every anonymous-facing allauth page
+(sign-in, social sign-in cancelled/error, password reset, inactive account, email confirmation).
+
+allauth ships these as bare, unstyled HTML with its own "Menu:" list, so a visitor whose Google
+sign-in was cancelled or failed landed on a page with no Gemi Leads chrome at all. This puts them
+inside the public header/footer and the auth measure. It is presentation only: no allauth view,
+form, URL or adapter is touched, and every block allauth pages fill is carried through --
+  head_title  -> the <title>
+  extra_head  -> base.html's head block
+  extra_body  -> base.html's scripts block (account/login.html puts the passkey script here)
+  content     -> not redeclared, so each page's content flows straight into base.html's <main>
+
+Only the entrance layout is overridden. allauth/layouts/manage.html (the signed-in account
+management pages) still extends allauth's own base and is deliberately left alone.
+{% endcomment %}
+{% block title %}{% block head_title %}{% endblock head_title %} · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+{% block body_class %} allauth-page{% endblock %}
+{% block head %}{% block extra_head %}{% endblock extra_head %}{% endblock %}
+{% block scripts %}{% block extra_body %}{% endblock extra_body %}{% endblock %}

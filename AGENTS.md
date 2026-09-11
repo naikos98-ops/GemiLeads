@@ -43,7 +43,166 @@
 
 Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 
+## Το ΕΓΚΥΡΟ design system (διάβασέ το πριν αγγίξεις UI)
+
+> **`static/css/product-ui.css` μαζί με τις αποδοθείσες οθόνες του Signal Ledger είναι το
+> αυθεντικό design system του προϊόντος.** Κάθε νέα ή τροποποιημένη επιφάνεια — authenticated,
+> public ή admin — πρέπει να χτίζεται από τα primitives αυτού του αρχείου.
+
+Τα τρία scoped layers του `product-ui.css`:
+
+| Scope | Επιφάνειες | Primitives |
+|---|---|---|
+| `body.product-body` | Signals, Radars, Leads, Dossier, Settings | `.product-rail`, `.product-signal`, `.product-radar-row`, `.product-ink-button`, … |
+| `body.public-body` | Landing, Pricing, auth, legal | `.public-topbar`, `.public-plan-row`, `.auth-field`, `.prose-page`, … |
+| `body.admin-body` | Superadmin | `.admin-rail`, `.admin-register`, `.admin-panel`, `.admin-tag`, `.admin-btn`, … |
+
+Tokens (μία πηγή): `--product-ink #12201e`, `--product-paper #f3f2ec`, `--product-white #fbfbf7`,
+`--product-amber #e6a029`, `--product-green #295c4c`, `--product-line`, `--product-muted`.
+
+### ΜΗ ΕΓΚΥΡΑ (legacy) primitives
+
+Τα παρακάτω ανήκουν στο **παλιό, μη εγκεκριμένο** SaaS σύστημα και **δεν** αποτελούν πηγή
+αλήθειας για UI του προϊόντος:
+
+- `rounded-card`, `rounded-chip`, `shadow-glow` — **αφαιρέθηκαν** από το `tailwind.config.js`.
+  Αν τα γράψεις, δεν παράγονται καν από το Tailwind.
+- `shadow-soft`, `rounded-control`, `rounded-panel` — παραμένουν **μόνο** για το
+  `includes/kad_picker.html` και το `static/js/app.js`. Μην τα χρησιμοποιείς αλλού.
+- `bg-signal` / `text-signal` / μπλε CTA, generic stat cards, floating auth cards,
+  rounded-full κουμπιά: **μην τα εισάγεις ξανά.**
+- Το `static/src/input.css` και οι generic Tailwind utilities **δεν** είναι το design system.
+  Προηγούμενοι agents το συμπέραναν από εκεί και επανέφεραν το παλιό look.
+
+Η μόνη επιφάνεια που κρατά legacy classes σκόπιμα είναι το `includes/kad_picker.html`, επειδή
+αποδίδεται μέσα στις **εγκεκριμένες** οθόνες Signals και Radar-form.
+
+### Authority (English, for any agent)
+
+> **AUTHORITY: `static/css/product-ui.css` + the rendered Signal Ledger authenticated screens.**
+>
+> **Legacy/global Tailwind card primitives are NOT authoritative for Gemi Leads product UI.**
+> Do not derive the design system from `static/src/input.css`, `tailwind.config.js` or generic
+> Tailwind utilities.
+
+### Component mapping — ποια οθόνη γεννά ποια
+
+Κάθε public/admin επιφάνεια είναι παράγωγο μιας εγκεκριμένης οθόνης. Όταν αλλάζεις μία, ξεκίνα
+από την πηγή της στήλης αριστερά — όχι από κάποιο generic component.
+
+| Εγκεκριμένη πηγή | Primitive πηγής | → Παράγωγο | Primitive παραγώγου |
+|---|---|---|---|
+| **Signals** (χρονολογική γραμμή) | `.product-signal`, `.product-match-stroke` | **Landing** public intake | `.product-signal` αυτούσιο μέσα σε `.public-intake` |
+| **Signals** (inspector / αλυσίδα) | `.product-inspect` | **Landing** relevance proof | `.public-chain` (EVENT → INFORMATION → CRITERIA → RELEVANCE → LEAD) |
+| **Radars** (γραμμή ορισμού) | `.product-radar-row`, `.product-criteria` | **Pricing** plan row | `.public-plan-row` — ΠΛΑΝΟ / ΣΤΟΧΕΥΣΗ / ΡΑΝΤΑΡ / ΣΥΧΝΟΤΗΤΑ / ΤΙΜΗ / ΕΝΕΡΓΕΙΑ |
+| **Leads** (φίλτρα + register) | `.product-ledger-tools`, register rows | **Superadmin** registers | `.admin-filters`, `.admin-register`, `.admin-tag` |
+| **Business Dossier** (ενότητες) | `.product-record-section` | **Superadmin** detail / compliance | `.admin-panel`, `.admin-compliance` |
+| **Settings** (notice) | notice με amber αριστερό rule | **Pricing / auth** notices | `.public-notice`, `.auth-notice` |
+| **Product rail** | `.product-rail` (184px) | **Superadmin rail** | `.admin-rail` (218px, +1 επίπεδο ομαδοποίησης) |
+
+Η κοινή υπογραφή «επιλεγμένο/ενεργό» είναι **ίδια δήλωση** παντού:
+`box-shadow: inset 3px 0 var(--product-amber)` — στο `.product-rail`, `.admin-rail`,
+`.product-signal.selected` και `.public-plan-row.featured`. Αν μια νέα επιφάνεια χρειάζεται
+"selected" state, αυτή είναι η δήλωση· όχι background tint, όχι pill, όχι σκιά.
+
+Χρώμα κειμένου amber: `#775215` (όχι `--product-amber`, που είναι για rules/strokes και δίνει
+2.15:1 ως κείμενο). Κόκκινο `--product-red` = αποκλειστικά disabled/compliance-off.
+
+Η πλήρης χαρτογράφηση με τις πραγματικές τιμές (grids, borders, type scale, responsive) είναι στο
+`docs/gemi-leads-ui-study/forensic-audit-and-primitive-mapping.md`.
+
+### ⚠ Το λάθος που προκάλεσε το visual drift — μην το επαναλάβεις
+
+Το εγκεκριμένο design system **δεν υπήρχε στο `main`**. Το `static/css/product-ui.css` είχε
+**0 γραμμές** στο `main` και ζούσε μόνο στο branch `fix/outreach-hard-bounces`, που δεν είχε γίνει
+ποτέ merge. Ένας agent που δούλευε στο `main` δεν μπορούσε να το βρει, οπότε αναπαρήγαγε τα
+πραγματικά primitives του `main` (`rounded-card`, `shadow-soft`, stat cards).
+
+**Πριν αγγίξεις UI, επιβεβαίωσε ότι το design system υπάρχει στο branch σου:**
+
+```bash
+test -s static/css/product-ui.css && grep -q "body.product-body" static/css/product-ui.css && echo OK
+```
+
+Αν δεν τυπώσει `OK`, **σταμάτα** — δουλεύεις σε branch χωρίς το εγκεκριμένο σύστημα.
+
+### Canonical screenshots
+
+`docs/gemi-leads-ui-study/screenshots/final/` — το μικρό, τρέχον σετ αναφοράς (14 αρχεία).
+Τα `direction-*`, `production-*`, `prototype-*`, `refined-*` στον γονικό φάκελο είναι το ιστορικό
+της design μελέτης που οδήγησε στο Signal Ledger. Τα παλαιότερα `marketing_*.png` και `review_*.png`
+δείχνουν ενδιάμεσες καταστάσεις πριν το consolidation και **αφαιρέθηκαν** — μην τα αναζητήσεις.
+
+### Γνωστές εξαιρέσεις
+
+- `gemiapp/forms.py` → το κοινό `INPUT` constant εκπέμπει `rounded-2xl` (16px). Εμφανίζεται στο
+  status `<select>` και στο notes `<textarea>` των εγκεκριμένων Settings/Dossier. Είναι μέρος της
+  εγκεκριμένης κατάστασης· στις auth/admin σελίδες υπερισχύουν scoped κανόνες.
+- `templates/allauth/layouts/entrance.html` → override μόνο εμφάνισης που βάζει τις anonymous σελίδες
+  του django-allauth μέσα στο public chrome. Το `manage.html` (signed-in σελίδες allauth) μένει
+  στο default του allauth σκόπιμα.
+
 ## Τρέχουσα κατάσταση
+
+- **Final consolidation pass — όλες οι υπόλοιπες επιφάνειες (2026-09-10).** Μεταφέρθηκαν στο
+  Signal Ledger system και οι 24 εναπομείνασες σελίδες: 11 Superadmin subpages
+  (Subscriptions, Radars, Leads, GEMI Pipeline, Email Digests, System Health, Audit Log,
+  Accounts, User/Radar/Lead detail), 8 auth/account σελίδες (Login, Signup, password reset ×4,
+  resend verification, verify pending), οι 2 legal σελίδες, τα unsubscribe/resume-checkout και
+  το cookie consent banner. Προστέθηκαν τα `.auth-*`, `.prose-page`, `.cookie-banner`,
+  `.admin-panel`, `.admin-btn`, `.admin-modal` primitives στο `product-ui.css`.
+  - Οι μεταφορές έγιναν με transformers που **επαληθεύουν** ότι το ορατό κείμενο και η
+    ακολουθία των Django tags μένουν ίδια (`.recovery/migrate_admin*.py`), ώστε να μην αλλάξει
+    καμία λογική, καμία διεύθυνση και κανένα νομικό κείμενο.
+  - Έλεγχος διαδρομών: `.recovery/route_audit.py` κάνει GET σε κάθε προσβάσιμη σελίδα και
+    ελέγχει status, διαρροή template source, legacy classes και σύνδεση του `product-ui.css`.
+    **ALL ROUTES CLEAN.**
+  - Εκκρεμότητα προς γνώση: τα `.h-18` / `.pt-18` παράγονται πλέον μόνο επειδή το
+    `gemiapp/**/*.py` είναι στα content globs του Tailwind και το ίδιο το `tests.py` τα
+    αναφέρει (`test_the_nav_height_class_is_generated`). Κανένα template δεν τα χρησιμοποιεί.
+  - `check`, `makemigrations --check`, `build:css`, `collectstatic` καθαρά· **646 tests OK**.
+    Καμία εντολή deployment δεν εκτελέστηκε.
+
+- **Forensic recovery & visual system consolidation (2026-09-09).** Εντοπίστηκε ότι το εγκεκριμένο
+  Signal Ledger UI (`static/css/product-ui.css` + τα authenticated templates) **δεν υπήρχε καθόλου στο
+  `main`** — ζούσε μόνο στο branch `fix/outreach-hard-bounces` (`e55f8a3`), το οποίο δεν είχε ποτέ γίνει
+  merge. Το `main` είχε το compliance shutdown αλλά το παλιό generic SaaS UI. Γι' αυτό κάθε προηγούμενη
+  προσπάθεια στις δημόσιες επιφάνειες επανέφερε `rounded-card` / `shadow-soft` / stat cards: αυτά ήταν
+  όντως τα primitives του `main`.
+  - Δημιουργήθηκε το branch `recovery/visual-consolidation` και έγινε merge του `fix/outreach-hard-bounces`.
+    Επαληθεύτηκε ότι το UI branch είναι **superset** ως προς το compliance: ίδια migration `0031`, ίδια
+    fail-closed defaults, ίδια 3 σημεία ελέγχου `outreach_enabled()`, κανένα αρχείο δεν χάθηκε.
+  - Το `product-ui.css` επεκτάθηκε με δύο **scoped** layers, `body.public-body` και `body.admin-body`,
+    ώστε τίποτα από τις δημόσιες/admin επιφάνειες να μην μπορεί να αγγίξει τα εγκεκριμένα authenticated
+    screens. Τα `.product-*` primitives επαναχρησιμοποιούνται αυτούσια.
+  - **Landing** (`templates/home.html`): δημόσιο header από το ίδιο brand mark· hero proof = το Signals
+    register (`.product-signal`), όχι terminal panel· αλυσίδα EVENT → INFORMATION → CRITERIA → RELEVANCE
+    → LEAD· συνθετικά `.demo` παραδείγματα.
+  - **Pricing** (`templates/pricing.html`): κάθε πλάνο είναι operational definition row στη γραμματική
+    των Radars. Πλήρης factual audit — βλ. πίνακα παρακάτω.
+  - **Superadmin**: το rail είναι το product rail με ένα επιπλέον επίπεδο ομαδοποίησης. Το outreach
+    μεταφέρθηκε από «Growth» σε **COMPLIANCE / ARCHIVE** και οι φόρμες send/test/queue **δεν
+    αποδίδονται πλέον καθόλου** (ήταν disabled αλλά με ενεργό POST target).
+  - Το `SAMPLE_LEADS` διατηρεί το συνθετικό σύνολο που αφαίρεσε ονόματα φυσικών προσώπων.
+  - `check`, `makemigrations --check`, `build:css`, `collectstatic` καθαρά· **646 tests OK**.
+    Καμία εντολή deployment δεν εκτελέστηκε.
+
+### Pricing claim → source of truth
+
+| Ισχυρισμός | Πηγή αλήθειας | Κατάσταση |
+|---|---|---|
+| Pro / Business / Enterprise / Custom | `UserSubscription.TIERS` (`models.py`) | επιβεβαιωμένο |
+| Όρια Ραντάρ 5 / 10 / 15 / 15 | `RADAR_LIMITS` (`models.py`) | επιβεβαιωμένο |
+| €19 / €49 / €99 | `PLAN_PRICES` (`superadmin/services.py`) + README | επιβεβαιωμένο |
+| Custom «κατόπιν συμφωνίας», εκτός checkout | `SELECTABLE_TIERS` (`billing.py`) | επιβεβαιωμένο |
+| Ενημερώσεις ανά 3 ώρες, 08:00 - 23:00 | `DigestDelivery.FREQUENCIES` + `apps.SCHEDULES` cron | επιβεβαιωμένο |
+| Priority Alerts μόνο Enterprise/Custom | `TOP_TIERS` (`services.py`) | επιβεβαιωμένο |
+| Ημερήσιο digest 09:00 | `apps.SCHEDULES` cron `0 9 * * *` | επιβεβαιωμένο |
+| Εξαγωγή CSV σε κάθε πληρωμένο πλάνο | `views.export_csv` (`radar_limit > 0`) | επιβεβαιωμένο |
+| 9.651 κωδικοί ΚΑΔ | `gemiapp/data/kad_2025.json` | επιβεβαιωμένο |
+| «Οι πληρωμές δεν είναι ακόμη ενεργές» | `LEGAL_BILLING_ACTIVE` (default `0`) | επιβεβαιωμένο |
+| API Webhooks / dedicated database sync | — καμία υλοποίηση | **αφαιρέθηκε** |
+| «Απεριόριστα Leads» | — δεν υπάρχει τέτοιο όριο στο μοντέλο | **αφαιρέθηκε** |
 
 - **Ολοκληρώθηκε ο έλεγχος και η παραγωγή review captures για τις εμπορικές επιφάνειες & το Superadmin (2026-09-09).** Δημιουργήθηκαν τα νέα captures στο `docs/gemi-leads-ui-study/screenshots/` και στα artifacts: `marketing_superadmin_desktop.png` & `marketing_superadmin_users_desktop.png` (INTERNAL REVIEW ONLY), `marketing_pricing_desktop.png` (PUBLIC MARKETING SAFE), `marketing_landing_desktop.png` (PUBLIC MARKETING SAFE), `marketing_landing_full_desktop.png`, `marketing_landing_mobile.png` & `marketing_landing_full_mobile.png`. Διενεργήθηκε πλήρης έλεγχος copy στη δημόσια landing page, επιβεβαιώνοντας ότι δεν υπάρχουν υπόνοιες ή αναφορές σε αυτόματη αποστολή cold outreach email προς νέες εταιρείες. Το Signal Ledger UI και το backend διατηρήθηκαν 100% ανέγγιχτα.
 - **Ολοκληρώθηκε η δημιουργία του privacy-safe marketing/demo dataset & review captures για το NORVA (2026-09-09).** Δημιουργήθηκε η νέα reversible εντολή διαχείρισης `seed_demo_marketing_data` (`gemiapp/management/commands/seed_demo_marketing_data.py`), η οποία εισάγει 4 συνθετικά, 100% εικονικά παραδείγματα ελληνικών επιχειρήσεων (`ΑΙΓΑΙΟ LOGISTICS ΜΟΝ. Ι.Κ.Ε.`, `HELLAS CLOUD & DATA LABS Α.Ε.`, `GREEN GRID SOLAR SOLUTIONS Ι.Κ.Ε.`, `KALYPSO HOSPITALITY & TRADING Ε.Ε.`) με εικονικά GEMI (`999000101000`..`999000104000`), εικονικά ΑΦΜ, εικονικές διευθύνσεις/emails, KAD records, διαχειριστές και αντιπροσωπευτικές καταστάσεις lead/matches/notes. Υποστηρίζεται και παράμετρος `--clean` για άμεση, μη καταστροφική αφαίρεση. Δημιουργήθηκαν τα νέα review captures στο `docs/marketing-demo-data.md` και στα artifacts: `marketing_signals_desktop` (1440x900), `marketing_radars_desktop` (1440x900), `marketing_dossier_desktop` (1440x900), `marketing_leads_desktop` (1440x900), `marketing_signals_mobile` (390x844) και `marketing_dossier_mobile` (390x844). Το production Signal Ledger UI διατηρήθηκε ακέραιο χωρίς καμία εικαστική αλλαγή.

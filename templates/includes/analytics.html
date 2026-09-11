@@ -9,23 +9,16 @@ The banner is plain HTML/CSS with a small inline script: no consent-management v
 dependency, and no layout shift because it is fixed to the viewport bottom.
 {% endcomment %}
 {% if ga_measurement_id %}
-<div id="cookieBanner" hidden
-     class="fixed inset-x-0 bottom-0 z-[60] border-t border-navy-900/10 bg-white/95 px-5 py-4 shadow-soft backdrop-blur">
-  <div class="mx-auto flex max-w-5xl flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-    <p class="text-sm leading-6 text-navy-900/75">
+<div id="cookieBanner" hidden class="cookie-banner">
+  <div>
+    <p>
       Χρησιμοποιούμε cookies στατιστικών για να καταλάβουμε πώς χρησιμοποιείται ο ιστότοπος.
       Δεν φορτώνεται τίποτα χωρίς τη συγκατάθεσή σου.
-      <a href="{% url 'privacy' %}" class="font-bold text-blue-700 hover:underline">Πολιτική Απορρήτου</a>
+      <a href="{% url 'privacy' %}">Πολιτική Απορρήτου</a>
     </p>
-    <div class="flex shrink-0 gap-2">
-      <button type="button" data-cookie-decline
-              class="rounded-control border border-navy-900/15 px-5 py-2.5 text-xs font-bold text-navy-900/70 transition hover:bg-sand-50">
-        Απόρριψη
-      </button>
-      <button type="button" data-cookie-accept
-              class="rounded-control bg-navy-950 px-5 py-2.5 text-xs font-bold text-white transition hover:-translate-y-0.5">
-        Αποδοχή
-      </button>
+    <div class="cookie-actions">
+      <button type="button" data-cookie-decline>Απόρριψη</button>
+      <button type="button" data-cookie-accept class="primary">Αποδοχή</button>
     </div>
   </div>
 </div>

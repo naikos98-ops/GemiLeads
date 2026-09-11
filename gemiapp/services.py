@@ -337,8 +337,22 @@ TOP_TIERS = ("enterprise", "custom")
 def digest_skip_reason(user, frequency):
     """Why this user would not receive this digest, or None if they are a valid recipient.
 
-    Shared by send_digests and the `digest_recipients` management command, so the diagnostic can
-    never drift away from the behaviour it is meant to explain.
+    Shared by send_digests, send_user_yesterday_digest and the `digest_recipients` /
+    `diagnose_intraday` management commands, so every send path and every diagnostic applies the
+    same rule and cannot drift apart.
+
+    Two independent gates, both required:
+
+      PREFERENCE  -- the user wants the email: a DigestPreference exists and is not "off".
+      ENTITLEMENT -- the user may receive paid product data: UserSubscription.has_entitlement,
+                     i.e. an active paid subscription OR unexpired complimentary access (the
+                     existing beta/comp mechanism). BETA_MODE is only a label and grants nothing.
+
+    A DigestPreference is created with frequency="daily" for every signup, so preference alone
+    must never be read as entitlement. The daily digest carries up to 100 newly registered
+    companies whether or not any Radar matched -- the core paid feed -- so entitlement applies to
+    every frequency, daily included. Cancelled, past-due, unpaid and inactive subscriptions all
+    fail has_active_paid_subscription (ALLOWED_PAID_STATUSES is ("active",)).
     """
     preference = getattr(user, "digest_preference", None)
     if preference is None:
@@ -608,6 +622,14 @@ def send_user_yesterday_digest(user) -> int:
 
     if not user.email:
         raise ValueError("Ο χρήστης δεν διαθέτει email διεύθυνση.")
+
+    # An operator-triggered send is still a digest: it carries the same paid feed and lands in
+    # the same inbox, so it obeys the same preference + entitlement rule as the scheduled ones.
+    # Without this it could mail an unentitled account, or someone who set their digest to off.
+    # The Superadmin view already turns a raised exception into an error message.
+    reason = digest_skip_reason(user, "daily")
+    if reason:
+        raise ValueError(reason)
 
     yesterday = timezone.localdate() - timedelta(days=1)
     matches = RadarMatch.objects.filter(

@@ -1,223 +1,135 @@
-{% load static %}
-<!doctype html>
+{% load static %}<!doctype html>
 <html lang="el" class="scroll-smooth">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#071725">
+  <meta name="theme-color" content="#12201e">
   {# Opt in to the light palette so mobile browsers' forced dark mode does not muddy it. #}
   <meta name="color-scheme" content="light">
-  <title>{% block title %}Superadmin Control Center · Gemi Leads{% endblock %}</title>
-  {# Same compiled Tailwind build as the public site. The old cdn.tailwindcss.com JIT #}
-  {# script failed to load on some mobile networks / content blockers, leaving every #}
-  {# superadmin page unstyled and effectively blank. tailwind.config.js already scans #}
-  {# templates/**/*.html, so all classes used here are in this file. #}
+  <title>{% block title %}Superadmin · Gemi Leads{% endblock %}</title>
+  {% comment %} Same two stylesheets as the authenticated product. product-ui.css is what makes this
+     page the same software as Signals/Radars/Leads rather than a separate admin theme. {% endcomment %}
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <link rel="stylesheet" href="{% static 'css/product-ui.css' %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <style>
-    .noise{background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E")}
-  </style>
   {% block head %}{% endblock %}
 </head>
-<body class="noise min-h-screen bg-sand-50 font-sans text-navy-950 antialiased">
+<body class="admin-body">
   {% if request.session.impersonator_id %}
-  <div class="bg-amber-500 text-navy-950 px-4 py-2.5 text-center text-sm font-bold flex items-center justify-center gap-4 z-[100] relative shadow-md">
-    <span>SUPERADMIN IMPERSONATION — Προβολή ως <strong>{{ user.email }}</strong></span>
-    <form action="{% url 'superadmin:impersonate_stop' %}" method="post" class="inline">
+  <div class="admin-impersonation">
+    <span>SUPERADMIN IMPERSONATION — ΠΡΟΒΟΛΗ ΩΣ {{ user.email }}</span>
+    <form action="{% url 'superadmin:impersonate_stop' %}" method="post">
       {% csrf_token %}
-      <button class="rounded-full bg-navy-950 px-4 py-1 text-xs text-white hover:bg-navy-800 transition font-bold">Έξοδος Impersonation</button>
+      <button type="submit">ΕΞΟΔΟΣ</button>
     </form>
   </div>
   {% endif %}
 
-  <div class="flex min-h-screen">
-    <!-- Sidebar Desktop -->
-    <aside class="hidden w-64 flex-col bg-navy-950 text-white lg:flex border-r border-white/10 shrink-0">
-      <div class="p-6">
-        <a href="{% url 'superadmin:overview' %}" class="flex items-center gap-3">
-          <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-signal p-2 text-white shadow-glow font-black text-sm">SA</div>
-          <div>
-            <span class="block text-lg font-extrabold tracking-tight text-white leading-none">Gemi Leads</span>
-            <span class="inline-block mt-1 text-[10px] font-bold uppercase tracking-widest text-blue-400">SUPERADMIN</span>
-          </div>
-        </a>
-      </div>
-
-      <nav class="flex-1 space-y-6 px-4 py-2 text-sm font-medium">
-        <div>
-          <a href="{% url 'superadmin:overview' %}" class="flex items-center gap-3 rounded-xl px-3 py-2.5 transition hover:bg-white/10 text-white/90 hover:text-white">
-            <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-            Overview
-          </a>
-        </div>
-
-        <div>
-          <p class="px-3 text-[11px] font-bold uppercase tracking-widest text-white/40 mb-2">Customers</p>
-          <div class="space-y-1">
-            <a href="{% url 'superadmin:user_list' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
-              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-              Users
-            </a>
-            <a href="{% url 'superadmin:subscription_list' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
-              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V7a2 2 0 00-2-2H6a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-              Subscriptions
-            </a>
-          </div>
-        </div>
-
-        <div>
-          <p class="px-3 text-[11px] font-bold uppercase tracking-widest text-white/40 mb-2">Growth</p>
-          <div class="space-y-1">
-            <a href="{% url 'superadmin:client_finder' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
-              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z"/></svg>
-              Εύρεση Πελατών
-            </a>
-            <a href="{% url 'superadmin:outreach_history' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
-              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
-              Ιστορικό Αποστολών
-            </a>
-          </div>
-        </div>
-
-        <div>
-          <p class="px-3 text-[11px] font-bold uppercase tracking-widest text-white/40 mb-2">Product</p>
-          <div class="space-y-1">
-            <a href="{% url 'superadmin:radar_list' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
-              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3a9 9 0 0 1 9 9"/></svg>
-              Radars
-            </a>
-            <a href="{% url 'superadmin:lead_list' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
-              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-              Leads
-            </a>
-          </div>
-        </div>
-
-        <div>
-          <p class="px-3 text-[11px] font-bold uppercase tracking-widest text-white/40 mb-2">Operations</p>
-          <div class="space-y-1">
-            <a href="{% url 'superadmin:pipeline_overview' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
-              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-              GEMI Pipeline
-            </a>
-            <a href="{% url 'superadmin:digest_list' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
-              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-              Email Digests
-            </a>
-          </div>
-        </div>
-
-        <div>
-          <p class="px-3 text-[11px] font-bold uppercase tracking-widest text-white/40 mb-2">System</p>
-          <div class="space-y-1">
-            <a href="{% url 'superadmin:health_overview' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
-              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              System Health
-            </a>
-            <a href="{% url 'superadmin:audit_list' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
-              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-              Audit Log
-            </a>
-            <a href="{% url 'superadmin:account_list' %}" class="flex items-center gap-3 rounded-xl px-3 py-2 transition hover:bg-white/10 text-white/80 hover:text-white">
-              <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/></svg>
-              Λογαριασμοί
-            </a>
-            <form method="post" action="{% url 'superadmin:backup_download' %}"
-                  onsubmit="return confirm('Να δημιουργηθεί και να κατέβει backup;
-
-Περιέχει προσωπικά δεδομένα χρηστών. Αποθήκευσέ το σε ιδιωτικό χώρο.');">
-              {% csrf_token %}
-              <button type="submit" class="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition hover:bg-white/10 text-white/80 hover:text-white">
-                <svg class="h-4 w-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M12 12v9m0 0l-4-4m4 4l4-4M12 3v6"/></svg>
-                Λήψη Backup
-              </button>
-            </form>
-          </div>
-        </div>
-      </nav>
-
-      <div class="p-4 border-t border-white/10">
-        <a href="{% url 'dashboard' %}" class="flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2.5 text-xs font-bold text-white/80 hover:bg-white/10 hover:text-white transition">
-          ← Back to App Dashboard
-        </a>
-      </div>
-    </aside>
-
-    <!-- Main Content Area -->
-    <div class="flex flex-1 flex-col overflow-x-hidden">
-      <!-- Topbar -->
-      <header class="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-navy-900/10 bg-white px-5 lg:px-8 shadow-sm">
-        <div class="flex items-center gap-4">
-          <button id="mobileMenuBtn" class="lg:hidden p-2 rounded-lg text-navy-950 hover:bg-sand-100">
-            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-          </button>
-          <h1 class="text-xl font-extrabold text-navy-950">{% block page_title %}Superadmin Control Center{% endblock %}</h1>
-        </div>
-        <div class="flex items-center gap-4">
-          <span class="hidden sm:inline-block rounded-full bg-blue-50 px-3 py-1 text-xs font-extrabold text-blue-700">SUPERADMIN</span>
-          <div class="text-right">
-            <span class="block text-sm font-bold text-navy-950">{{ request.user.email }}</span>
-          </div>
-        </div>
-      </header>
-
-      <!-- Messages -->
-      {% if messages %}
-      <div class="px-5 pt-4 lg:px-8 space-y-2">
-        {% for message in messages %}
-        <div class="rounded-2xl p-4 text-sm font-bold flex items-center justify-between {% if message.tags == 'error' %}bg-red-50 text-red-900 border border-red-200{% elif message.tags == 'success' %}bg-emerald-50 text-emerald-900 border border-emerald-200{% else %}bg-blue-50 text-blue-900 border border-blue-200{% endif %}">
-          <span>{{ message }}</span>
-        </div>
-        {% endfor %}
-      </div>
-      {% endif %}
-
-      <!-- Content -->
-      <main class="flex-1 px-5 py-8 lg:px-8">
-        {% block content %}{% endblock %}
-      </main>
+  <header class="admin-topbar">
+    <a class="admin-brand" href="{% url 'superadmin:overview' %}" aria-label="Gemi Leads · Superadmin">
+      <span class="product-mark" aria-hidden="true"><i></i></span>
+      <span>GEMI <b>LEADS</b></span>
+      <small>ADMIN</small>
+    </a>
+    <div class="admin-topbar-meta">
+      <b>OPERATIONS LEDGER</b>
+      <span>{% now "l d F" %}</span>
+      <span>Internal operations · review only</span>
     </div>
-  </div>
+    <div class="admin-account">
+      <button class="admin-rail-toggle" id="railToggle" aria-label="Μενού" aria-controls="adminRail" aria-expanded="false">
+        <svg style="width:18px;height:18px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <span>{{ request.user.email }}</span>
+      <a href="{% url 'dashboard' %}">← ΠΡΟΪΟΝ</a>
+    </div>
+  </header>
 
-  <!-- Mobile Menu Modal -->
-  <div id="mobileMenu" class="fixed inset-0 z-50 hidden bg-navy-950/80 backdrop-blur-sm lg:hidden">
-    <div class="fixed inset-y-0 left-0 w-72 bg-navy-950 p-6 text-white shadow-2xl flex flex-col justify-between">
+  <nav class="admin-rail" id="adminRail" aria-label="Πλοήγηση Superadmin">
+    <div class="admin-rail-group">
+      <a href="{% url 'superadmin:overview' %}" {% if request.resolver_match.url_name == 'overview' %}aria-current="page"{% endif %}>System Overview</a>
+    </div>
+
+    <div class="admin-rail-group">
+      <p>CUSTOMERS</p>
+      <a href="{% url 'superadmin:user_list' %}" {% if 'user' in request.resolver_match.url_name %}aria-current="page"{% endif %}>Users</a>
+      <a href="{% url 'superadmin:subscription_list' %}" {% if 'subscription' in request.resolver_match.url_name %}aria-current="page"{% endif %}>Subscriptions</a>
+    </div>
+
+    <div class="admin-rail-group">
+      <p>PRODUCT</p>
+      <a href="{% url 'superadmin:radar_list' %}" {% if 'radar' in request.resolver_match.url_name %}aria-current="page"{% endif %}>Radars</a>
+      <a href="{% url 'superadmin:lead_list' %}" {% if 'lead' in request.resolver_match.url_name %}aria-current="page"{% endif %}>Leads</a>
+    </div>
+
+    <div class="admin-rail-group">
+      <p>OPERATIONS</p>
+      <a href="{% url 'superadmin:pipeline_overview' %}" {% if 'pipeline' in request.resolver_match.url_name %}aria-current="page"{% endif %}>GEMI Pipeline</a>
+      <a href="{% url 'superadmin:digest_list' %}" {% if 'digest' in request.resolver_match.url_name %}aria-current="page"{% endif %}>Email Digests</a>
+    </div>
+
+    <div class="admin-rail-group">
+      <p>SYSTEM</p>
+      <a href="{% url 'superadmin:health_overview' %}" {% if 'health' in request.resolver_match.url_name %}aria-current="page"{% endif %}>System Health</a>
+      <a href="{% url 'superadmin:audit_list' %}" {% if 'audit' in request.resolver_match.url_name %}aria-current="page"{% endif %}>Audit Log</a>
+      <a href="{% url 'superadmin:account_list' %}" {% if 'account' in request.resolver_match.url_name %}aria-current="page"{% endif %}>Λογαριασμοί</a>
+      <form method="post" action="{% url 'superadmin:backup_download' %}"
+            onsubmit="return confirm('Να δημιουργηθεί και να κατέβει backup;\n\nΠεριέχει προσωπικά δεδομένα χρηστών. Αποθήκευσέ το σε ιδιωτικό χώρο.');">
+        {% csrf_token %}
+        <button type="submit">Λήψη Backup</button>
+      </form>
+    </div>
+
+    {% comment %} Cold outreach was permanently shut down. These two routes remain reachable so the
+       historical records stay auditable; they are read-only archives, not a Growth feature,
+       and the rail says so before anyone clicks. {% endcomment %}
+    <div class="admin-rail-group">
+      <p>COMPLIANCE / ARCHIVE</p>
+      <a href="{% url 'superadmin:outreach_history' %}" {% if 'outreach' in request.resolver_match.url_name %}aria-current="page"{% endif %}>
+        Outreach History
+        <span class="admin-off">COLD OUTREACH: DISABLED</span>
+      </a>
+      <a href="{% url 'superadmin:client_finder' %}" {% if 'client_finder' in request.resolver_match.url_name %}aria-current="page"{% endif %}>
+        Client Finder
+        <span class="admin-off">ARCHIVED · READ ONLY</span>
+      </a>
+    </div>
+
+    <div class="admin-rail-foot">
+      <a href="{% url 'dashboard' %}">← ΕΠΙΣΤΡΟΦΗ ΣΤΟ ΠΡΟΪΟΝ</a>
+    </div>
+  </nav>
+
+  <main class="admin-main">
+    <div class="admin-pagehead">
       <div>
-        <div class="flex items-center justify-between mb-8">
-          <div class="flex items-center gap-3">
-            <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-signal text-white font-black text-sm">SA</div>
-            <span class="text-lg font-extrabold text-white">Superadmin</span>
-          </div>
-          <button id="closeMobileMenu" class="p-2 text-white/70 hover:text-white">✕</button>
-        </div>
-        <nav class="space-y-4 text-sm font-medium">
-          <a href="{% url 'superadmin:overview' %}" class="block py-2 text-white hover:text-blue-400">Overview</a>
-          <a href="{% url 'superadmin:user_list' %}" class="block py-2 text-white/80 hover:text-white">Users</a>
-          <a href="{% url 'superadmin:subscription_list' %}" class="block py-2 text-white/80 hover:text-white">Subscriptions</a>
-          <a href="{% url 'superadmin:client_finder' %}" class="block py-2 text-white/80 hover:text-white">Εύρεση Πελατών</a>
-          <a href="{% url 'superadmin:outreach_history' %}" class="block py-2 text-white/80 hover:text-white">Ιστορικό Αποστολών</a>
-          <a href="{% url 'superadmin:radar_list' %}" class="block py-2 text-white/80 hover:text-white">Radars</a>
-          <a href="{% url 'superadmin:lead_list' %}" class="block py-2 text-white/80 hover:text-white">Leads</a>
-          <a href="{% url 'superadmin:pipeline_overview' %}" class="block py-2 text-white/80 hover:text-white">GEMI Pipeline</a>
-          <a href="{% url 'superadmin:digest_list' %}" class="block py-2 text-white/80 hover:text-white">Email Digests</a>
-          <a href="{% url 'superadmin:health_overview' %}" class="block py-2 text-white/80 hover:text-white">System Health</a>
-          <a href="{% url 'superadmin:audit_list' %}" class="block py-2 text-white/80 hover:text-white">Audit Log</a>
-        </nav>
+        <p class="product-eyebrow">SUPERADMIN</p>
+        <h1>{% block page_title %}Superadmin{% endblock %}</h1>
       </div>
-      <a href="{% url 'dashboard' %}" class="block text-center rounded-xl bg-white/10 py-3 text-xs font-bold text-white">← App Dashboard</a>
+      {% block headactions %}{% endblock %}
     </div>
-  </div>
+
+    {% if messages %}
+    <div class="admin-body-inner">
+      {% for message in messages %}
+      <div class="admin-message {{ message.tags }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="admin-body-inner">{% block content %}{% endblock %}</div>
+  </main>
 
   <script>
-    const mobileBtn = document.getElementById('mobileMenuBtn');
-    const closeBtn = document.getElementById('closeMobileMenu');
-    const menu = document.getElementById('mobileMenu');
-    if (mobileBtn && menu) {
-      mobileBtn.addEventListener('click', () => menu.classList.remove('hidden'));
-      closeBtn.addEventListener('click', () => menu.classList.add('hidden'));
-      menu.addEventListener('click', (e) => { if (e.target === menu) menu.classList.add('hidden'); });
+    const railToggle = document.getElementById('railToggle');
+    const adminRail = document.getElementById('adminRail');
+    if (railToggle && adminRail) {
+      railToggle.addEventListener('click', () => {
+        const open = adminRail.classList.toggle('open');
+        railToggle.setAttribute('aria-expanded', String(open));
+      });
     }
   </script>
 </body>
