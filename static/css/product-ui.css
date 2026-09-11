@@ -446,6 +446,15 @@ body.product-body {
   min-height: calc(100vh - 158px);
 }
 
+/* Small desktops (rail visible, ≤1180px): 184 rail + 540 register + 360 inspector = 1084px
+   overflowed a 1024px viewport. Let the register flex and take 60px off the inspector.
+   Above 1180px the rule above is untouched; ≤900px the single-column layout takes over. */
+@media (min-width: 901px) and (max-width: 1180px) {
+  .product-workgrid {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+}
+
 .product-ledger {
   border-right: 1px solid var(--product-ink);
 }
