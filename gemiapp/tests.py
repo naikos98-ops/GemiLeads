@@ -860,12 +860,32 @@ class SuperadminTests(TestCase):
         self.assertEqual(res_user_name.status_code, 302)
 
     def test_send_user_yesterday_digest(self):
+        # The manual send obeys the same entitlement rule as the scheduled digests, so the
+        # recipient needs a real entitlement for the action to succeed and be audited.
+        subscription = self.normal_user.subscription
+        subscription.tier, subscription.status = "pro", "active"
+        subscription.save()
+
         self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
         res = self.client.post(reverse("superadmin:user_send_yesterday_digest", kwargs={"user_id": self.normal_user.id}))
         self.assertEqual(res.status_code, 302)
         self.assertRedirects(res, reverse("superadmin:user_detail", kwargs={"user_id": self.normal_user.id}))
         from .models import AdminAuditLog
         self.assertTrue(AdminAuditLog.objects.filter(action="send_user_yesterday_digest", target_id=str(self.normal_user.id)).exists())
+
+    def test_send_user_yesterday_digest_refuses_an_unentitled_account(self):
+        # normal_user is a plain signup: a daily DigestPreference from the signal, no entitlement.
+        mail.outbox = []
+        self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
+        res = self.client.post(
+            reverse("superadmin:user_send_yesterday_digest", kwargs={"user_id": self.normal_user.id}),
+            follow=True,
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(mail.outbox, [])
+        from .models import AdminAuditLog
+        self.assertFalse(AdminAuditLog.objects.filter(action="send_user_yesterday_digest", target_id=str(self.normal_user.id)).exists())
+        self.assertContains(res, "No active subscription entitlement")
 
     def test_grant_complimentary_enterprise_and_custom_limits(self):
         self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
@@ -8860,3 +8880,232 @@ class QueueUndeliverableTests(TestCase):
             queue_company_outreach(self.admin, [first.id])
 
         self.assertNotIn(second, uncontacted_companies_qs())
+
+
+
+@SYNC_Q
+class DigestEntitlementTests(TestCase):
+    """PREFERENCE (the user wants the email) and ENTITLEMENT (the user may receive paid product
+    data) are separate gates, and a digest needs both.
+
+    Every signup gets a daily DigestPreference and a free/inactive UserSubscription from the
+    post_save signal, so preference alone is present on every account and must never be read as
+    entitlement. Before this class existed nothing asserted the unentitled + daily case, so the
+    suite passed both with and without the gate.
+    """
+
+    def setUp(self):
+        from .services import NO_ENTITLEMENT
+
+        self.NO_ENTITLEMENT = NO_ENTITLEMENT
+        self.today = timezone.localdate()
+        # A company registered on the target day, so a daily digest is never skipped for being
+        # empty -- every skip below is about the recipient, not about content.
+        Company.objects.create(
+            gemi_number="990000000001", name="ΑΙΓΑΙΟ LOGISTICS ΜΟΝ. Ι.Κ.Ε.", incorporation_date=self.today
+        )
+        mail.outbox = []
+
+    def _user(self, key, *, tier="free", status="inactive", comp_tier="none", comp_until=None,
+              frequency="daily"):
+        user = User.objects.create_user(
+            username=f"{key}@example.com", email=f"{key}@example.com", password="x", is_active=True
+        )
+        preference = user.digest_preference
+        preference.frequency = frequency
+        preference.save()
+        subscription = user.subscription
+        subscription.tier = tier
+        subscription.status = status
+        subscription.complimentary_tier = comp_tier
+        subscription.complimentary_until = comp_until
+        subscription.save()
+        return User.objects.get(pk=user.pk)
+
+    def _recipients(self):
+        return {address for message in mail.outbox for address in message.to}
+
+    # -- digest_skip_reason: the rule itself ----------------------------------------------------
+
+    def test_active_paid_with_daily_enabled_is_a_recipient(self):
+        from .services import digest_skip_reason
+
+        self.assertIsNone(digest_skip_reason(self._user("paid", tier="pro", status="active"), "daily"))
+
+    def test_active_paid_with_daily_disabled_is_skipped(self):
+        from .services import digest_skip_reason
+
+        user = self._user("paid-off", tier="pro", status="active", frequency="off")
+        self.assertIn("frequency=off", digest_skip_reason(user, "daily"))
+
+    def test_complimentary_beta_access_with_daily_enabled_is_a_recipient(self):
+        from .services import digest_skip_reason
+
+        user = self._user("comp", comp_tier="pro", comp_until=timezone.now() + timedelta(days=30))
+        self.assertIsNone(digest_skip_reason(user, "daily"))
+
+    def test_open_ended_complimentary_access_is_a_recipient(self):
+        from .services import digest_skip_reason
+
+        self.assertIsNone(digest_skip_reason(self._user("comp-forever", comp_tier="business"), "daily"))
+
+    def test_expired_complimentary_access_is_skipped(self):
+        from .services import digest_skip_reason
+
+        user = self._user("comp-expired", comp_tier="pro", comp_until=timezone.now() - timedelta(days=1))
+        self.assertEqual(digest_skip_reason(user, "daily"), self.NO_ENTITLEMENT)
+
+    def test_unpaid_user_is_skipped_for_the_daily_digest(self):
+        """The case that was missing: nothing asserted digest_skip_reason(unpaid, "daily")."""
+        from .services import digest_skip_reason
+
+        unpaid = self._user("unpaid", tier="free", status="inactive")
+        self.assertEqual(digest_skip_reason(unpaid, "daily"), self.NO_ENTITLEMENT)
+
+    def test_a_default_preference_is_not_entitlement(self):
+        from .services import digest_skip_reason
+
+        # Straight from the signup signal: a daily preference is present, entitlement is not.
+        user = User.objects.create_user(username="fresh@example.com", email="fresh@example.com", password="x")
+        user = User.objects.get(pk=user.pk)
+        self.assertEqual(user.digest_preference.frequency, "daily")
+        self.assertFalse(user.subscription.has_entitlement)
+        self.assertEqual(digest_skip_reason(user, "daily"), self.NO_ENTITLEMENT)
+
+    def test_account_without_a_subscription_row_is_skipped(self):
+        from .services import digest_skip_reason
+
+        user = self._user("no-row")
+        UserSubscription.objects.filter(user=user).delete()
+        self.assertEqual(digest_skip_reason(User.objects.get(pk=user.pk), "daily"), self.NO_ENTITLEMENT)
+
+    def test_cancelled_subscription_is_skipped(self):
+        from .services import digest_skip_reason
+
+        user = self._user("cancelled", tier="pro", status="canceled")
+        self.assertEqual(digest_skip_reason(user, "daily"), self.NO_ENTITLEMENT)
+
+    def test_lapsed_subscription_is_skipped(self):
+        from .services import digest_skip_reason
+
+        for status in ("past_due", "unpaid"):
+            with self.subTest(status=status):
+                user = self._user(f"lapsed-{status}", tier="business", status=status)
+                self.assertEqual(digest_skip_reason(user, "daily"), self.NO_ENTITLEMENT)
+
+    def test_inactive_subscription_is_skipped(self):
+        from .services import digest_skip_reason
+
+        user = self._user("inactive-sub", tier="enterprise", status="inactive")
+        self.assertEqual(digest_skip_reason(user, "daily"), self.NO_ENTITLEMENT)
+
+    def test_intraday_applies_the_same_entitlement_and_the_tier_gate(self):
+        from .services import digest_skip_reason
+
+        self.assertEqual(digest_skip_reason(self._user("i-unpaid"), "intraday"), self.NO_ENTITLEMENT)
+        self.assertEqual(
+            digest_skip_reason(self._user("i-cancel", tier="enterprise", status="canceled"), "intraday"),
+            self.NO_ENTITLEMENT,
+        )
+        self.assertIn("enterprise/custom", digest_skip_reason(self._user("i-pro", tier="pro", status="active"), "intraday"))
+        self.assertIsNone(digest_skip_reason(self._user("i-ent", tier="enterprise", status="active"), "intraday"))
+        self.assertIsNone(digest_skip_reason(self._user("i-comp", comp_tier="enterprise"), "intraday"))
+
+    # -- end to end: the recipient query cannot route around the rule ---------------------------
+
+    def test_daily_run_mails_only_entitled_accounts_with_the_preference_on(self):
+        from .services import send_digests
+
+        entitled = {
+            self._user("e2e-paid", tier="pro", status="active").email,
+            self._user("e2e-comp", comp_tier="pro", comp_until=timezone.now() + timedelta(days=7)).email,
+        }
+        refused = [
+            self._user("e2e-unpaid"),
+            self._user("e2e-cancelled", tier="pro", status="canceled"),
+            self._user("e2e-pastdue", tier="pro", status="past_due"),
+            self._user("e2e-inactive", tier="business", status="inactive"),
+            self._user("e2e-comp-expired", comp_tier="pro", comp_until=timezone.now() - timedelta(days=1)),
+            self._user("e2e-paid-off", tier="pro", status="active", frequency="off"),
+        ]
+
+        sent, skipped = send_digests(self.today, frequency="daily")
+
+        self.assertEqual(self._recipients(), entitled)
+        self.assertEqual(sent, len(entitled))
+        for user in refused:
+            self.assertNotIn(user.email, self._recipients())
+        # Unentitled accounts are still written to the delivery log as skipped for entitlement,
+        # which is what makes a missing digest diagnosable from the Superadmin.
+        for user in refused[:5]:
+            row = DigestDelivery.objects.get(user=user, digest_date=self.today, frequency="daily")
+            self.assertEqual(row.status, "skipped")
+            self.assertEqual(row.error_message, self.NO_ENTITLEMENT)
+
+    def test_intraday_run_mails_only_entitled_top_tier_accounts(self):
+        from .services import send_digests
+
+        self._user("x-pro", tier="pro", status="active")
+        self._user("x-unpaid")
+        self._user("x-cancelled", tier="enterprise", status="canceled")
+        allowed = {
+            self._user("x-ent", tier="enterprise", status="active").email,
+            self._user("x-comp", comp_tier="custom").email,
+        }
+
+        send_digests(self.today, frequency="intraday")
+
+        self.assertEqual(self._recipients(), allowed)
+
+    def test_manual_yesterday_digest_refuses_an_unentitled_account(self):
+        from .services import send_user_yesterday_digest
+
+        with self.assertRaisesMessage(ValueError, self.NO_ENTITLEMENT):
+            send_user_yesterday_digest(self._user("m-unpaid"))
+        self.assertEqual(mail.outbox, [])
+
+    def test_manual_yesterday_digest_respects_an_opt_out(self):
+        from .services import send_user_yesterday_digest
+
+        user = self._user("m-off", tier="pro", status="active", frequency="off")
+        with self.assertRaisesMessage(ValueError, "frequency=off"):
+            send_user_yesterday_digest(user)
+        self.assertEqual(mail.outbox, [])
+
+    # -- the unrelated email paths are untouched --------------------------------------------------
+
+    def test_verification_email_does_not_depend_on_entitlement(self):
+        cache.clear()
+        response = self.client.post(reverse("signup"), {
+            "first_name": "Νέος", "email": "verify-me@example.com",
+            "password1": "strongpassword123", "password2": "strongpassword123",
+        })
+        self.assertEqual(response.status_code, 200)
+        new_user = User.objects.get(username="verify-me@example.com")
+        self.assertFalse(new_user.subscription.has_entitlement)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["verify-me@example.com"])
+
+    def test_password_reset_does_not_depend_on_entitlement(self):
+        cache.clear()
+        user = self._user("reset-me")
+        self.assertFalse(user.subscription.has_entitlement)
+        response = self.client.post(reverse("password_reset"), {"email": user.email})
+        self.assertRedirects(response, reverse("password_reset_done"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, [user.email])
+
+    def test_cold_outreach_stays_disabled(self):
+        from .models import CompanyOutreach
+        from .superadmin.services import outreach_enabled, queue_company_outreach
+
+        self.assertFalse(outreach_enabled())
+        admin = User.objects.create_superuser("ent-admin", "ent-admin@example.com", "pw")
+        company = Company.objects.create(
+            gemi_number="990000000002", name="HELLAS CLOUD & DATA LABS Α.Ε.",
+            incorporation_date=self.today, email="info@hellascloud.demo",
+        )
+        with patch("django_q.tasks.async_task") as enqueue:
+            self.assertEqual(queue_company_outreach(admin, [company.id]), 0)
+        enqueue.assert_not_called()
+        self.assertFalse(CompanyOutreach.objects.filter(company=company).exists())
