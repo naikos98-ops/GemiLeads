@@ -60,8 +60,8 @@
                 <span style="color: var(--product-muted); font-weight: 400;">Δεν έχει καταχωρηθεί στο ΓΕΜΗ</span>
               {% endif %}
             {% else %}
-              <span style="color: #775215; font-size: 11px; font-weight: 700;">🔒 Απαιτείται συνδρομή</span>
-              <a href="{% url 'pricing' %}" style="font-size: 11px; margin-left: 6px;">Ενεργοποίηση →</a>
+              <span style="color: #775215; font-size: var(--type-small); font-weight: 700;">🔒 Απαιτείται συνδρομή</span>
+              <a href="{% url 'pricing' %}" style="font-size: var(--type-small); margin-left: 6px;">Ενεργοποίηση →</a>
             {% endif %}
           </dd>
         </div>
@@ -85,23 +85,23 @@
           {% for person in company.people %}
           <div class="product-person">
             <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <strong style="font-size: 13px;">{{ person.name }}</strong>
-              {% if person.percentage %}<span style="font-family: ui-monospace, monospace; font-size: 10px; color: var(--product-muted);">{{ person.percentage }}</span>{% endif %}
+              <strong style="font-size: var(--type-body);">{{ person.name }}</strong>
+              {% if person.percentage %}<span style="font-family: ui-monospace, monospace; font-size: var(--type-meta); color: var(--product-muted);">{{ person.percentage }}</span>{% endif %}
             </div>
-            {% if person.role %}<p style="font-size: 12px; margin: 3px 0 0;">{{ person.role }}</p>{% endif %}
-            <div style="display: flex; gap: 8px; margin-top: 4px; font-family: ui-monospace, monospace; font-size: 8px; color: var(--product-muted);">
+            {% if person.role %}<p style="font-size: var(--type-secondary); margin: 3px 0 0;">{{ person.role }}</p>{% endif %}
+            <div style="display: flex; gap: 8px; margin-top: 4px; font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">
               {% if person.represents_alone %}<span>[ΕΚΠΡΟΣΩΠΕΙ ΜΟΝΟΣ]</span>{% endif %}
               {% if person.category %}<span>{{ person.category }}</span>{% endif %}
             </div>
           </div>
           {% empty %}
-          <p style="font-size: 12px; color: var(--product-muted);">Το ΓΕΜΗ δεν δημοσιεύει πρόσωπα για αυτή την επιχείρηση.</p>
+          <p style="font-size: var(--type-secondary); color: var(--product-muted);">Το ΓΕΜΗ δεν δημοσιεύει πρόσωπα για αυτή την επιχείρηση.</p>
           {% endfor %}
         {% else %}
-          <p style="font-size: 12px; color: var(--product-muted);">Δες ποιος διαχειρίζεται και εκπροσωπεί την επιχείρηση, με ρόλο και ποσοστό συμμετοχής.</p>
+          <p style="font-size: var(--type-secondary); color: var(--product-muted);">Δες ποιος διαχειρίζεται και εκπροσωπεί την επιχείρηση, με ρόλο και ποσοστό συμμετοχής.</p>
           <p style="margin-top: 8px;">
-            <span style="font-size: 11px; font-weight: 700; color: #775215;">🔒 Απαιτείται συνδρομή</span>
-            <a href="{% url 'pricing' %}" style="font-size: 11px; margin-left: 6px;">Ενεργοποίηση →</a>
+            <span style="font-size: var(--type-small); font-weight: 700; color: #775215;">🔒 Απαιτείται συνδρομή</span>
+            <a href="{% url 'pricing' %}" style="font-size: var(--type-small); margin-left: 6px;">Ενεργοποίηση →</a>
           </p>
         {% endif %}
       </div>
@@ -114,12 +114,12 @@
         <div class="product-activity">
           <b>{{ activity.code }}</b>
           <div>
-            <p style="font-size: 12px;">{{ activity.description|default:'Χωρίς περιγραφή' }}</p>
+            <p style="font-size: var(--type-secondary);">{{ activity.description|default:'Χωρίς περιγραφή' }}</p>
           </div>
           <span>{{ activity.activity_type }}</span>
         </div>
         {% empty %}
-        <p style="font-size: 12px; color: var(--product-muted);">Δεν υπάρχουν καταγεγραμμένες δραστηριότητες.</p>
+        <p style="font-size: var(--type-secondary); color: var(--product-muted);">Δεν υπάρχουν καταγεγραμμένες δραστηριότητες.</p>
         {% endfor %}
       </div>
     </div>
@@ -192,8 +192,8 @@
       </section>
       {% else %}
       <section style="padding: 22px; text-align: center; background: var(--product-amber-soft);">
-        <strong style="display: block; font-size: 13px; color: #775215;">Διαχείριση Lead</strong>
-        <p style="font-size: 11px; margin: 6px 0 12px; color: var(--product-muted);">Η διαχείριση κατάστασης και οι σημειώσεις απαιτούν συνδρομή.</p>
+        <strong style="display: block; font-size: var(--type-body); color: #775215;">Διαχείριση Lead</strong>
+        <p style="font-size: var(--type-small); margin: 6px 0 12px; color: var(--product-muted);">Η διαχείριση κατάστασης και οι σημειώσεις απαιτούν συνδρομή.</p>
         <a href="{% url 'pricing' %}" class="product-ink-button">Δες τα πλάνα →</a>
       </section>
       {% endif %}

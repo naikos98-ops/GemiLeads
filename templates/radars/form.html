@@ -11,7 +11,7 @@
       <h1 style="margin-top: 8px;">{% if radar %}Επεξεργασία Radar{% else %}Δημιούργησε νέο Radar{% endif %}</h1>
     </div>
     <div>
-      <p style="font-family: ui-monospace, monospace; font-size: 9px; color: var(--product-muted); max-width: 300px; margin: 0;">
+      <p style="font-family: ui-monospace, monospace; font-size: var(--type-meta); color: var(--product-muted); max-width: 300px; margin: 0;">
         Οι επιλογές της ίδιας κατηγορίας λειτουργούν με OR. Διαφορετικές κατηγορίες συνδυάζονται με AND.
       </p>
     </div>
@@ -23,33 +23,33 @@
       {% if radar %}<input type="hidden" name="radar_id" value="{{ radar.pk }}">{% endif %}
       
       {% if form.non_field_errors %}
-      <div style="padding: 12px; margin-bottom: 20px; background: #fdf2f2; border: 1px solid var(--product-red); color: var(--product-red); font-size: 12px; font-weight: 600;">
+      <div style="padding: 12px; margin-bottom: 20px; background: #fdf2f2; border: 1px solid var(--product-red); color: var(--product-red); font-size: var(--type-secondary); font-weight: 600;">
         {{ form.non_field_errors }}
       </div>
       {% endif %}
 
       <!-- Section 1: Identity -->
       <fieldset style="border: 0; padding: 0; margin: 0 0 24px 0;">
-        <legend style="font-family: ui-monospace, monospace; font-size: 9px; font-weight: 700; color: var(--product-muted); letter-spacing: .08em; padding: 0 0 10px; border-bottom: 1px solid var(--product-ink); width: 100%;">
+        <legend style="font-family: ui-monospace, monospace; font-size: var(--type-meta); font-weight: 700; color: var(--product-muted); letter-spacing: .08em; padding: 0 0 10px; border-bottom: 1px solid var(--product-ink); width: 100%;">
           1. ΤΑΥΤΟΤΗΤΑ
         </legend>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 14px;">
           <div>
-            <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px;">{{ form.name.label }}</label>
+            <label style="display: block; font-size: var(--type-secondary); font-weight: 700; margin-bottom: 6px;">{{ form.name.label }}</label>
             {{ form.name }}
-            {% if form.name.errors %}<div style="color: var(--product-red); font-size: 11px; margin-top: 4px;">{{ form.name.errors }}</div>{% endif %}
+            {% if form.name.errors %}<div style="color: var(--product-red); font-size: var(--type-small); margin-top: 4px;">{{ form.name.errors }}</div>{% endif %}
           </div>
           <div>
-            <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px;">{{ form.name_query.label }}</label>
+            <label style="display: block; font-size: var(--type-secondary); font-weight: 700; margin-bottom: 6px;">{{ form.name_query.label }}</label>
             {{ form.name_query }}
-            {% if form.name_query.errors %}<div style="color: var(--product-red); font-size: 11px; margin-top: 4px;">{{ form.name_query.errors }}</div>{% endif %}
+            {% if form.name_query.errors %}<div style="color: var(--product-red); font-size: var(--type-small); margin-top: 4px;">{{ form.name_query.errors }}</div>{% endif %}
           </div>
         </div>
       </fieldset>
 
       <!-- Section 2: Criteria -->
       <fieldset style="border: 0; padding: 0; margin: 0 0 24px 0;">
-        <legend style="font-family: ui-monospace, monospace; font-size: 9px; font-weight: 700; color: var(--product-muted); letter-spacing: .08em; padding: 0 0 10px; border-bottom: 1px solid var(--product-ink); width: 100%;">
+        <legend style="font-family: ui-monospace, monospace; font-size: var(--type-meta); font-weight: 700; color: var(--product-muted); letter-spacing: .08em; padding: 0 0 10px; border-bottom: 1px solid var(--product-ink); width: 100%;">
           2. ΣΤΟΧΕΥΣΗ (ΚΡΙΤΗΡΙΑ)
         </legend>
         <div style="margin-top: 14px;">
@@ -57,22 +57,22 @@
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 16px;">
           <div>
-            <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px;">{{ form.prefectures.label }}</label>
-            <p style="font-size: 10px; color: var(--product-muted); margin: 0 0 6px;">Χωρίς επιλογή περιλαμβάνονται όλες.</p>
+            <label style="display: block; font-size: var(--type-secondary); font-weight: 700; margin-bottom: 4px;">{{ form.prefectures.label }}</label>
+            <p style="font-size: var(--type-meta); color: var(--product-muted); margin: 0 0 6px;">Χωρίς επιλογή περιλαμβάνονται όλες.</p>
             {{ form.prefectures }}
-            {% if form.prefectures.errors %}<div style="color: var(--product-red); font-size: 11px; margin-top: 4px;">{{ form.prefectures.errors }}</div>{% endif %}
+            {% if form.prefectures.errors %}<div style="color: var(--product-red); font-size: var(--type-small); margin-top: 4px;">{{ form.prefectures.errors }}</div>{% endif %}
           </div>
           <div>
-            <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 4px;">{{ form.legal_types.label }}</label>
-            <p style="font-size: 10px; color: var(--product-muted); margin: 0 0 6px;">Χωρίς επιλογή περιλαμβάνονται όλες.</p>
+            <label style="display: block; font-size: var(--type-secondary); font-weight: 700; margin-bottom: 4px;">{{ form.legal_types.label }}</label>
+            <p style="font-size: var(--type-meta); color: var(--product-muted); margin: 0 0 6px;">Χωρίς επιλογή περιλαμβάνονται όλες.</p>
             {{ form.legal_types }}
-            {% if form.legal_types.errors %}<div style="color: var(--product-red); font-size: 11px; margin-top: 4px;">{{ form.legal_types.errors }}</div>{% endif %}
+            {% if form.legal_types.errors %}<div style="color: var(--product-red); font-size: var(--type-small); margin-top: 4px;">{{ form.legal_types.errors }}</div>{% endif %}
           </div>
         </div>
         <label style="display: flex; items-center; justify-content: space-between; gap: 12px; margin-top: 16px; padding: 12px; background: var(--product-paper); border: 1px solid var(--product-line); cursor: pointer;">
           <span>
-            <b style="display: block; font-size: 12px;">{{ form.only_active.label }}</b>
-            <span style="font-size: 11px; color: var(--product-muted);">Απόκρυψη κλεισμένων ή ανενεργών εγγραφών.</span>
+            <b style="display: block; font-size: var(--type-secondary);">{{ form.only_active.label }}</b>
+            <span style="font-size: var(--type-small); color: var(--product-muted);">Απόκρυψη κλεισμένων ή ανενεργών εγγραφών.</span>
           </span>
           {{ form.only_active }}
         </label>
@@ -80,19 +80,19 @@
 
       <!-- Section 3: Settings -->
       <fieldset style="border: 0; padding: 0; margin: 0 0 24px 0;">
-        <legend style="font-family: ui-monospace, monospace; font-size: 9px; font-weight: 700; color: var(--product-muted); letter-spacing: .08em; padding: 0 0 10px; border-bottom: 1px solid var(--product-ink); width: 100%;">
+        <legend style="font-family: ui-monospace, monospace; font-size: var(--type-meta); font-weight: 700; color: var(--product-muted); letter-spacing: .08em; padding: 0 0 10px; border-bottom: 1px solid var(--product-ink); width: 100%;">
           3. ΛΕΙΤΟΥΡΓΙΑ &amp; ΕΙΔΟΠΟΙΗΣΕΙΣ
         </legend>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 14px;">
           <div>
-            <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px;">{{ form.frequency.label }}</label>
+            <label style="display: block; font-size: var(--type-secondary); font-weight: 700; margin-bottom: 6px;">{{ form.frequency.label }}</label>
             {{ form.frequency }}
-            {% if form.frequency.errors %}<div style="color: var(--product-red); font-size: 11px; margin-top: 4px;">{{ form.frequency.errors }}</div>{% endif %}
+            {% if form.frequency.errors %}<div style="color: var(--product-red); font-size: var(--type-small); margin-top: 4px;">{{ form.frequency.errors }}</div>{% endif %}
           </div>
           <label style="display: flex; items-center; justify-content: space-between; gap: 12px; padding: 12px; background: var(--product-paper); border: 1px solid var(--product-line); cursor: pointer;">
             <span>
-              <b style="display: block; font-size: 12px;">{{ form.is_active.label }}</b>
-              <span style="font-size: 11px; color: var(--product-muted);">Σε παύση δεν δημιουργούνται νέα matches.</span>
+              <b style="display: block; font-size: var(--type-secondary);">{{ form.is_active.label }}</b>
+              <span style="font-size: var(--type-small); color: var(--product-muted);">Σε παύση δεν δημιουργούνται νέα matches.</span>
             </span>
             {{ form.is_active }}
           </label>

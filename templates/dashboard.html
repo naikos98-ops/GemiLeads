@@ -26,8 +26,8 @@
   {% if not has_active_paid_subscription %}
   <div style="margin: 16px 28px; padding: 16px 20px; background: var(--product-white); border: 2px solid var(--product-amber); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
     <div>
-      <strong style="font-size: 15px; color: var(--product-ink);">Απαιτείται ενεργή συνδρομή</strong>
-      <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">Επίλεξε πλάνο για να ενεργοποιήσεις τα Ραντάρ σου και να αρχίσεις να λαμβάνεις νέα leads στο inbox σου.</p>
+      <strong style="font-size: var(--type-name); color: var(--product-ink);">Απαιτείται ενεργή συνδρομή</strong>
+      <p style="margin: 4px 0 0; font-size: var(--type-secondary); color: var(--product-muted);">Επίλεξε πλάνο για να ενεργοποιήσεις τα Ραντάρ σου και να αρχίσεις να λαμβάνεις νέα leads στο inbox σου.</p>
     </div>
     <a href="{% url 'pricing' %}" class="product-amber-button">Επιλογή Πλάνου →</a>
   </div>
@@ -38,9 +38,9 @@
     <div>
       <div style="display: flex; align-items: center; gap: 8px;">
         <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--product-green);"></span>
-        <strong style="font-size: 13px;">Priority Alerts · σημερινές εγγραφές ΓΕΜΗ</strong>
+        <strong style="font-size: var(--type-body);">Priority Alerts · σημερινές εγγραφές ΓΕΜΗ</strong>
       </div>
-      <p style="margin: 4px 0 0; font-size: 11px; color: var(--product-muted); font-family: ui-monospace, monospace;">
+      <p style="margin: 4px 0 0; font-size: var(--type-small); color: var(--product-muted); font-family: ui-monospace, monospace;">
         Το ΓΕΜΗ API καλείται κάθε 3 ώρες (08:00–23:00).
         {% if last_intraday_run %}Τελευταία ενημέρωση: <b>{{ last_intraday_run.finished_at|date:'H:i' }}</b>.{% else %}Δεν έχει ολοκληρωθεί ακόμη κλήση για σήμερα.{% endif %}
       </p>
@@ -65,33 +65,33 @@
       <!-- Filter Panel -->
       <form id="filterPanel" method="get" style="{% if not filters_active %}display: none;{% endif %} padding: 16px 20px; background: var(--product-white); border-bottom: 1px solid var(--product-ink);">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
-          <input name="q" value="{{ request.GET.q }}" placeholder="Επωνυμία, ΑΦΜ ή ΓΕΜΗ" style="padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: 12px;">
-          <select name="prefecture" style="padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: 12px;">
+          <input name="q" value="{{ request.GET.q }}" placeholder="Επωνυμία, ΑΦΜ ή ΓΕΜΗ" style="padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: var(--type-body);">
+          <select name="prefecture" style="padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: var(--type-body);">
             <option value="">Όλες οι περιοχές</option>
             {% for value in prefectures %}
             <option {% if request.GET.prefecture == value %}selected{% endif %}>{{ value }}</option>
             {% endfor %}
           </select>
-          <select name="legal_type" style="padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: 12px;">
+          <select name="legal_type" style="padding: 9px 12px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: var(--type-body);">
             <option value="">Όλες οι μορφές</option>
             {% for value in legal_types %}
             <option {% if request.GET.legal_type == value %}selected{% endif %}>{{ value }}</option>
             {% endfor %}
           </select>
-          <label style="font-family: ui-monospace, monospace; font-size: 8px; font-weight: 600; color: var(--product-muted); display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 600; color: var(--product-muted); display: flex; flex-direction: column; gap: 4px;">
             ΑΠΟ ΗΜΕΡΟΜΗΝΙΑ
-            <input name="date_from" value="{{ request.GET.date_from }}" type="date" style="padding: 8px 10px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: 11px;">
+            <input name="date_from" value="{{ request.GET.date_from }}" type="date" style="padding: 8px 10px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: var(--type-body);">
           </label>
-          <label style="font-family: ui-monospace, monospace; font-size: 8px; font-weight: 600; color: var(--product-muted); display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 600; color: var(--product-muted); display: flex; flex-direction: column; gap: 4px;">
             ΕΩΣ ΗΜΕΡΟΜΗΝΙΑ
-            <input name="date_to" value="{{ request.GET.date_to }}" type="date" style="padding: 8px 10px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: 11px;">
+            <input name="date_to" value="{{ request.GET.date_to }}" type="date" style="padding: 8px 10px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: var(--type-body);">
           </label>
         </div>
         <div style="margin-top: 12px;">
           {% include 'includes/kad_picker.html' with kad_picker_id='dashboard-kads' kad_input_name='kad' kad_label='Φίλτρο ΚΑΔ' kad_help='Επιλογή ΚΑΔ για φιλτράρισμα.' %}
         </div>
         {% if date_range_error %}
-        <p style="margin-top: 8px; padding: 8px 12px; background: #fdf2f2; border: 1px solid var(--product-red); color: var(--product-red); font-size: 11px; font-weight: 600;">Η ημερομηνία «Από» πρέπει να είναι πριν ή ίδια με την ημερομηνία «Έως».</p>
+        <p style="margin-top: 8px; padding: 8px 12px; background: #fdf2f2; border: 1px solid var(--product-red); color: var(--product-red); font-size: var(--type-small); font-weight: 600;">Η ημερομηνία «Από» πρέπει να είναι πριν ή ίδια με την ημερομηνία «Έως».</p>
         {% endif %}
         <div style="margin-top: 14px; display: flex; justify-content: flex-end; gap: 10px;">
           <a href="{% url 'dashboard' %}" class="product-text-button">Καθαρισμός</a>
@@ -100,11 +100,23 @@
       </form>
 
       <!-- Signals Container -->
-      <div id="signals-container" data-company-scroll style="max-height: calc(100vh - 200px); overflow-y: auto;">
+      {% comment %}
+      The register scrolls with the page -- that is the approved Signal Ledger layout, with the
+      inspector sticky beside it. Loading is driven by the sentinel below, observed against the
+      viewport, rather than by an inner scroll container: the old table dashboard used a
+      max-height scroller that app.js sized from its <tr> rows, and when the rows became
+      <article>s that sizing silently set max-height to none, so the inner container never
+      scrolled and the next page was never requested.
+      {% endcomment %}
+      <div id="signals-container" data-signals-list>
         {% include 'includes/dashboard_rows.html' %}
       </div>
-      <div id="loading-row" class="hidden" style="font-family: ui-monospace, monospace; padding: 16px; text-align: center; color: var(--product-muted); font-size: 11px;">
-        ⚡ Φόρτωση επόμενων εγγραφών...
+      <div class="product-ledger-status" data-signals-sentinel
+           data-next-page="{% if has_next_page %}2{% endif %}"
+           data-total="{{ result_count }}"
+           aria-live="polite">
+        <span data-signals-status>{% if has_next_page %}{% else %}{% if result_count %}Τέλος εγγραφών · {{ result_count }}{% endif %}{% endif %}</span>
+        <button type="button" class="product-text-button" data-signals-retry hidden>Δοκίμασε ξανά</button>
       </div>
     </div>
 
@@ -231,54 +243,85 @@
     }
   }
 
-  // Infinite Scroll Handler
-  (function() {
-    const scrollContainer = document.querySelector('[data-company-scroll]');
-    const loadingRow = document.getElementById('loading-row');
-    let nextPage = {% if has_next_page %}2{% else %}null{% endif %};
-    let isLoading = false;
+  // Historical infinite scroll: 20 registrations per page, older ones appended as the reader
+  // nears the end of the register, until the archive is exhausted. The server endpoint is the
+  // same view with ?page=N and an X-Requested-With header; it returns the rendered rows plus
+  // has_next / next_page. Every active filter travels with each request because the query
+  // string is reused verbatim.
+  (function () {
+    const list = document.querySelector('[data-signals-list]');
+    const sentinel = document.querySelector('[data-signals-sentinel]');
+    if (!list || !sentinel) return;
+    const statusEl = sentinel.querySelector('[data-signals-status]');
+    const retryBtn = sentinel.querySelector('[data-signals-retry]');
+    const total = sentinel.dataset.total;
 
-    if (!scrollContainer) return;
+    let nextPage = sentinel.dataset.nextPage ? Number(sentinel.dataset.nextPage) : null;
+    let loading = false;
+    // Rows already on screen, by GEMI number. Offset pagination can repeat a row if a new
+    // import lands at the top mid-browse; those repeats are dropped rather than shown twice.
+    const seen = new Set([...list.querySelectorAll('[data-gemi]')].map(el => el.dataset.gemi));
 
-    function loadNextBatch() {
-      if (!nextPage || isLoading) return;
-      isLoading = true;
-      if (loadingRow) loadingRow.classList.remove('hidden');
+    function setStatus(text, { error = false } = {}) {
+      statusEl.textContent = text;
+      sentinel.classList.toggle('is-error', error);
+      retryBtn.hidden = !error;
+    }
+
+    function nearEnd() {
+      return sentinel.getBoundingClientRect().top < window.innerHeight + 600;
+    }
+
+    function load() {
+      if (loading || !nextPage) return;
+      loading = true;
+      setStatus('Φόρτωση επόμενων εγγραφών…');
+      sentinel.classList.add('is-loading');
 
       const params = new URLSearchParams(window.location.search);
       params.set('page', nextPage);
 
       fetch(`${window.location.pathname}?${params.toString()}`, {
-        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        credentials: 'same-origin',
       })
-      .then(response => response.json())
-      .then(data => {
-        if (data.html) {
-          scrollContainer.insertAdjacentHTML('beforeend', data.html);
-        }
-        nextPage = data.has_next ? data.next_page : null;
-      })
-      .catch(err => console.error("Error loading next batch:", err))
-      .finally(() => {
-        isLoading = false;
-        if (loadingRow) loadingRow.classList.add('hidden');
-      });
+        .then(response => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.json();
+        })
+        .then(data => {
+          const holder = document.createElement('div');
+          holder.innerHTML = data.html || '';
+          const fragment = document.createDocumentFragment();
+          holder.querySelectorAll('article.product-signal').forEach(row => {
+            if (seen.has(row.dataset.gemi)) return;
+            seen.add(row.dataset.gemi);
+            fragment.appendChild(row);
+          });
+          list.appendChild(fragment);   // appended below: the reader's scroll position is untouched
+          nextPage = data.has_next ? data.next_page : null;
+          setStatus(nextPage ? '' : `Τέλος εγγραφών · ${data.total_count ?? total}`);
+        })
+        .catch(() => {
+          // Keep nextPage so the retry asks for the same page again.
+          setStatus('Η φόρτωση απέτυχε.', { error: true });
+        })
+        .finally(() => {
+          loading = false;
+          sentinel.classList.remove('is-loading');
+          // A tall screen can still show the sentinel after a page arrives; keep filling it.
+          if (nextPage && !sentinel.classList.contains('is-error') && nearEnd()) requestAnimationFrame(load);
+        });
     }
 
-    scrollContainer.addEventListener('scroll', function() {
-      const scrollBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
-      if (scrollBottom < 300) {
-        loadNextBatch();
-      }
-    });
+    retryBtn.addEventListener('click', () => { setStatus(''); load(); });
 
-    if ('IntersectionObserver' in window && loadingRow) {
-      const observer = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting) {
-          loadNextBatch();
-        }
-      }, { rootMargin: '300px' });
-      observer.observe(loadingRow);
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(entries => {
+        if (entries.some(e => e.isIntersecting)) load();
+      }, { rootMargin: '0px 0px 600px 0px' }).observe(sentinel);
+    } else {
+      window.addEventListener('scroll', () => { if (nearEnd()) load(); }, { passive: true });
     }
   })();
 </script>

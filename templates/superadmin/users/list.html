@@ -88,7 +88,7 @@
 
 {% if page_obj.has_other_pages %}
 <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--product-line);">
-  <span class="mono" style="font-family:ui-monospace,monospace;font-size:9px;color:var(--product-muted);letter-spacing:.08em;">
+  <span class="mono" style="font-family:ui-monospace,monospace;font-size: var(--type-meta);color:var(--product-muted);letter-spacing:.08em;">
     ΣΕΛΙΔΑ {{ page_obj.number }} / {{ page_obj.paginator.num_pages }}
   </span>
   <span style="display:flex;gap:7px;">

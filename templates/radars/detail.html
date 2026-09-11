@@ -14,7 +14,7 @@
           {% if radar.is_active %}● ΕΝΕΡΓΟ{% else %}○ ΣΕ ΠΑΥΣΗ{% endif %}
         </span>
       </div>
-      <p style="margin: 4px 0 0; font-family: ui-monospace, monospace; font-size: 9px; color: var(--product-muted);">
+      <p style="margin: 4px 0 0; font-family: ui-monospace, monospace; font-size: var(--type-meta); color: var(--product-muted);">
         Παρακολουθεί νέες εγγραφές από {{ radar.monitor_from|date:'d/m/Y H:i' }}.
       </p>
     </div>
@@ -37,11 +37,11 @@
     <!-- Matches Table Column -->
     <div style="border-right: 1px solid var(--product-ink); background: var(--product-paper);">
       <div style="padding: 12px 20px; border-bottom: 1px solid var(--product-line); display: flex; justify-content: space-between; align-items: center; background: var(--product-white);">
-        <p style="font-family: ui-monospace, monospace; font-size: 9px; font-weight: 600; color: var(--product-muted); margin: 0;">
+        <p style="font-family: ui-monospace, monospace; font-size: var(--type-meta); font-weight: 600; color: var(--product-muted); margin: 0;">
           MATCHES: <b>{{ filtered_match_count }}</b> ΑΠΟ {{ match_count }} ΕΤΑΙΡΕΙΕΣ
         </p>
         <form method="get">
-          <select name="status" onchange="this.form.submit()" style="padding: 6px 10px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: 11px; font-weight: 600;">
+          <select name="status" onchange="this.form.submit()" style="padding: 6px 10px; border: 1px solid var(--product-line); background: var(--product-paper); color: var(--product-ink); font-size: var(--type-body); font-weight: 600;">
             <option value="">Όλες οι καταστάσεις</option>
             {% for value, label in lead_statuses %}
             <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>
@@ -56,28 +56,28 @@
           <div>
             <div style="display: flex; align-items: center; gap: 6px;">
               {% if match.lead.is_favorite %}<span style="color: var(--product-amber);">★</span>{% endif %}
-              <strong style="font-size: 13px; color: var(--product-ink);">{{ match.company.name }}</strong>
+              <strong style="font-size: var(--type-body); color: var(--product-ink);">{{ match.company.name }}</strong>
             </div>
-            <p style="margin: 3px 0 0; font-family: ui-monospace, monospace; font-size: 9px; color: var(--product-muted);">
+            <p style="margin: 3px 0 0; font-family: ui-monospace, monospace; font-size: var(--type-meta); color: var(--product-muted);">
               ΓΕΜΗ {{ match.company.gemi_number }} · Match στις {{ match.matched_on|date:'d/m/Y' }}
             </p>
-            <p style="margin: 4px 0 0; font-size: 11px; color: #775215;">
+            <p style="margin: 4px 0 0; font-size: var(--type-small); color: #775215;">
               {% if match.matched_activity_codes %}ΚΑΔ {{ match.matched_activity_codes|join:', ' }}{% endif %}
               {% if match.match_reason.prefecture %} · {{ match.match_reason.prefecture }}{% endif %}
               {% if match.match_reason.legal_type %} · {{ match.match_reason.legal_type }}{% endif %}
             </p>
           </div>
           <div style="text-align: right; flex-shrink: 0;">
-            <span style="display: block; font-family: ui-monospace, monospace; font-size: 8px; font-weight: 700; color: var(--product-muted); text-transform: uppercase;">
+            <span style="display: block; font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 700; color: var(--product-muted); text-transform: uppercase;">
               {{ match.lead.get_status_display }}
             </span>
-            <a href="{% url 'company_detail' match.company.gemi_number %}" class="product-ink-button" style="margin-top: 6px; padding: 6px 10px; font-size: 9px;">
+            <a href="{% url 'company_detail' match.company.gemi_number %}" class="product-ink-button" style="margin-top: 6px; padding: 6px 10px; font-size: var(--type-meta);">
               Dossier →
             </a>
           </div>
         </div>
         {% empty %}
-        <div style="padding: 40px 20px; text-align: center; color: var(--product-muted); font-family: ui-monospace, monospace; font-size: 11px;">
+        <div style="padding: 40px 20px; text-align: center; color: var(--product-muted); font-family: ui-monospace, monospace; font-size: var(--type-small);">
           {% if selected_status %}Δεν υπάρχουν matches με αυτή την κατάσταση.{% else %}Δεν υπάρχουν ακόμη νέα matches.{% endif %}
         </div>
         {% endfor %}
@@ -86,38 +86,38 @@
 
     <!-- Criteria Sidebar -->
     <aside style="padding: 22px; background: var(--product-white);">
-      <p style="font-family: ui-monospace, monospace; font-size: 8px; font-weight: 600; color: var(--product-muted); letter-spacing: .08em; margin: 0 0 14px;">
+      <p style="font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 600; color: var(--product-muted); letter-spacing: .08em; margin: 0 0 14px;">
         ΟΡΙΣΜΟΣ ΚΡΙΤΗΡΙΩΝ
       </p>
 
-      <dl style="margin: 0; font-size: 12px;">
+      <dl style="margin: 0; font-size: var(--type-secondary);">
         <div style="padding: 10px 0; border-top: 1px solid var(--product-line);">
-          <dt style="font-family: ui-monospace, monospace; font-size: 8px; color: var(--product-muted);">ΚΑΔ</dt>
+          <dt style="font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">ΚΑΔ</dt>
           <dd style="margin: 4px 0 0; font-weight: 600;">
             {% for kad in radar.activity_codes.all %}{{ kad.code }}{% if not forloop.last %}, {% endif %}{% empty %}Όλοι{% endfor %}
           </dd>
         </div>
         <div style="padding: 10px 0; border-top: 1px solid var(--product-line);">
-          <dt style="font-family: ui-monospace, monospace; font-size: 8px; color: var(--product-muted);">ΠΕΡΙΟΧΕΣ</dt>
+          <dt style="font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">ΠΕΡΙΟΧΕΣ</dt>
           <dd style="margin: 4px 0 0; font-weight: 600;">{{ radar.prefectures|join:', '|default:'Όλες' }}</dd>
         </div>
         <div style="padding: 10px 0; border-top: 1px solid var(--product-line);">
-          <dt style="font-family: ui-monospace, monospace; font-size: 8px; color: var(--product-muted);">ΝΟΜΙΚΕΣ ΜΟΡΦΕΣ</dt>
+          <dt style="font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">ΝΟΜΙΚΕΣ ΜΟΡΦΕΣ</dt>
           <dd style="margin: 4px 0 0; font-weight: 600;">{{ radar.legal_types|join:', '|default:'Όλες' }}</dd>
         </div>
         <div style="padding: 10px 0; border-top: 1px solid var(--product-line);">
-          <dt style="font-family: ui-monospace, monospace; font-size: 8px; color: var(--product-muted);">ΕΠΩΝΥΜΙΑ</dt>
+          <dt style="font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">ΕΠΩΝΥΜΙΑ</dt>
           <dd style="margin: 4px 0 0; font-weight: 600;">{{ radar.name_query|default:'Χωρίς περιορισμό' }}</dd>
         </div>
         <div style="padding: 10px 0; border-top: 1px solid var(--product-line);">
-          <dt style="font-family: ui-monospace, monospace; font-size: 8px; color: var(--product-muted);">ΕΝΗΜΕΡΩΣΗ EMAIL</dt>
+          <dt style="font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">ΕΝΗΜΕΡΩΣΗ EMAIL</dt>
           <dd style="margin: 4px 0 0; font-weight: 600;">{{ radar.get_frequency_display }}</dd>
         </div>
       </dl>
 
       <form method="post" action="{% url 'radar_delete' radar.pk %}" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--product-ink);">
         {% csrf_token %}
-        <button type="submit" onclick="return confirm('Σίγουρα θέλεις να διαγράψεις αυτό το Radar;')" style="border: 0; background: transparent; color: var(--product-red); font-family: ui-monospace, monospace; font-size: 9px; font-weight: 600; cursor: pointer; padding: 0;">
+        <button type="submit" onclick="return confirm('Σίγουρα θέλεις να διαγράψεις αυτό το Radar;')" style="border: 0; background: transparent; color: var(--product-red); font-family: ui-monospace, monospace; font-size: var(--type-meta); font-weight: 600; cursor: pointer; padding: 0;">
           × Αφαίρεση Radar
         </button>
       </form>

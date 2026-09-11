@@ -100,10 +100,10 @@
               </span>
               {% if o.engagement_detail.clicks or o.engagement_detail.unsubscribes %}
               <details style="margin-top:5px;">
-                <summary style="cursor:pointer;font-family:ui-monospace,monospace;font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--product-muted);">ΑΝΑΛΥΣΗ ▾</summary>
+                <summary style="cursor:pointer;font-family:ui-monospace,monospace;font-size: var(--type-meta);font-weight:700;letter-spacing:.08em;color:var(--product-muted);">ΑΝΑΛΥΣΗ ▾</summary>
                 <div style="margin-top:7px;padding:9px;border-left:1px solid var(--product-line);">
                   {% if o.engagement_detail.clicks %}
-                  <p style="margin:0 0 4px;font-family:ui-monospace,monospace;font-size:8px;letter-spacing:.1em;color:var(--product-muted);">CLICKS ΑΝΑ URL</p>
+                  <p style="margin:0 0 4px;font-family:ui-monospace,monospace;font-size: var(--type-label);letter-spacing:.1em;color:var(--product-muted);">CLICKS ΑΝΑ URL</p>
                   <ul style="margin:0 0 8px;padding:0;list-style:none;">
                     {% for c in o.engagement_detail.clicks %}
                     <li class="mono" style="word-break:break-all;">{{ c.count }}× {{ c.url }} <span style="color:var(--product-muted);">{{ c.last_at }}</span></li>
@@ -111,7 +111,7 @@
                   </ul>
                   {% endif %}
                   {% if o.engagement_detail.unsubscribes %}
-                  <p style="margin:0 0 4px;font-family:ui-monospace,monospace;font-size:8px;letter-spacing:.1em;color:var(--product-muted);">ΑΠΕΓΓΡΑΦΕΣ</p>
+                  <p style="margin:0 0 4px;font-family:ui-monospace,monospace;font-size: var(--type-label);letter-spacing:.1em;color:var(--product-muted);">ΑΠΕΓΓΡΑΦΕΣ</p>
                   <ul style="margin:0;padding:0;list-style:none;">
                     {% for u in o.engagement_detail.unsubscribes %}
                     <li class="mono">{{ u.email|default:"(χωρίς email)" }} <span style="color:var(--product-muted);">{{ u.at }}</span></li>
@@ -136,7 +136,7 @@
 
   {% if history_page_obj.has_other_pages %}
   <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;">
-    <span style="font-family:ui-monospace,monospace;font-size:9px;color:var(--product-muted);letter-spacing:.08em;">
+    <span style="font-family:ui-monospace,monospace;font-size: var(--type-meta);color:var(--product-muted);letter-spacing:.08em;">
       ΣΕΛΙΔΑ {{ history_page_obj.number }} / {{ history_page_obj.paginator.num_pages }}
     </span>
     <span style="display:flex;gap:7px;">

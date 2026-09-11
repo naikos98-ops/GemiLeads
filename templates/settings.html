@@ -23,15 +23,15 @@
     <!-- Subscription Card -->
     {% with sub=user.subscription state=user.subscription|billing_state %}
     <div style="background: var(--product-white); border: 1px solid var(--product-ink); padding: 24px; margin-bottom: 24px;">
-      <p style="font-family: ui-monospace, monospace; font-size: 8px; font-weight: 700; color: var(--product-muted); letter-spacing: .08em; margin: 0 0 12px;">
+      <p style="font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 700; color: var(--product-muted); letter-spacing: .08em; margin: 0 0 12px;">
         ΣΥΝΔΡΟΜΗ &amp; ΠΛΑΝΟ
       </p>
 
       {% if state == "payment_problem" %}
       <div style="padding: 16px; background: #fffbe6; border: 1px solid var(--product-amber); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <strong style="font-size: 15px; color: var(--product-ink);">{{ sub.get_tier_display }} Πλάνο</strong>
-          <p style="margin: 4px 0 0; font-size: 12px; color: #775215; font-weight: 600;">⚠️ Χρειάζεται ενέργεια για την πληρωμή σας ({{ sub.status|stripe_status_label }}).</p>
+          <strong style="font-size: var(--type-name); color: var(--product-ink);">{{ sub.get_tier_display }} Πλάνο</strong>
+          <p style="margin: 4px 0 0; font-size: var(--type-secondary); color: #775215; font-weight: 600;">⚠️ Χρειάζεται ενέργεια για την πληρωμή σας ({{ sub.status|stripe_status_label }}).</p>
         </div>
         <form action="{% url 'customer_portal' %}" method="post">
           {% csrf_token %}
@@ -42,8 +42,8 @@
       {% elif state == "scheduled_cancellation" %}
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <strong style="font-size: 16px; color: var(--product-ink);">{{ sub.get_tier_display }} Πλάνο</strong>
-          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">
+          <strong style="font-size: var(--type-lead); color: var(--product-ink);">{{ sub.get_tier_display }} Πλάνο</strong>
+          <p style="margin: 4px 0 0; font-size: var(--type-secondary); color: var(--product-muted);">
             Κατάσταση: <b>{{ sub.status|stripe_status_label }}</b> · Όριο: <b>{{ sub.radar_limit }} Ραντάρ</b>
             <br><span style="color: #775215; font-weight: 600;">Η συνδρομή σου θα λήξει στις {{ sub.active_until|date:"d/m/Y" }}.</span>
           </p>
@@ -63,8 +63,8 @@
       {% elif state == "scheduled_downgrade" %}
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <strong style="font-size: 16px; color: var(--product-ink);">Τρέχον πλάνο: {{ sub.get_tier_display }}</strong>
-          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">
+          <strong style="font-size: var(--type-lead); color: var(--product-ink);">Τρέχον πλάνο: {{ sub.get_tier_display }}</strong>
+          <p style="margin: 4px 0 0; font-size: var(--type-secondary); color: var(--product-muted);">
             Κατάσταση: <b>{{ sub.status|stripe_status_label }}</b>
             <br><span style="color: var(--product-green); font-weight: 600;">Προγραμματισμένη αλλαγή: {{ sub.get_scheduled_tier_display }} στις {{ sub.scheduled_change_at|date:"d/m/Y" }}.</span>
           </p>
@@ -84,8 +84,8 @@
       {% elif state == "normal_active" %}
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <strong style="font-size: 16px; color: var(--product-ink);">{{ sub.get_tier_display }} Πλάνο</strong>
-          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">
+          <strong style="font-size: var(--type-lead); color: var(--product-ink);">{{ sub.get_tier_display }} Πλάνο</strong>
+          <p style="margin: 4px 0 0; font-size: var(--type-secondary); color: var(--product-muted);">
             Κατάσταση: <b>{{ sub.status|stripe_status_label }}</b> · Όριο έως <b>{{ sub.radar_limit }} Ραντάρ Πελατών</b>.
           </p>
         </div>
@@ -104,8 +104,8 @@
       {% elif state == "terminal" %}
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <strong style="font-size: 16px; color: var(--product-ink);">Χωρίς Ενεργή Συνδρομή</strong>
-          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">
+          <strong style="font-size: var(--type-lead); color: var(--product-ink);">Χωρίς Ενεργή Συνδρομή</strong>
+          <p style="margin: 4px 0 0; font-size: var(--type-secondary); color: var(--product-muted);">
             Η προηγούμενη συνδρομή σου ({{ sub.status|stripe_status_label }}) δεν είναι πλέον ενεργή.
           </p>
         </div>
@@ -115,8 +115,8 @@
       {% elif state == "complimentary_only" %}
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <strong style="font-size: 16px; color: var(--product-ink);">🎁 Δωρεάν Πρόσβαση {{ sub.get_complimentary_tier_display|default:sub.complimentary_tier|upper }}</strong>
-          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">
+          <strong style="font-size: var(--type-lead); color: var(--product-ink);">🎁 Δωρεάν Πρόσβαση {{ sub.get_complimentary_tier_display|default:sub.complimentary_tier|upper }}</strong>
+          <p style="margin: 4px 0 0; font-size: var(--type-secondary); color: var(--product-muted);">
             Ενεργή δωρεάν πρόσβαση Admin με όριο έως <b>{{ sub.radar_limit }} Ραντάρ</b> (Διάρκεια: <b>{% if sub.complimentary_until %}Έως {{ sub.complimentary_until|date:"d/m/Y H:i" }}{% else %}Μόνιμη{% endif %}</b>).
           </p>
         </div>
@@ -126,8 +126,8 @@
       {% else %}
       <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap;">
         <div>
-          <strong style="font-size: 16px; color: var(--product-ink);">Δεν υπάρχει ενεργή συνδρομή</strong>
-          <p style="margin: 4px 0 0; font-size: 12px; color: var(--product-muted);">Επίλεξε συνδρομητικό πλάνο για να ενεργοποιήσεις τα Ραντάρ σου.</p>
+          <strong style="font-size: var(--type-lead); color: var(--product-ink);">Δεν υπάρχει ενεργή συνδρομή</strong>
+          <p style="margin: 4px 0 0; font-size: var(--type-secondary); color: var(--product-muted);">Επίλεξε συνδρομητικό πλάνο για να ενεργοποιήσεις τα Ραντάρ σου.</p>
         </div>
         <a href="{% url 'pricing' %}" class="product-amber-button">Δείτε τα πλάνα</a>
       </div>
@@ -137,24 +137,24 @@
 
     <!-- Digest Preferences Form -->
     <div style="background: var(--product-white); border: 1px solid var(--product-ink); padding: 24px;">
-      <p style="font-family: ui-monospace, monospace; font-size: 8px; font-weight: 700; color: var(--product-muted); letter-spacing: .08em; margin: 0 0 12px;">
+      <p style="font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 700; color: var(--product-muted); letter-spacing: .08em; margin: 0 0 12px;">
         ΠΡΟΤΙΜΗΣΕΙΣ EMAIL DIGEST
       </p>
 
-      <p style="font-size: 12px; color: var(--product-muted); margin: 0 0 16px;">
+      <p style="font-size: var(--type-secondary); color: var(--product-muted); margin: 0 0 16px;">
         Έλεγξε πότε λαμβάνεις ενημέρωση στο <b>{{ user.email }}</b>. Η στόχευση ΚΑΔ και περιοχών διαχειρίζεται πλέον από τα Radars.
       </p>
 
       <form method="post" style="display: flex; flex-direction: column; gap: 16px;">
         {% csrf_token %}
         <div>
-          <label style="display: block; font-size: 12px; font-weight: 700; margin-bottom: 6px;">{{ form.frequency.label }}</label>
+          <label style="display: block; font-size: var(--type-secondary); font-weight: 700; margin-bottom: 6px;">{{ form.frequency.label }}</label>
           {{ form.frequency }}
         </div>
         <label style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; background: var(--product-paper); border: 1px solid var(--product-line); cursor: pointer;">
           <span>
-            <b style="display: block; font-size: 12px;">{{ form.include_empty_digest.label }}</b>
-            <span style="font-size: 11px; color: var(--product-muted);">Μικρό μήνυμα επιβεβαίωσης όταν η ημέρα δεν έχει αποτελέσματα.</span>
+            <b style="display: block; font-size: var(--type-secondary);">{{ form.include_empty_digest.label }}</b>
+            <span style="font-size: var(--type-small); color: var(--product-muted);">Μικρό μήνυμα επιβεβαίωσης όταν η ημέρα δεν έχει αποτελέσματα.</span>
           </span>
           {{ form.include_empty_digest }}
         </label>
