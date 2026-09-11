@@ -77,6 +77,71 @@ Tokens (μία πηγή): `--product-ink #12201e`, `--product-paper #f3f2ec`, `-
 Η μόνη επιφάνεια που κρατά legacy classes σκόπιμα είναι το `includes/kad_picker.html`, επειδή
 αποδίδεται μέσα στις **εγκεκριμένες** οθόνες Signals και Radar-form.
 
+### Authority (English, for any agent)
+
+> **AUTHORITY: `static/css/product-ui.css` + the rendered Signal Ledger authenticated screens.**
+>
+> **Legacy/global Tailwind card primitives are NOT authoritative for Gemi Leads product UI.**
+> Do not derive the design system from `static/src/input.css`, `tailwind.config.js` or generic
+> Tailwind utilities.
+
+### Component mapping — ποια οθόνη γεννά ποια
+
+Κάθε public/admin επιφάνεια είναι παράγωγο μιας εγκεκριμένης οθόνης. Όταν αλλάζεις μία, ξεκίνα
+από την πηγή της στήλης αριστερά — όχι από κάποιο generic component.
+
+| Εγκεκριμένη πηγή | Primitive πηγής | → Παράγωγο | Primitive παραγώγου |
+|---|---|---|---|
+| **Signals** (χρονολογική γραμμή) | `.product-signal`, `.product-match-stroke` | **Landing** public intake | `.product-signal` αυτούσιο μέσα σε `.public-intake` |
+| **Signals** (inspector / αλυσίδα) | `.product-inspect` | **Landing** relevance proof | `.public-chain` (EVENT → INFORMATION → CRITERIA → RELEVANCE → LEAD) |
+| **Radars** (γραμμή ορισμού) | `.product-radar-row`, `.product-criteria` | **Pricing** plan row | `.public-plan-row` — ΠΛΑΝΟ / ΣΤΟΧΕΥΣΗ / ΡΑΝΤΑΡ / ΣΥΧΝΟΤΗΤΑ / ΤΙΜΗ / ΕΝΕΡΓΕΙΑ |
+| **Leads** (φίλτρα + register) | `.product-ledger-tools`, register rows | **Superadmin** registers | `.admin-filters`, `.admin-register`, `.admin-tag` |
+| **Business Dossier** (ενότητες) | `.product-record-section` | **Superadmin** detail / compliance | `.admin-panel`, `.admin-compliance` |
+| **Settings** (notice) | notice με amber αριστερό rule | **Pricing / auth** notices | `.public-notice`, `.auth-notice` |
+| **Product rail** | `.product-rail` (184px) | **Superadmin rail** | `.admin-rail` (218px, +1 επίπεδο ομαδοποίησης) |
+
+Η κοινή υπογραφή «επιλεγμένο/ενεργό» είναι **ίδια δήλωση** παντού:
+`box-shadow: inset 3px 0 var(--product-amber)` — στο `.product-rail`, `.admin-rail`,
+`.product-signal.selected` και `.public-plan-row.featured`. Αν μια νέα επιφάνεια χρειάζεται
+"selected" state, αυτή είναι η δήλωση· όχι background tint, όχι pill, όχι σκιά.
+
+Χρώμα κειμένου amber: `#775215` (όχι `--product-amber`, που είναι για rules/strokes και δίνει
+2.15:1 ως κείμενο). Κόκκινο `--product-red` = αποκλειστικά disabled/compliance-off.
+
+Η πλήρης χαρτογράφηση με τις πραγματικές τιμές (grids, borders, type scale, responsive) είναι στο
+`docs/gemi-leads-ui-study/forensic-audit-and-primitive-mapping.md`.
+
+### ⚠ Το λάθος που προκάλεσε το visual drift — μην το επαναλάβεις
+
+Το εγκεκριμένο design system **δεν υπήρχε στο `main`**. Το `static/css/product-ui.css` είχε
+**0 γραμμές** στο `main` και ζούσε μόνο στο branch `fix/outreach-hard-bounces`, που δεν είχε γίνει
+ποτέ merge. Ένας agent που δούλευε στο `main` δεν μπορούσε να το βρει, οπότε αναπαρήγαγε τα
+πραγματικά primitives του `main` (`rounded-card`, `shadow-soft`, stat cards).
+
+**Πριν αγγίξεις UI, επιβεβαίωσε ότι το design system υπάρχει στο branch σου:**
+
+```bash
+test -s static/css/product-ui.css && grep -q "body.product-body" static/css/product-ui.css && echo OK
+```
+
+Αν δεν τυπώσει `OK`, **σταμάτα** — δουλεύεις σε branch χωρίς το εγκεκριμένο σύστημα.
+
+### Canonical screenshots
+
+`docs/gemi-leads-ui-study/screenshots/final/` — το μικρό, τρέχον σετ αναφοράς (14 αρχεία).
+Τα `direction-*`, `production-*`, `prototype-*`, `refined-*` στον γονικό φάκελο είναι το ιστορικό
+της design μελέτης που οδήγησε στο Signal Ledger. Τα παλαιότερα `marketing_*.png` και `review_*.png`
+δείχνουν ενδιάμεσες καταστάσεις πριν το consolidation και **αφαιρέθηκαν** — μην τα αναζητήσεις.
+
+### Γνωστές εξαιρέσεις
+
+- `gemiapp/forms.py` → το κοινό `INPUT` constant εκπέμπει `rounded-2xl` (16px). Εμφανίζεται στο
+  status `<select>` και στο notes `<textarea>` των εγκεκριμένων Settings/Dossier. Είναι μέρος της
+  εγκεκριμένης κατάστασης· στις auth/admin σελίδες υπερισχύουν scoped κανόνες.
+- `templates/allauth/layouts/entrance.html` → override μόνο εμφάνισης που βάζει τις anonymous σελίδες
+  του django-allauth μέσα στο public chrome. Το `manage.html` (signed-in σελίδες allauth) μένει
+  στο default του allauth σκόπιμα.
+
 ## Τρέχουσα κατάσταση
 
 - **Final consolidation pass — όλες οι υπόλοιπες επιφάνειες (2026-09-10).** Μεταφέρθηκαν στο

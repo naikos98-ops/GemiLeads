@@ -155,7 +155,7 @@ UI design". It introduced `static/css/product-ui.css` (1383 lines) and the `prod
 authenticated templates. This is the only commit in the repository where the approved system
 exists in full, and it is the version now merged into the recovery branch.
 
-Corroborating capture: `docs/gemi-leads-ui-study/screenshots/marketing_signals_desktop_1788909944920.png`
+Corroborating capture: `docs/marketing-screenshots/marketing_signals_desktop_1788909944920.png`
 (02:25) predates Gemini's `base.html` edit (04:00) and shows the approved rail, topbar and
 register.
 
