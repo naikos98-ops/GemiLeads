@@ -356,9 +356,13 @@ def _legal_context():
     controller = settings.LEGAL_CONTROLLER_NAME.strip()
     return {
         "legal_controller_name": controller or "— δεν έχει οριστεί ακόμη —",
+        "legal_controller_name_en": settings.LEGAL_CONTROLLER_NAME_EN.strip(),
         "legal_vat": settings.LEGAL_VAT.strip(),
+        "legal_tax_office": settings.LEGAL_TAX_OFFICE.strip(),
         "legal_gemi": settings.LEGAL_GEMI.strip(),
+        "legal_euid": settings.LEGAL_EUID.strip(),
         "legal_address": settings.LEGAL_ADDRESS.strip(),
+        "legal_website": settings.LEGAL_WEBSITE.strip(),
         "legal_contact_email": settings.LEGAL_CONTACT_EMAIL,
         "legal_last_updated": settings.LEGAL_LAST_UPDATED,
         "legal_refund_policy": settings.LEGAL_REFUND_POLICY,

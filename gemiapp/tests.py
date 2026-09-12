@@ -3996,12 +3996,25 @@ class LegalPagesTests(TestCase):
             self.assertNotIn("Προσχέδιο", html, name)
             self.assertIn("ΔΟΚΙΜΗ ΙΚΕ", html, name)
 
-    @override_settings(LEGAL_CONTROLLER_NAME="")
+    @override_settings(LEGAL_CONTROLLER_NAME="", LEGAL_VAT="", LEGAL_GEMI="", LEGAL_ADDRESS="")
     def test_no_invented_company_details_are_shown(self):
         """Empty optional fields are omitted rather than rendered blank."""
         html = self._get("privacy")
         for label in ("ΑΦΜ:", "Αριθμός ΓΕΜΗ:", "Διεύθυνση:"):
             self.assertNotIn(label, html)
+
+    def test_pages_name_norva_as_operator_and_controller(self):
+        for name in ("privacy", "terms"):
+            html = self._get(name)
+            self.assertNotIn("Προσχέδιο", html, name)
+            for fact in ("NORVA Ι.Κ.Ε.", "803388810", "195879401000", "Μαυρομματαίων 6", "info@norva.gr"):
+                self.assertIn(fact, html, f"{name}: {fact}")
+            self.assertNotIn("TAXVILLE", html.upper(), name)
+
+    def test_pages_state_independence_from_gemi(self):
+        for name in ("privacy", "terms"):
+            text = " ".join(self._get(name).split())  # template copy wraps across lines
+            self.assertIn("δεν αποτελεί επίσημη υπηρεσία του Γ.Ε.ΜΗ.", text, name)
 
     @override_settings(LEGAL_BILLING_ACTIVE=False)
     def test_terms_do_not_promise_billing_before_it_exists(self):

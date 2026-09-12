@@ -64,16 +64,6 @@ services:
         sync: false
       - key: APPLE_PRIVATE_KEY
         sync: false
-      - key: LEGAL_CONTROLLER_NAME
-        sync: false
-      - key: LEGAL_VAT
-        sync: false
-      - key: LEGAL_GEMI
-        sync: false
-      - key: LEGAL_ADDRESS
-        sync: false
-      - key: LEGAL_CONTACT_EMAIL
-        sync: false
       - key: SUPERADMIN_EMAILS
         value: info@gemileads.gr,naikos98@gmail.com,iotellis@taxville.gr
       # Billing went live 2026-08-26 -- real Stripe subscriptions, real charges.

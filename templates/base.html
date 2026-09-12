@@ -141,14 +141,14 @@
   {% if not user.is_authenticated %}
   <footer class="public-footer">
     <div class="public-inner">
-      <p style="margin:0;">© 2026 GEMI LEADS<br>Δεδομένα από το επίσημο Open Data API ΓΕΜΗ.</p>
+      <p style="margin:0;">© 2026 GEMI LEADS — προϊόν της NORVA Ι.Κ.Ε.<br>ΓΕΜΗ 195879401000<br>Δεδομένα από το επίσημο Open Data API ΓΕΜΗ.</p>
       <p style="margin:0;">
         <a href="{% url 'pricing' %}">ΣΥΝΔΡΟΜΕΣ &amp; ΠΛΑΝΑ</a><br>
         <a href="{% url 'privacy' %}">ΠΟΛΙΤΙΚΗ ΑΠΟΡΡΗΤΟΥ</a><br>
         <a href="{% url 'terms' %}">ΟΡΟΙ ΧΡΗΣΗΣ</a>
       </p>
       <p style="margin:0;max-width:44ch;">
-        Το Gemi Leads είναι ανεξάρτητη υπηρεσία και δεν αποτελεί υπηρεσία του ΓΕΜΗ.
+        Το Gemi Leads είναι ανεξάρτητο εμπορικό προϊόν και δεν αποτελεί επίσημη υπηρεσία του ΓΕΜΗ, ούτε συνδέεται με αυτό.
         {% if beta_mode %}<br>Η εφαρμογή βρίσκεται σε <b>Beta</b>.{% endif %}
         {% if not billing_active %}<br>Οι πληρωμές δεν είναι ενεργές — καμία χρέωση δεν πραγματοποιείται.{% endif %}
       </p>

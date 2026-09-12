@@ -26,11 +26,16 @@
 
     <article>
       <h2>1. Ποιος παρέχει την υπηρεσία</h2>
+      <p>
+        Το Gemi Leads είναι προϊόν της {{ legal_controller_name }}, η οποία παρέχει την υπηρεσία και
+        είναι το αντισυμβαλλόμενο μέρος στους παρόντες όρους.
+      </p>
       <div class="auth-notice" style="border-left-color:var(--product-line);">
-        <p><b>Πάροχος:</b> {{ legal_controller_name }}</p>
-        {% if legal_vat %}<p><b>ΑΦΜ:</b> {{ legal_vat }}</p>{% endif %}
-        {% if legal_gemi %}<p><b>Αριθμός ΓΕΜΗ:</b> {{ legal_gemi }}</p>{% endif %}
-        {% if legal_address %}<p><b>Διεύθυνση:</b> {{ legal_address }}</p>{% endif %}
+        <p><b>Πάροχος:</b> {{ legal_controller_name }}{% if legal_controller_name_en %} ({{ legal_controller_name_en }}){% endif %}</p>
+        {% if legal_vat %}<p><b>ΑΦΜ:</b> {{ legal_vat }}{% if legal_tax_office %} · Δ.Ο.Υ. {{ legal_tax_office }}{% endif %}</p>{% endif %}
+        {% if legal_gemi %}<p><b>Αριθμός ΓΕΜΗ:</b> {{ legal_gemi }}{% if legal_euid %} · EUID {{ legal_euid }}{% endif %}</p>{% endif %}
+        {% if legal_address %}<p><b>Έδρα:</b> {{ legal_address }}</p>{% endif %}
+        {% if legal_website %}<p><b>Ιστότοπος:</b> <a href="{{ legal_website }}" target="_blank" rel="noopener">{{ legal_website }}</a></p>{% endif %}
         <p><b>Email:</b>
           <a href="mailto:{{ legal_contact_email }}">{{ legal_contact_email }}</a>
         </p>
@@ -49,8 +54,10 @@
         μορφή). Μπορείς να λαμβάνεις τα αποτελέσματα με email και να τα εξάγεις σε αρχείο CSV.
       </p>
       <p>
-        <b>Το Gemi Leads είναι ανεξάρτητη υπηρεσία.</b> Δεν αποτελεί υπηρεσία του ΓΕΜΗ, δεν
-        συνδέεται με αυτό και δεν το εκπροσωπεί.
+        <b>Το Gemi Leads αποτελεί ανεξάρτητο εμπορικό προϊόν της {{ legal_controller_name }}</b>
+        και δεν αποτελεί επίσημη υπηρεσία του Γ.Ε.ΜΗ. Δεν λειτουργεί για λογαριασμό του ή με
+        θεσμική έγκρισή του, δεν συνδέεται με αυτό και δεν το εκπροσωπεί. Οι αναφορές στο Γ.Ε.ΜΗ.
+        αφορούν τη δημόσια πηγή των στοιχείων που χρησιμοποιεί η υπηρεσία.
       </p>
     </article>
 

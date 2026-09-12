@@ -261,14 +261,22 @@ STRIPE_PRICE_PRO = os.getenv("STRIPE_PRICE_PRO")
 STRIPE_PRICE_BUSINESS = os.getenv("STRIPE_PRICE_BUSINESS")
 STRIPE_PRICE_ENTERPRISE = os.getenv("STRIPE_PRICE_ENTERPRISE")
 
-# Legal / imprint details for the privacy policy and terms. Empty values keep both pages in
-# an explicit draft state (banner shown, noindex) rather than publishing invented information.
-LEGAL_CONTROLLER_NAME = os.getenv("LEGAL_CONTROLLER_NAME", "")
-LEGAL_VAT = os.getenv("LEGAL_VAT", "")
-LEGAL_GEMI = os.getenv("LEGAL_GEMI", "")
-LEGAL_ADDRESS = os.getenv("LEGAL_ADDRESS", "")
-LEGAL_CONTACT_EMAIL = os.getenv("LEGAL_CONTACT_EMAIL", EMAIL_REPLY_TO)
-LEGAL_LAST_UPDATED = os.getenv("LEGAL_LAST_UPDATED", "22 Αυγούστου 2026")
+# Legal / imprint details for the privacy policy and terms: the company that operates Gemi Leads
+# and acts as data controller. Kept here rather than in the environment on purpose -- the legal
+# identity is a fact about the product, and a stale host variable must not be able to publish a
+# previous operator's details or mix two companies on one page. An empty LEGAL_CONTROLLER_NAME
+# (tests only) still puts both pages in an explicit draft state (banner shown, noindex).
+# The legal contact is the company's; product and support contact stays EMAIL_REPLY_TO.
+LEGAL_CONTROLLER_NAME = "NORVA Ι.Κ.Ε."
+LEGAL_CONTROLLER_NAME_EN = "NORVA P.C."
+LEGAL_VAT = "803388810"
+LEGAL_TAX_OFFICE = "ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ"
+LEGAL_GEMI = "195879401000"
+LEGAL_EUID = "ELGEMI.195879401000"
+LEGAL_ADDRESS = "Μαυρομματαίων 6, Αθήνα 10682, Ελλάδα"
+LEGAL_WEBSITE = "https://norva.gr"
+LEGAL_CONTACT_EMAIL = "info@norva.gr"
+LEGAL_LAST_UPDATED = os.getenv("LEGAL_LAST_UPDATED", "13 Σεπτεμβρίου 2026")
 LEGAL_REFUND_POLICY = os.getenv(
     "LEGAL_REFUND_POLICY",
     "Δεν προβλέπεται επιστροφή για το τρέχον διάστημα συνδρομής, εκτός αν ορίζει διαφορετικά ο νόμος.",
