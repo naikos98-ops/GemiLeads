@@ -24,6 +24,7 @@ from .normalizer import (
     NormalizedReference,
     fields_not_approved_for_history,
     normalize_company,
+    normalize_event_date,
     normalize_identifier,
     normalize_text,
 )
@@ -42,6 +43,7 @@ from .reference_data import REFERENCE_FAMILY_KEYS, ReferenceSyncResult, sync_ref
 __all__ = [
     "REFERENCE_FAMILY_KEYS",
     "ReferenceSyncResult",
+    "normalize_event_date",
     "normalize_identifier",
     "normalize_text",
     "sync_reference_data",

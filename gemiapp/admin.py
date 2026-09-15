@@ -32,6 +32,11 @@ class CompanyAdmin(admin.ModelAdmin):
     list_filter = ("incorporation_date", "is_active", "legal_type", "prefecture")
     search_fields = ("name", "gemi_number", "vat_number")
     date_hierarchy = "incorporation_date"
+    # Gemi Leads 2.0 metadata (A6), shown for inspection only; filled by backfill_gemi_company_metadata.
+    readonly_fields = (
+        "status_source_id", "legal_type_source_id", "gemi_office_source_id", "prefecture_source_id",
+        "municipality_source_id", "incorporation_date_quality", "first_seen_at", "last_seen_at", "last_synced_at",
+    )
 
 
 @admin.register(CompanyOutreach)

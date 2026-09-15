@@ -266,6 +266,14 @@ def normalize_identifier(value: Any) -> str | None:
     return _identifier(value)
 
 
+def normalize_event_date(value: Any, *, as_of: date, date_policy: DatePolicy = DEFAULT_DATE_POLICY) -> NormalizedDate:
+    """The rule applied to past-event dates such as incorporationDate: a real YYYY-MM-DD date from
+    ``date_policy.earliest`` up to ``as_of`` plus the event tolerance is VALID; see DateQuality."""
+    if isinstance(as_of, datetime) or not isinstance(as_of, date):
+        raise TypeError("as_of must be a date (not a datetime).")
+    return _date(value, latest=as_of + date_policy.event_future_tolerance, policy=date_policy)
+
+
 # --- helpers ------------------------------------------------------------------------------------
 
 def _text(value: Any) -> str | None:

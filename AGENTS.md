@@ -144,6 +144,29 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — A6: κωδικοί αναφοράς και lifecycle στο `Company` (2026-09-15).** Migration
+  `0034_company_gemi_metadata` (μόνο 9 nullable `AddField`, χωρίς FK, χωρίς indexes),
+  `gemiapp/ingestion/company_metadata.py`, `manage.py backfill_gemi_company_metadata`:
+  - Νέα πεδία: `status_source_id`, `legal_type_source_id`, `gemi_office_source_id`,
+    `prefecture_source_id`, `municipality_source_id` (το `id` του αντικειμένου στο `raw_data`, με τον
+    κανόνα αναγνωριστικών A2/A3· ποτέ από περιγραφή), `incorporation_date_quality` (A3 `DateQuality` της
+    ημερομηνίας της πηγής· το `incorporation_date` δεν αλλάζει), `first_seen_at`, `last_seen_at`,
+    `last_synced_at`. **Καμία υπάρχουσα λειτουργία δεν τα διαβάζει**· importer, Radars, digests,
+    αναζήτηση και exports αμετάβλητα. Το `is_active` **δεν** διορθώθηκε.
+  - Lifecycle: `first_seen_at` ← `imported_at`, `last_seen_at` ← `updated_at`, **μόνο** όταν το
+    `raw_data` είναι εγγραφή ΓΕΜΗ της ίδιας εταιρείας (`arGemi` = `gemi_number`) και δεν υπάρχει
+    προσθήκη/αλλαγή στο `django_admin_log`· αλλιώς null. Το `last_synced_at` μένει null μέχρι να υπάρξει
+    canonical ingestion. Ποτέ `now()`, ποτέ ψεύτικες προεπιλογές.
+  - Backfill: batches ανά pk (`--batch-size`, `--start-id`, `--dry-run`), συναλλαγή ανά batch,
+    `bulk_update` μόνο στα νέα πεδία (το `updated_at` δεν αγγίζεται), ποτέ δεν σβήνει τιμή, idempotent,
+    μετράει τα χαλασμένα rows χωρίς να σταματά, αφήνει τα σφάλματα βάσης να σταματήσουν την εκτέλεση.
+    Εκτυπώνει μόνο πλήθη· δεν καλεί το ΓΕΜΗ.
+  - **Ο importer δεν συμπληρώνει ακόμη τα νέα πεδία**: εταιρείες που εισάγονται μετά το backfill μένουν
+    null μέχρι νέο backfill ή canonical ingestion.
+  - Αντίγραφο dev βάσης (17.799 εταιρείες): 17.789 συμπληρώθηκαν (τα 10 demo rows έμειναν null), 8
+    χωρίς νομό/δήμο, ποιότητα ημερομηνίας valid=17.789, 0 row errors, δεύτερη εκτέλεση 0 αλλαγές,
+    forward/backfill/reverse/reapply με τους 46 προϋπάρχοντες πίνακες αμετάβλητους και parity report
+    ίδιο πριν/μετά. 25 νέα tests· **876 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
 - **Gemi Leads 2.0 — A5: GEMI reference tables και sync (2026-09-15).** Migration
   `0033_gemi_reference_data`, `gemiapp/ingestion/reference_data.py`, `manage.py sync_gemi_reference_data`:
   - Επτά νέοι πίνακες αναφοράς, **ξεχωριστοί** από το `ActivityCode` και τα strings των Company/Radars
@@ -354,8 +377,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: A6** (στήλες κωδικών και lifecycle στο `Company` με batched
-  backfill από το `raw_data`).
+- **Gemi Leads 2.0 — επόμενο πακέτο: A7** κατά το `docs/GEMI_LEADS_2_BLUEPRINT.md` (αναμένει έγκριση
+  του A6).
+- **Release gate για το A6 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0034` είναι μόνο
+  nullable `AddField` (άμεση σε PostgreSQL). Στο release: migration, `backfill_gemi_company_metadata
+  --dry-run`, έλεγχος πληθών, κανονικό backfill, δεύτερο backfill που πρέπει να δώσει 0 αλλαγές. Τα
+  πεδία δεν διαβάζονται από τίποτα· indexes μόνο όταν προστεθούν queries (σε PostgreSQL με
+  `CREATE INDEX CONCURRENTLY`).
 - **Release gate για το A5 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η migration
   `0033_gemi_reference_data` δεν εφαρμόζεται σε production πριν από το G0/G1. Κατά το release: πρώτος
   συγχρονισμός με `--dry-run`, έπειτα κανονικός, και εβδομαδιαίο schedule μόνο όταν υπάρχει ξεχωριστό
@@ -396,7 +424,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-15 — Gemi Leads 2.0 A5 (GEMI reference tables και sync).** Νέα: επτά πίνακες αναφοράς και
+- **2026-09-15 — Gemi Leads 2.0 A6 (κωδικοί αναφοράς και lifecycle στο `Company`).** Νέα: migration
+  `0034_company_gemi_metadata.py`, `gemiapp/ingestion/company_metadata.py`,
+  `manage.py backfill_gemi_company_metadata`, `gemiapp/test_gemi_company_metadata.py`. Αλλαγές:
+  `models.py` (9 nullable πεδία στο `Company`), `ingestion/normalizer.py` (δημόσια
+  `normalize_event_date`), `ingestion/__init__.py`, `admin.py` (τα νέα πεδία read-only στο
+  `CompanyAdmin`). Επαλήθευση: 876 tests OK, `check` / `makemigrations --check` / build:css καθαρά,
+  forward → dry-run → backfill → δεύτερο backfill → reverse → reapply στο αντίγραφο της dev βάσης με
+  checksums και parity report. Deploy, schedule, settings, services και billing αμετάβλητα.
+- **2026-09-15 — Gemi Leads 2.0 A5 (GEMI reference tables και sync).** Commit `a473c5b`. Νέα: επτά πίνακες αναφοράς και
   `GemiReferenceSyncRun` (`gemiapp/models.py`), migration `0033_gemi_reference_data.py`,
   `gemiapp/ingestion/reference_data.py`, `manage.py sync_gemi_reference_data`,
   `gemiapp/test_gemi_reference_data.py`. Αλλαγές: `ingestion/normalizer.py` (δημόσια `normalize_text` /

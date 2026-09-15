@@ -44,6 +44,34 @@ class Company(models.Model):
     imported_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # --- Gemi Leads 2.0 canonical metadata (A6) ----------------------------------------------------
+    # Additive and not read by any current code path: the description fields above still drive the
+    # importer, Radars, digests, search and exports. Filled from raw_data by
+    # `manage.py backfill_gemi_company_metadata` and, later, by canonical ingestion
+    # (gemiapp.ingestion.company_metadata documents the semantics and evidence).
+    # Plain GEMI source identifiers, deliberately not foreign keys to the reference tables: a company
+    # may carry an id the local reference data does not know yet.
+    status_source_id = models.CharField(max_length=32, null=True, blank=True, editable=False)
+    legal_type_source_id = models.CharField(max_length=32, null=True, blank=True, editable=False)
+    gemi_office_source_id = models.CharField(max_length=32, null=True, blank=True, editable=False)
+    prefecture_source_id = models.CharField(max_length=32, null=True, blank=True, editable=False)
+    municipality_source_id = models.CharField(max_length=32, null=True, blank=True, editable=False)
+    # Quality of the *source* incorporationDate under the A3 DatePolicy; null = not assessed.
+    # incorporation_date itself is untouched and may hold a legacy clamped value.
+    INCORPORATION_DATE_QUALITIES = [
+        ("valid", "Valid"), ("missing", "Missing"), ("invalid", "Invalid"), ("out_of_range", "Out of range"),
+    ]
+    incorporation_date_quality = models.CharField(
+        max_length=16, choices=INCORPORATION_DATE_QUALITIES, null=True, blank=True, editable=False,
+    )
+    # Earliest time Gemi Leads can establish it observed this company in a GEMI response.
+    first_seen_at = models.DateTimeField(null=True, blank=True, editable=False)
+    # Most recent time Gemi Leads observed this company in a valid GEMI response.
+    last_seen_at = models.DateTimeField(null=True, blank=True, editable=False)
+    # Most recent time the canonical GEMI state was synchronised into the structured fields. Null until
+    # canonical ingestion exists; the backfill never sets it.
+    last_synced_at = models.DateTimeField(null=True, blank=True, editable=False)
+
     class Meta:
         ordering = ["-incorporation_date", "-gemi_number"]
         verbose_name_plural = "Επιχειρήσεις"
