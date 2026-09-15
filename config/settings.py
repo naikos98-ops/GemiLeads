@@ -301,6 +301,15 @@ GOOGLE_SITE_VERIFICATION = os.getenv("GOOGLE_SITE_VERIFICATION", "")
 
 GEMI_API_KEY = os.environ.get("GEMI_API_KEY", "")
 GEMI_API_BASE = "https://opendata-api.businessportal.gr/api/opendata/v1"
+# Every GEMI request goes through gemiapp.ingestion.GemiClient and draws on one rate budget kept in
+# the "shared" database cache, so it holds across workers, clusters and instances. The gateway allows
+# 8 requests per minute per API key (docs/GEMI_API_CAPABILITY_REPORT.md); the application never sends
+# more than 7 in any rolling minute, and a value above 7 here is clamped.
+GEMI_RATE_LIMIT_PER_MINUTE = int(os.environ.get("GEMI_RATE_LIMIT_PER_MINUTE", "7"))
+GEMI_REQUEST_TIMEOUT_SECONDS = int(os.environ.get("GEMI_REQUEST_TIMEOUT_SECONDS", "60"))
+# Total attempts per request, the first included, when it fails with 429, a transient 5xx or a
+# network error.
+GEMI_MAX_ATTEMPTS = int(os.environ.get("GEMI_MAX_ATTEMPTS", "4"))
 
 Q_CLUSTER = {
     "name": "gemi_leads_cluster",

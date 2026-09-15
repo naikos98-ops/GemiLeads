@@ -1,9 +1,4 @@
 from __future__ import annotations
-import json
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
 import logging
 from dataclasses import dataclass
 from datetime import date
@@ -15,6 +10,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+from .ingestion import GemiLane, current_gemi_lane, gemi_lane, get_gemi_client
 from .kad import display_kad_code, normalize_kad_code, normalize_kad_search
 from .models import (
     ActivityCode,
@@ -42,26 +38,20 @@ class MatchSummary:
 
 
 def _get(path: str, params: dict[str, Any]) -> dict[str, Any]:
-    if not settings.GEMI_API_KEY:
-        raise RuntimeError("Λείπει το GEMI_API_KEY από το περιβάλλον.")
-    query = urllib.parse.urlencode(params, doseq=True)
-    request = urllib.request.Request(
-        f"{settings.GEMI_API_BASE}{path}?{query}",
-        headers={"api_key": settings.GEMI_API_KEY, "Accept": "application/json", "User-Agent": "Gemi-Leads/1.0"},
-    )
-    for attempt in range(5):
-        try:
-            with urllib.request.urlopen(request, timeout=60) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", "replace")
-            if exc.code == 401:
-                raise RuntimeError("Το GEMI_API_KEY δεν είναι έγκυρο.") from exc
-            if exc.code in {429, 500, 502, 503, 504} and attempt < 4:
-                time.sleep(3 ** attempt)
-                continue
-            raise RuntimeError(f"GEMI API HTTP {exc.code}: {detail[:300]}") from exc
-    raise RuntimeError("Το GEMI API δεν απάντησε.")
+    """The importers' single seam to the ΓΕΜΗ API, kept with its original (path, params) signature.
+
+    The request goes through the shared GemiClient (gemiapp.ingestion), which waits for a slot in
+    the application-wide rate budget, retries 429 / transient 5xx / timeouts a bounded number of
+    times and never exposes the API key. The priority lane is whichever the caller set with
+    gemi_lane(); otherwise digest-feeding import, which is how the daily and intraday pipelines and
+    the Superadmin manual run all arrive here through import_for_date. A search with no matches
+    comes back as an empty result page rather than the gateway's 404.
+    """
+    lane = current_gemi_lane(default=GemiLane.DIGEST_IMPORT)
+    client = get_gemi_client()
+    if path == "/companies":
+        return client.search_companies(params, lane=lane)
+    return client.get(path, params, lane=lane)
 
 
 def _description(value: Any) -> str:
@@ -698,17 +688,16 @@ def import_companies_since_date(start_date: date = date(2026, 1, 1)) -> tuple[in
     for active in (True, False):
         offset = 0
         while True:
-            try:
+            # A historical backfill must never hold up the imports that feed digests, so it runs in
+            # the refresh lane. Retries are the client's and bounded: a page that still fails after
+            # them ends the backfill with the error instead of retrying forever.
+            with gemi_lane(GemiLane.MONITORED_REFRESH):
                 payload = _get("/companies", {
                     "isActive": str(active).lower(),
                     "resultsSortBy": "-incorporationDate",
                     "resultsOffset": offset,
                     "resultsSize": PAGE_SIZE,
                 })
-            except Exception as exc:
-                logger.warning("Error fetching GEMI page at offset %d: %s. Sleeping before retry...", offset, exc)
-                time.sleep(5)
-                continue
 
             results = payload.get("searchResults") or []
             if not results:
@@ -744,8 +733,6 @@ def import_companies_since_date(start_date: date = date(2026, 1, 1)) -> tuple[in
             total = int((payload.get("searchMetadata") or {}).get("totalCount") or 0)
             if len(results) < PAGE_SIZE or (total and offset >= total):
                 break
-
-            time.sleep(0.5)
 
     match_companies_in_range(start_date, date.today())
     return created_count, updated_count

@@ -144,6 +144,25 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — A1: κοινός GemiClient (2026-09-15, branch `feature/gemi-2-a1-gemi-client`,
+  βάση `main` + `chore/norva-legal-identity`).** Κάθε κλήση στο ΓΕΜΗ περνά πλέον από το
+  `gemiapp/ingestion/client.py::GemiClient`:
+  - κοινός rate budget στο `shared` database cache: slots των 10,33 s, το πολύ 7 αιτήματα σε
+    οποιοδήποτε κυλιόμενο λεπτό, σε όλα τα workers/clusters/instances (το gateway επιτρέπει
+    8/λεπτό ανά κλειδί)·
+  - priority lanes: DISCOVERY > DIGEST_IMPORT > MONITORED_REFRESH > DOCUMENTS·
+  - κοινό cooldown από `Retry-After` / `RateLimit-Reset`· bounded retries για 429, transient 5xx
+    και timeouts (`GEMI_MAX_ATTEMPTS`, προεπιλογή 4)·
+  - το 404 μιας κενής αναζήτησης είναι κενό αποτέλεσμα· parsing των τριών μορφών σφάλματος·
+    το κλειδί δεν εμφανίζεται ποτέ σε logs ή σφάλματα.
+  - Το `services._get(path, params)` παραμένει το seam των importers, με ίδια υπογραφή και ίδια
+    queries. Το `import_companies_since_date` τρέχει στο lane MONITORED_REFRESH και δεν ξαναδοκιμάζει
+    πλέον επ' άπειρον.
+  - Νέα settings: `GEMI_RATE_LIMIT_PER_MINUTE` (≤7), `GEMI_REQUEST_TIMEOUT_SECONDS`,
+    `GEMI_MAX_ATTEMPTS`. Καμία migration, καμία αλλαγή σε billing, Radars ή UI.
+  - 41 νέα tests (`gemiapp/test_gemi_client.py`)· **733 tests OK**· `check` και
+    `makemigrations --check` καθαρά. Συμπεριφορά του API: `docs/GEMI_API_CAPABILITY_REPORT.md`.
+
 - **Final consolidation pass — όλες οι υπόλοιπες επιφάνειες (2026-09-10).** Μεταφέρθηκαν στο
   Signal Ledger system και οι 24 εναπομείνασες σελίδες: 11 Superadmin subpages
   (Subscriptions, Radars, Leads, GEMI Pipeline, Email Digests, System Health, Audit Log,
@@ -258,6 +277,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Gemi Leads 2.0 — επόμενο πακέτο: A2** (επικύρωση του σχήματος των απαντήσεων ΓΕΜΗ). Πριν από
+  οποιαδήποτε 2.0 migration σε production απαιτούνται: staging βάση, ξεχωριστό GEMI API key για
+  staging και γνωστός όγκος δεδομένων production.
+- **Διόρθωση τεκμηρίωσης billing:** το README, το AI_SUMMARY και αυτό το αρχείο γράφουν ότι οι
+  πληρωμές είναι κλειστές (beta), ενώ η production σελίδα pricing δείχνει ενεργό checkout
+  (`render.yaml`, commit `e158012`). Μέχρι να επιβεβαιωθεί, το billing θεωρείται LIVE.
+
 *(Όλα τα βήματα παραγωγής, Stripe integration, Email & Domain, Landing Page, Paid Subscription Logic και Superadmin Control Center έχουν ολοκληρωθεί. Η εφαρμογή είναι σε beta: το billing παραμένει σκόπιμα κλειστό. Το cold outreach είναι επίσης σκόπιμα παγωμένο και δεν αποτελεί εκκρεμότητα επανενεργοποίησης.)*
 
 - **Visual review του approved Signal Ledger refinement:** να αξιολογηθούν τα πέντε `refined-*` captures και το interactive prototype στο `docs/gemi-leads-ui-study/`. Καμία production υλοποίηση δεν πρέπει να ξεκινήσει πριν εγκριθούν το state grammar, η refined sidebar/source metadata, η selected-signal ιεραρχία και οι mobile Signals/Lead ροές.
@@ -271,6 +297,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-09-15 — Gemi Leads 2.0 A1 (κοινός GemiClient).** Βάση υλοποίησης: `main` (`d1a323c`, ίδιο
+  με production) + `chore/norva-legal-identity` (`f372ef4` NORVA, `94a50b0` blueprint). Νέα:
+  `gemiapp/ingestion/` (client, rate_budget, errors), `gemiapp/test_gemi_client.py`. Αλλαγές:
+  `gemiapp/services.py` (`_get` μέσω GemiClient, backfill χωρίς ατέρμονο retry), `config/settings.py`
+  (3 GEMI settings). Επαλήθευση: 692 tests OK πριν, 733 OK μετά· προσομοίωση 3 διεργασιών σε κοινό
+  DatabaseCache: το πολύ 7 αιτήματα ανά κυλιόμενο λεπτό, 5,98/λεπτό, σωστή σειρά lanes.
 - 2026-09-13: **Νομική ταυτότητα: το Gemi Leads είναι προϊόν της NORVA Ι.Κ.Ε.** Ο πάροχος/υπεύθυνος επεξεργασίας ορίζεται πλέον σταθερά στο `config/settings.py` (NORVA Ι.Κ.Ε. / NORVA P.C., ΑΦΜ 803388810, Δ.Ο.Υ. ΚΕΦΟΔΕ ΑΤΤΙΚΗΣ, ΓΕΜΗ 195879401000, EUID ELGEMI.195879401000, Μαυρομματαίων 6, Αθήνα 10682, info@norva.gr) αντί για env vars, ώστε ένα παλιό περιβάλλον server να μην μπορεί να δημοσιεύσει τα στοιχεία του προηγούμενου φορέα. Ενημερώθηκαν `legal/privacy.html`, `legal/terms.html`, footer στο `base.html` (το JSON-LD δεν άλλαξε: το `StructuredDataTests` απαγορεύει ρητά `address`/`vatID`/`legalName`) και το σχετικό FAQ του `home.html`, με ρητή δήλωση ότι δεν πρόκειται για επίσημη υπηρεσία του Γ.Ε.ΜΗ. Το `info@gemileads.gr` παραμένει ως επαφή προϊόντος/υποστήριξης. Κανένα functional/UI change.
 
 - 2026-09-09: **Παραγωγή commercial & superadmin review captures & copy audit.** Δημιουργήθηκαν τα νέα review captures στο `docs/gemi-leads-ui-study/screenshots/` και στα artifacts: `marketing_superadmin_desktop.png` & `marketing_superadmin_users_desktop.png` (INTERNAL REVIEW ONLY), `marketing_pricing_desktop.png` (PUBLIC MARKETING SAFE), `marketing_landing_desktop.png` (PUBLIC MARKETING SAFE), `marketing_landing_full_desktop.png`, `marketing_landing_mobile.png` & `marketing_landing_full_mobile.png`. Πραγματοποιήθηκε πλήρης έλεγχος copy στη δημόσια landing page (`templates/home.html`), επιβεβαιώνοντας ότι δεν υπάρχουν αναφορές ή υποσχέσεις σε αυτόματη αποστολή cold outreach email. Το Signal Ledger UI και το backend διατηρήθηκαν 100% ανεπηρέαστα.
