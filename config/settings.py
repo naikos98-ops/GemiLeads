@@ -339,6 +339,21 @@ GEMI_MATCH_CURRENT_ACTIVITIES_ONLY = os.environ.get("GEMI_MATCH_CURRENT_ACTIVITI
 # KAD 2026 reference row, which needs synchronised reference data and reconcile_gemi_kad_catalogue. Saved
 # Radar criteria are never rewritten either way. Do not enable before an approved catalogue cutover.
 GEMI_KAD_PICKER_CURRENT_TAXONOMY_ONLY = os.environ.get("GEMI_KAD_PICKER_CURRENT_TAXONOMY_ONLY", "0") == "1"
+# Discovery v2 (gemiapp.ingestion.discovery), which finds newly published companies by paging -arGemi and
+# catches the late publications the incorporation-date importer misses. Shadow only by default: it records
+# what it would discover and never creates or changes a Company. Ingest mode (writing companies) requires
+# GEMI_DISCOVERY_V2_ENABLED, which stays 0 until the 14-day shadow comparison is reviewed and the cutover
+# approved. The legacy importer remains the production source of companies and digests either way.
+GEMI_DISCOVERY_V2_ENABLED = os.environ.get("GEMI_DISCOVERY_V2_ENABLED", "0") == "1"
+GEMI_DISCOVERY_V2_SHADOW = os.environ.get("GEMI_DISCOVERY_V2_SHADOW", "1") == "1"
+# Paging and safety limits. The overlap is how many already-known records must be seen beyond the frontier
+# before a run may stop: stopping at the first known record would miss irregular ordering and late arrivals.
+GEMI_DISCOVERY_PAGE_SIZE = int(os.environ.get("GEMI_DISCOVERY_PAGE_SIZE", "200"))
+GEMI_DISCOVERY_MAX_PAGES = int(os.environ.get("GEMI_DISCOVERY_MAX_PAGES", "10"))
+GEMI_DISCOVERY_OVERLAP_KNOWN_RECORDS = int(os.environ.get("GEMI_DISCOVERY_OVERLAP_KNOWN_RECORDS", "200"))
+GEMI_DISCOVERY_MIN_OVERLAP_PAGES = int(os.environ.get("GEMI_DISCOVERY_MIN_OVERLAP_PAGES", "1"))
+GEMI_DISCOVERY_BOOTSTRAP_CONFIRMATIONS = int(os.environ.get("GEMI_DISCOVERY_BOOTSTRAP_CONFIRMATIONS", "50"))
+GEMI_DISCOVERY_BOOTSTRAP_MAX_PAGES = int(os.environ.get("GEMI_DISCOVERY_BOOTSTRAP_MAX_PAGES", "10"))
 
 Q_CLUSTER = {
     "name": "gemi_leads_cluster",

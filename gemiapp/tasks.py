@@ -247,3 +247,16 @@ def recompute_gemi_company_monitoring_task():
     from gemiapp.ingestion.monitoring import recompute_company_monitoring
 
     return recompute_company_monitoring().summary()
+
+
+def run_gemi_discovery_v2_shadow_task():
+    """One Discovery v2 shadow run. Returns the counts.
+
+    Records only what it would discover: no Company row is created or changed, no digest, matching or
+    monitoring state is touched. Deliberately not in apps.SCHEDULES yet: the 14-day shadow observation and
+    the legacy comparison must be reviewed before Discovery v2 may run on a schedule, let alone replace the
+    legacy importer. Until then run `manage.py run_gemi_discovery_v2`.
+    """
+    from gemiapp.ingestion.discovery import SHADOW, run_discovery
+
+    return run_discovery(mode=SHADOW).summary()

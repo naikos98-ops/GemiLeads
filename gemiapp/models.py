@@ -855,6 +855,118 @@ class ActivityCodeKadLink(models.Model):
         constraints = [models.UniqueConstraint(fields=["activity_code", "gemi_kad"], name="unique_activity_code_kad_link")]
 
 
+class GemiDiscoveryRun(models.Model):
+    """One Discovery v2 run (A10): what it fetched, found and decided. Counts and ids only, no payload.
+
+    Written by gemiapp.ingestion.discovery, which documents the paging, the overlap stop condition and the
+    ordering guardrails. Shadow runs never create or change Company rows.
+    """
+
+    MODES = [("shadow", "Shadow"), ("ingest", "Ingest"), ("bootstrap", "Bootstrap")]
+    STATUSES = [
+        ("running", "Σε εξέλιξη"), ("success", "Επιτυχία"), ("incomplete", "Ημιτελής"),
+        ("anomaly", "Ανωμαλία"), ("failed", "Αποτυχία"),
+    ]
+
+    stream = models.CharField(max_length=32)
+    mode = models.CharField(max_length=16, choices=MODES)
+    status = models.CharField(max_length=16, choices=STATUSES, default="running")
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    pages_fetched = models.PositiveIntegerField(default=0)
+    records_examined = models.PositiveIntegerField(default=0)
+    known_records = models.PositiveIntegerField(default=0)
+    new_records = models.PositiveIntegerField(default=0)
+    late_publication_records = models.PositiveIntegerField(default=0)
+    invalid_date_records = models.PositiveIntegerField(default=0)
+    duplicate_records = models.PositiveIntegerField(default=0)
+    invalid_identifier_records = models.PositiveIntegerField(default=0)
+    ingested_records = models.PositiveIntegerField(default=0)
+    # Highest identifier seen in this run, and the cursor before and after it.
+    highest_gemi_number = models.CharField(max_length=24, blank=True)
+    previous_high_water_mark = models.CharField(max_length=24, blank=True)
+    resulting_high_water_mark = models.CharField(max_length=24, blank=True)
+    cursor_advanced = models.BooleanField(default=False)
+    overlap_known_records = models.PositiveIntegerField(default=0)
+    stop_reason = models.CharField(max_length=32, blank=True)
+    anomalies = models.JSONField(default=list, blank=True)
+    policy = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+        verbose_name = "GEMI discovery run"
+        indexes = [models.Index(fields=["stream", "-started_at"], name="discovery_run_stream_idx")]
+
+    def __str__(self):
+        return f"{self.stream} · {self.mode} · {self.status}"
+
+
+class GemiDiscoveryCursor(models.Model):
+    """Discovery v2 state for one stream (A10): system pipeline state, never billing state.
+
+    ``high_water_mark`` is the highest GEMI number already observed and trusted -- a discovery cursor, not
+    a business timestamp. A higher GEMI number is not proof of a later incorporation date. It advances only
+    after a run finishes with its stop condition met and no blocking anomaly.
+    """
+
+    STATUSES = [("uninitialised", "Χωρίς αρχικοποίηση"), ("ready", "Έτοιμο"), ("anomaly", "Ανωμαλία")]
+    STREAM_COMPANIES = "companies_by_gemi_number"
+
+    stream = models.CharField(max_length=32, unique=True)
+    status = models.CharField(max_length=16, choices=STATUSES, default="uninitialised")
+    high_water_mark = models.CharField(max_length=24, blank=True)
+    # The same value as an integer, for ordering comparisons.
+    high_water_mark_value = models.BigIntegerField(null=True, blank=True)
+    bootstrap_method = models.CharField(max_length=32, blank=True)
+    bootstrapped_at = models.DateTimeField(null=True, blank=True)
+    last_attempted_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    consecutive_failures = models.PositiveIntegerField(default=0)
+    anomaly_reason = models.CharField(max_length=64, blank=True)
+    anomaly_detected_at = models.DateTimeField(null=True, blank=True)
+    last_run = models.ForeignKey(GemiDiscoveryRun, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    last_statistics = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "GEMI discovery cursor"
+
+    def __str__(self):
+        return f"{self.stream} · {self.status} · {self.high_water_mark or 'no frontier'}"
+
+
+class GemiDiscoveryObservation(models.Model):
+    """One newly discovered company in a run: identifier, dates and classification. No payload, no PII."""
+
+    CLASSIFICATIONS = [
+        ("new_incorporation", "Νέα σύσταση"), ("late_publication", "Καθυστερημένη δημοσίευση"),
+        ("invalid_date", "Μη έγκυρη ημερομηνία"),
+        # Seen during the scan and already stored locally: the evidence that tells "Discovery v2 saw this
+        # company" apart from "Discovery v2 never reached it" in the legacy comparison.
+        ("known", "Ήδη γνωστή"),
+    ]
+
+    run = models.ForeignKey(GemiDiscoveryRun, on_delete=models.CASCADE, related_name="observations")
+    gemi_number = models.CharField(max_length=24, db_index=True)
+    classification = models.CharField(max_length=24, choices=CLASSIFICATIONS)
+    # The source incorporation date and its A3 quality; the date is stored only when VALID.
+    incorporation_date = models.DateField(null=True, blank=True)
+    incorporation_date_quality = models.CharField(max_length=16, choices=Company.INCORPORATION_DATE_QUALITIES)
+    company_existed = models.BooleanField()
+    page_index = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["run_id", "id"]
+        constraints = [models.UniqueConstraint(fields=["run", "gemi_number"], name="unique_discovery_observation")]
+        indexes = [models.Index(fields=["classification"], name="discovery_classification_idx")]
+
+    def __str__(self):
+        return f"{self.gemi_number} · {self.classification}"
+
+
 class CompanyMonitoring(models.Model):
     """Monitoring state of one company, shared by every customer (A9).
 

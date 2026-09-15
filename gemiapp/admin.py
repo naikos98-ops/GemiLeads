@@ -13,6 +13,9 @@ from .models import (
     EmailEngagementEvent,
     GemiCompanyStatus,
     GemiDecisionSubject,
+    GemiDiscoveryCursor,
+    GemiDiscoveryObservation,
+    GemiDiscoveryRun,
     GemiKad,
     GemiLegalType,
     GemiMunicipality,
@@ -229,6 +232,37 @@ class GemiReferenceSyncRunAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+class DiscoveryReadOnlyAdmin(admin.ModelAdmin):
+    """Inspection only. Discovery v2 state is written by run_gemi_discovery_v2 and its bootstrap."""
+
+    def get_readonly_fields(self, request, obj=None):
+        return [field.name for field in self.model._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(GemiDiscoveryCursor)
+class GemiDiscoveryCursorAdmin(DiscoveryReadOnlyAdmin):
+    list_display = ("stream", "status", "high_water_mark", "last_success_at", "consecutive_failures", "anomaly_reason")
+
+
+@admin.register(GemiDiscoveryRun)
+class GemiDiscoveryRunAdmin(DiscoveryReadOnlyAdmin):
+    list_display = ("started_at", "stream", "mode", "status", "pages_fetched", "new_records", "late_publication_records", "cursor_advanced")
+    list_filter = ("mode", "status", "stream")
+
+
+@admin.register(GemiDiscoveryObservation)
+class GemiDiscoveryObservationAdmin(DiscoveryReadOnlyAdmin):
+    list_display = ("gemi_number", "classification", "incorporation_date", "incorporation_date_quality", "run")
+    list_filter = ("classification", "incorporation_date_quality")
+    search_fields = ("gemi_number",)
 
 
 @admin.register(GemiSourceRecord)

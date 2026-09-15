@@ -144,6 +144,33 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — A10: Discovery v2 σε shadow (2026-09-16).** Τελευταίο πακέτο του Stage A. Migration
+  `0038_gemi_discovery`, `gemiapp/ingestion/discovery.py`, `manage.py run_gemi_discovery_v2`,
+  `manage.py bootstrap_gemi_discovery_v2`, `run_gemi_discovery_v2_shadow_task` (**όχι** στο `apps.SCHEDULES`):
+  - **Το πρόβλημα:** ο σημερινός importer κρατά μόνο όσες εταιρείες έχουν `incorporationDate` == ημέρα-στόχο,
+    οπότε χάνει οριστικά τις καθυστερημένες δημοσιεύσεις (το spike είδε 2026-09-09 και 2025-12-15 ανάμεσα
+    στις νεότερες εγγραφές). Το Discovery v2 σελιδοποιεί με `-arGemi` και ψάχνει ό,τι είναι πέρα από το
+    σύνορο (high-water mark) που έχει ήδη παρατηρηθεί.
+  - **Shadow:** ο legacy importer παραμένει η μοναδική πηγή εταιρειών, digests και matching. Το shadow
+    γράφει **μόνο** στους πίνακες discovery· καμία Company/CompanyActivity, κανένα monitoring, κανένα Signal.
+    Το ingest mode απαιτεί `GEMI_DISCOVERY_V2_ENABLED` (=0) και δεν είναι προγραμματισμένο.
+  - **Μοντέλα:** `GemiDiscoveryCursor` (σύνορο, status, bootstrap provenance, αποτυχίες, ανωμαλίες),
+    `GemiDiscoveryRun` (πλήθη, σύνορο πριν/μετά, stop reason, anomalies, policy), `GemiDiscoveryObservation`
+    (ανά εταιρεία: αναγνωριστικό, ημερομηνία σύστασης και ποιότητα A3, κατάταξη). Μόνο ids, ημερομηνίες και
+    πλήθη — κανένα payload, καμία PII. Το `ImportRun` δεν αλλάζει.
+  - **Guardrails:** κάθε εκτέλεση μετρά ordering εντός σελίδας και στα όρια σελίδων, διπλότυπα και άκυρα
+    αναγνωριστικά. Παραβίαση σειράς = **anomaly**: ο cursor **δεν** προχωρά και μένει για έλεγχο. Ο cursor
+    προχωρά μόνο σε επιτυχή εκτέλεση (ικανοποιημένο overlap, χωρίς blocking anomaly, χωρίς page limit).
+  - **Bootstrap:** ποτέ `cursor = MAX(local gemi_number)`. Επαληθευμένη σάρωση με ελάχιστο πλήθος γνωστών
+    εγγραφών· σύνορο = ο υψηλότερος αριθμός ΓΕΜΗ που **υπάρχει ήδη τοπικά**, ώστε τίποτα από πάνω του να μη
+    μείνει κρυφό (το backlog καταγράφεται).
+  - **Σύγκριση legacy/v2** ανά ημέρα: BOTH / LEGACY_ONLY / V2_ONLY με αιτία (late_publication,
+    invalid_incorporation_date, legacy_filter_miss). Καταγράφονται και οι ήδη γνωστές εγγραφές που είδε η
+    σάρωση, ώστε το LEGACY_ONLY να σημαίνει πραγματικά «το v2 δεν έφτασε ποτέ σε αυτήν».
+  - **Πύλη cutover:** ≥14 ημέρες shadow, έλεγχος διαφορών, καμία ανεξήγητη ανωμαλία σειράς, αποδεκτό budget
+    αιτημάτων και ποσοστά απωλειών/διπλοτύπων. Τίποτα δεν το ενεργοποιεί αυτόματα.
+  - 30 νέα tests (πολυήμερη προσομοίωση με fixtures: καθυστερημένη δημοσίευση, εκτός σειράς εγγραφή,
+    διπλή σελίδα, αποτυχία στη μέση)· **998 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
 - **Gemi Leads 2.0 — A9: σύνολο παρακολούθησης εταιρειών και πολιτική ανανέωσης (2026-09-16).** Migration
   `0037_company_monitoring`, `gemiapp/ingestion/monitoring.py`, `manage.py recompute_gemi_company_monitoring`,
   `recompute_gemi_company_monitoring_task` (**όχι** στο `apps.SCHEDULES`):
@@ -444,7 +471,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: A10** κατά το `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του A9.
+- **Gemi Leads 2.0 — το Stage A (Data Foundation) ολοκληρώθηκε με το A10· επόμενο πακέτο: B1** κατά το
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του A10.
+- **Release gate για το A10 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0038` δημιουργεί μόνο
+  τους πίνακες discovery. Στο release: migration, `bootstrap_gemi_discovery_v2` (επαληθευμένη σάρωση),
+  μετά καθημερινές shadow εκτελέσεις και `run_gemi_discovery_v2 --compare <ημερομηνία>`. **Το Discovery v2
+  δεν αντικαθιστά τον legacy importer** πριν από ≥14 ημέρες shadow, έλεγχο των διαφορών legacy/v2, καθαρά
+  ordering guardrails και αποδεκτό budget· το `GEMI_DISCOVERY_V2_ENABLED` μένει 0 μέχρι τότε.
 - **Release gate για το A9 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0037` δημιουργεί μόνο τους
   πίνακες παρακολούθησης. Στο release: `backfill_gemi_company_metadata`, μετά
   `recompute_gemi_company_monitoring --dry-run`, κανονικό, δεύτερο (0 αλλαγές). Το nightly task μπαίνει στο
@@ -507,7 +540,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-16 — Gemi Leads 2.0 A9 (σύνολο παρακολούθησης εταιρειών και πολιτική ανανέωσης).** Νέα:
+- **2026-09-16 — Gemi Leads 2.0 A10 (Discovery v2 σε shadow· τέλος Stage A).** Νέα: `GemiDiscoveryCursor`,
+  `GemiDiscoveryRun`, `GemiDiscoveryObservation` (`gemiapp/models.py`), migration `0038_gemi_discovery.py`,
+  `gemiapp/ingestion/discovery.py`, `manage.py run_gemi_discovery_v2`, `manage.py bootstrap_gemi_discovery_v2`,
+  `gemiapp/test_gemi_discovery.py`. Αλλαγές: `tasks.py` (shadow task χωρίς schedule), `admin.py` (read-only),
+  `config/settings.py` και `.env.example` (flags = 0/1 shadow). Επαλήθευση: 998 tests OK, `check` /
+  `makemigrations --check` / build:css καθαρά, forward → άρνηση χωρίς cursor → αναφορά σύγκρισης → parity →
+  reverse → reapply στο αντίγραφο της dev βάσης. Καμία κλήση στο ΓΕΜΗ. Deploy, schedule, services, views,
+  superadmin και billing αμετάβλητα.
+- **2026-09-16 — Gemi Leads 2.0 A9 (σύνολο παρακολούθησης εταιρειών και πολιτική ανανέωσης).** Commit `1377452`. Νέα:
   `CompanyMonitoring` και `CompanyMonitoringReason` (`gemiapp/models.py`), migration `0037_company_monitoring.py`,
   `gemiapp/ingestion/monitoring.py`, `manage.py recompute_gemi_company_monitoring`,
   `gemiapp/test_gemi_company_monitoring.py`. Αλλαγές: `tasks.py` (task χωρίς schedule), `admin.py` (read-only).
