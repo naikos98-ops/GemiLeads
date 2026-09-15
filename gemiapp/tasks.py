@@ -210,3 +210,14 @@ def send_verification_email_task(user_id):
     from gemiapp.services import send_verification_email_now
 
     send_verification_email_now(user_id)
+
+
+def purge_gemi_source_records_task():
+    """Delete expired GEMI source records. Returns the number deleted.
+
+    Deliberately not in apps.SCHEDULES yet: scheduling it in production belongs to the A4 release
+    step, after the staging gates. Until then run `manage.py purge_gemi_source_records`.
+    """
+    from gemiapp.ingestion.source_records import purge_expired_source_records
+
+    return purge_expired_source_records()

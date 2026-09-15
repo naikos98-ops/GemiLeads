@@ -144,6 +144,29 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — A4: minimised GEMI source records (2026-09-15).** Νέο μοντέλο `GemiSourceRecord`
+  (migration `0032_gemi_source_records`) και `gemiapp/ingestion/source_records.py`:
+  - **Feature flag `GEMI_SOURCE_RECORDS_ENABLED`, προεπιλογή `0`**: όσο είναι 0 δεν γράφεται τίποτα και
+    ο importer συμπεριφέρεται ακριβώς όπως πριν. Όταν γίνει 1, κάθε επικυρωμένη επιτυχής απάντηση
+    καταγράφεται μετά το A2 και πριν φτάσει στον importer, και η καταγραφή είναι υποχρεωτική: αν
+    αποτύχει, η εισαγωγή σταματά (`GemiSourceRecordError`) πριν γραφτεί εταιρεία.
+  - Αποθηκεύονται μεταδεδομένα (endpoint, canonical allow-listed παράμετροι, fetch time, HTTP status,
+    gateway request id, versions), SHA-256 του πλήρους JSON σώματος (υπολογισμένο στη μνήμη, με
+    ταξινομημένα keys) και sanitised payload **μόνο με ρητό opt-in**
+    (`GEMI_SOURCE_RECORDS_STORE_PAYLOAD`, προεπιλογή `0` όσο ο όγκος production είναι άγνωστος): για
+    εταιρείες η εγγραφή του A3 χωρίς
+    `name`/`street`/`street_number`. Ποτέ persons, email, phone, fax, afm, API key ή headers.
+  - Retries στο ίδιο παράθυρο (1 ώρα) δεν δημιουργούν διπλές εγγραφές (unique `observation_key`)·
+    ίδιο payload σε επόμενο παράθυρο = νέα παρατήρηση.
+  - Retention short/standard/audit = 7/30/365 ημέρες (τεχνικές προεπιλογές, όχι νομική πολιτική)·
+    `manage.py purge_gemi_source_records` (batches, `--dry-run`, logs μόνο πλήθη)· το
+    `purge_gemi_source_records_task` **δεν** έχει μπει στο `apps.SCHEDULES`.
+  - Read-only Django admin. Καμία σύνδεση με χρήστες/οργανισμούς (system provenance).
+  - Migration δοκιμάστηκε σε αντίγραφο της dev βάσης: forward → reverse → forward, 35/37 πίνακες
+    ίδιοι σε όλες τις καταστάσεις, στους άλλους δύο προστέθηκαν μόνο το content type και τα 4
+    permissions του νέου μοντέλου. 27 νέα tests· **825 tests OK**.
+  - **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
 - **Gemi Leads 2.0 — A3: Normaliser v1 (2026-09-15).** `gemiapp/ingestion/normalizer.py`
   (`GEMI_NORMALIZER_VERSION = 1`, `normalize_company(record, *, as_of)`): καθαρή, ντετερμινιστική
   συνάρτηση μόνο με standard library (χωρίς Django/βάση/δίκτυο/env/ρολόι) που μετατρέπει μια
@@ -311,7 +334,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: A4** (minimised `source_records`).
+- **Gemi Leads 2.0 — επόμενο πακέτο: A5** (reference tables και `sync_reference_data`).
+- **Release gate για το A4 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η migration
+  `0032_gemi_source_records` **δεν** εφαρμόζεται σε production πριν υπάρξει staging βάση (G0) και
+  δοκιμαστεί εκεί με forward/rollback (G1). Όταν ανοίξει: `GEMI_SOURCE_RECORDS_ENABLED` παραμένει `0`
+  μέχρι το cutover του 2.0, το purge task προστίθεται στο `apps.SCHEDULES`, και οι περίοδοι retention
+  επιβεβαιώνονται από τη νομική/DPO πολιτική. Σημείωση: το `Company.raw_data` εξακολουθεί να κρατά
+  ολόκληρη την εγγραφή ΓΕΜΗ με persons· το A4 δεν το άγγιξε, η τύχη του είναι ξεχωριστή εργασία
+  συμμόρφωσης.
 - **Γνωστό σφάλμα δεδομένων, για A6/A7 (δεν διορθώθηκε στο A3):** οι εγγραφές ΓΕΜΗ δεν περιέχουν
   `isActive` (ούτε στο `status`), οπότε το `company_defaults()` αποθηκεύει `is_active=True` σε
   **κάθε** εταιρεία — και σε διαγραμμένες. Επαληθεύτηκε στη dev βάση: 17.799/17.799 ενεργές, μαζί με
@@ -341,7 +371,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-15 — Gemi Leads 2.0 A3 (Normaliser v1).** Νέα: `gemiapp/ingestion/normalizer.py`,
+- **2026-09-15 — Gemi Leads 2.0 A4 (minimised GEMI source records).** Νέα: `GemiSourceRecord`
+  (`gemiapp/models.py`), migration `0032_gemi_source_records.py`, `gemiapp/ingestion/source_records.py`,
+  `manage.py purge_gemi_source_records`, `gemiapp/test_gemi_source_records.py`. Αλλαγές:
+  `ingestion/client.py` (source recorder μόνο με ενεργό flag), `ingestion/errors.py`,
+  `ingestion/__init__.py`, `admin.py`, `tasks.py` (purge task, χωρίς schedule), `config/settings.py`,
+  `.env.example`. Επαλήθευση: 825 tests OK, `check` / `makemigrations --check` / build:css /
+  collectstatic καθαρά, migration forward/reverse/forward σε αντίγραφο της dev βάσης. Το `render.yaml`
+  και το `apps.SCHEDULES` δεν άλλαξαν. Καμία εφαρμογή σε production.
+- **2026-09-15 — Gemi Leads 2.0 A3 (Normaliser v1).** Commit `4eeefe0`. Νέα: `gemiapp/ingestion/normalizer.py`,
   `gemiapp/test_gemi_normalizer.py`. Αλλαγές: `gemiapp/ingestion/__init__.py` (exports). Κανένα
   production code path δεν άλλαξε. Επαλήθευση: 798 tests OK, `check` / `makemigrations --check` /
   build:css / collectstatic καθαρά, καμία migration.

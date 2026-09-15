@@ -645,6 +645,73 @@ class EmailEngagementEvent(models.Model):
         return f"{self.stripe_event_id} ({self.event_type}) — {self.status}"
 
 
+class GemiSourceRecord(models.Model):
+    """Minimised provenance of one successful, validated ΓΕΜΗ API response.
+
+    Written by gemiapp.ingestion.source_records (only while GEMI_SOURCE_RECORDS_ENABLED is on).
+    System data, not tenant data: one search response can serve many customers' Radars, so there is
+    no user or organisation link. Holds request metadata, a SHA-256 of the full response and,
+    optionally, a sanitised company-level payload -- never the raw response, natural-person data,
+    contact data, the API key or request headers. Every row expires by retention class and is removed
+    by the purge_gemi_source_records command.
+    """
+
+    class Source(models.TextChoices):
+        GEMI_OPENDATA = "gemi_opendata", "ΓΕΜΗ Open Data API"
+
+    class Family(models.TextChoices):
+        COMPANY_SEARCH = "company_search", "Company search"
+        COMPANY_DETAIL = "company_detail", "Company detail"
+        REFERENCE_DATA = "reference_data", "Reference data"
+        DOCUMENT_METADATA = "document_metadata", "Document metadata"
+
+    class Retention(models.TextChoices):
+        SHORT = "short", "Short"
+        STANDARD = "standard", "Standard"
+        AUDIT = "audit", "Audit"
+
+    source = models.CharField(max_length=32, choices=Source.choices, default=Source.GEMI_OPENDATA)
+    family = models.CharField(max_length=32, choices=Family.choices)
+    # The A2 response contract the payload was validated against, e.g. "metadata_prefectures".
+    response_family = models.CharField(max_length=48)
+    endpoint = models.CharField(max_length=255)
+    request_params = models.JSONField(default=dict, blank=True)
+    # SHA-256 of endpoint + canonical parameters: every observation of the same request shares it.
+    request_fingerprint = models.CharField(max_length=64)
+    # SHA-256 of source, response family, request, payload hash and observation window. Unique, so a
+    # retried request inside one window cannot insert the same observation twice.
+    observation_key = models.CharField(max_length=64, unique=True)
+    fetched_at = models.DateTimeField()
+    http_status = models.PositiveSmallIntegerField()
+    gateway_request_id = models.CharField(max_length=80, blank=True)
+    payload_hash = models.CharField(max_length=64)
+    result_count = models.PositiveIntegerField(null=True, blank=True)
+    response_schema_version = models.PositiveSmallIntegerField()
+    # Set only when the stored payload was produced by the normaliser.
+    normalizer_version = models.PositiveSmallIntegerField(null=True, blank=True)
+    record_format_version = models.PositiveSmallIntegerField()
+    sanitised_payload = models.JSONField(null=True, blank=True)
+    retention_class = models.CharField(max_length=16, choices=Retention.choices)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-fetched_at"]
+        verbose_name = "GEMI source record"
+        verbose_name_plural = "GEMI source records"
+        indexes = [
+            # "Latest observation of this request" and "did its payload change?" -- change detection.
+            models.Index(fields=["request_fingerprint", "-fetched_at"], name="gemisrc_request_fetched_idx"),
+            # Inspection by family, newest first.
+            models.Index(fields=["family", "-fetched_at"], name="gemisrc_family_fetched_idx"),
+            # The purge query.
+            models.Index(fields=["expires_at"], name="gemisrc_expires_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.family} {self.endpoint} @ {self.fetched_at:%Y-%m-%d %H:%M} ({self.payload_hash[:12]})"
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 

@@ -30,6 +30,7 @@ import urllib.request
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from datetime import datetime, timezone as dt_timezone
 from typing import Any, Callable, Iterator, Mapping
 
 from django.conf import settings
@@ -269,8 +270,11 @@ class GemiClient:
         max_attempts: int | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.time,
+        source_recorder: Any = None,
     ):
         self._api_key = settings.GEMI_API_KEY if api_key is None else api_key
+        # A gemiapp.ingestion.source_records.SourceRecorder, or None (source records disabled).
+        self._source_recorder = source_recorder
         self._base_url = (base_url or settings.GEMI_API_BASE).rstrip("/")
         self._budget = budget if budget is not None else GemiRateBudget(clock=clock, sleep=sleep)
         self._transport = transport or urllib_transport
@@ -339,7 +343,16 @@ class GemiClient:
                     logger.debug("GEMI %s -> %s (lane %s, attempt %s).", path, response.status, lane.name, attempt)
                     payload = self._decode(response)
                     if family is not None:
-                        self._validate(family, payload, path, response_headers.get("x-kong-request-id", ""), lane)
+                        request_id = response_headers.get("x-kong-request-id", "")
+                        self._validate(family, payload, path, request_id, lane)
+                        if self._source_recorder is not None:
+                            # After validation, before the payload reaches the importer. A failure
+                            # raises GemiSourceRecordError: with records enabled, provenance is mandatory.
+                            self._source_recorder.record(
+                                response_family=family, endpoint=path, params=params, http_status=response.status,
+                                payload=payload, fetched_at=datetime.fromtimestamp(self._clock(), tz=dt_timezone.utc),
+                                request_id=request_id,
+                            )
                     return payload
 
                 status = response.status
@@ -406,5 +419,14 @@ class GemiClient:
 
 
 def get_gemi_client() -> GemiClient:
-    """A client configured from settings. Cheap to create: all shared state lives in the budget store."""
-    return GemiClient()
+    """A client configured from settings. Cheap to create: all shared state lives in the budget store.
+
+    Source records are attached only while GEMI_SOURCE_RECORDS_ENABLED is on; while it is off the
+    client records nothing and behaves exactly as before A4.
+    """
+    recorder = None
+    if getattr(settings, "GEMI_SOURCE_RECORDS_ENABLED", False):
+        from .source_records import SourceRecorder
+
+        recorder = SourceRecorder()
+    return GemiClient(source_recorder=recorder)

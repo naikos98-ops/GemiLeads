@@ -310,6 +310,24 @@ GEMI_REQUEST_TIMEOUT_SECONDS = int(os.environ.get("GEMI_REQUEST_TIMEOUT_SECONDS"
 # Total attempts per request, the first included, when it fails with 429, a transient 5xx or a
 # network error.
 GEMI_MAX_ATTEMPTS = int(os.environ.get("GEMI_MAX_ATTEMPTS", "4"))
+# Minimised GEMI source records (gemiapp.ingestion.source_records). Off by default: while off, no
+# GemiSourceRecord is written and the importer behaves exactly as before. Turning it on makes
+# provenance mandatory -- a response whose record cannot be written fails the import. Do not enable in
+# production before the staging release gates (G0/G1) are met.
+GEMI_SOURCE_RECORDS_ENABLED = os.environ.get("GEMI_SOURCE_RECORDS_ENABLED", "0") == "1"
+# Also keep the sanitised company-level payload. Explicit opt-in: the default keeps only metadata and
+# the payload hash, the minimum safe provenance while production storage volume is unmeasured.
+GEMI_SOURCE_RECORDS_STORE_PAYLOAD = os.environ.get("GEMI_SOURCE_RECORDS_STORE_PAYLOAD", "0") == "1"
+# Technical retention per class, in days. Deliberately conservative defaults; the final periods are
+# set by the approved legal/DPO retention policy, not by these numbers.
+GEMI_SOURCE_RECORD_RETENTION_DAYS = {
+    "short": int(os.environ.get("GEMI_SOURCE_RECORD_RETENTION_SHORT_DAYS", "7")),
+    "standard": int(os.environ.get("GEMI_SOURCE_RECORD_RETENTION_STANDARD_DAYS", "30")),
+    "audit": int(os.environ.get("GEMI_SOURCE_RECORD_RETENTION_AUDIT_DAYS", "365")),
+}
+# The same response to the same request inside one window is one observation (e.g. a retried task);
+# the same response in a later window is recorded as a new observation.
+GEMI_SOURCE_RECORD_OBSERVATION_WINDOW_SECONDS = int(os.environ.get("GEMI_SOURCE_RECORD_OBSERVATION_WINDOW_SECONDS", "3600"))
 
 Q_CLUSTER = {
     "name": "gemi_leads_cluster",

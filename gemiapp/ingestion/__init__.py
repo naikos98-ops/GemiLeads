@@ -12,6 +12,7 @@ from .errors import (
     GemiResponseFormatError,
     GemiResponseValidationError,
     GemiRetryExhaustedError,
+    GemiSourceRecordError,
 )
 from .normalizer import (
     GEMI_NORMALIZER_VERSION,
@@ -26,10 +27,19 @@ from .normalizer import (
 )
 from .rate_budget import BudgetConfig, CacheBudgetStore, GemiLane, GemiRateBudget
 from .schemas import GEMI_RESPONSE_SCHEMA_VERSION, ResponseFamily, validate_response
+from .source_records import (
+    GEMI_SOURCE_RECORD_FORMAT_VERSION,
+    SourceRecorder,
+    canonical_request_params,
+    payload_hash,
+    purge_expired_source_records,
+    sanitise_payload,
+)
 
 __all__ = [
     "GEMI_NORMALIZER_VERSION",
     "GEMI_RESPONSE_SCHEMA_VERSION",
+    "GEMI_SOURCE_RECORD_FORMAT_VERSION",
     "BudgetConfig",
     "DatePolicy",
     "DateQuality",
@@ -47,16 +57,22 @@ __all__ = [
     "GemiResponseFormatError",
     "GemiResponseValidationError",
     "GemiRetryExhaustedError",
+    "GemiSourceRecordError",
     "NormalizedActivity",
     "NormalizedCompany",
     "NormalizedDate",
     "NormalizedReference",
     "ResponseFamily",
+    "SourceRecorder",
+    "canonical_request_params",
     "current_gemi_lane",
     "fields_not_approved_for_history",
     "gemi_lane",
     "get_gemi_client",
     "normalize_company",
     "parse_error_body",
+    "payload_hash",
+    "purge_expired_source_records",
+    "sanitise_payload",
     "validate_response",
 ]

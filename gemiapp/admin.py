@@ -8,6 +8,7 @@ from .models import (
     DigestDelivery,
     DigestPreference,
     EmailEngagementEvent,
+    GemiSourceRecord,
     ImportRun,
     OutreachSuppression,
     PersonSuppression,
@@ -108,6 +109,32 @@ class StripeWebhookEventAdmin(admin.ModelAdmin):
     list_filter = ("status", "event_type")
     search_fields = ("stripe_event_id", "event_type")
     readonly_fields = ("stripe_event_id", "event_type", "payload", "status", "error_message", "received_at", "processed_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(GemiSourceRecord)
+class GemiSourceRecordAdmin(admin.ModelAdmin):
+    """Inspection only. Rows are written by the GEMI client and hold request metadata, a payload hash
+    and the sanitised company-level payload -- no raw response, personal data or credentials. Add and
+    change are disabled for the same reason as StripeWebhookEventAdmin."""
+
+    list_display = ("fetched_at", "family", "endpoint", "http_status", "result_count", "short_payload_hash", "retention_class", "expires_at")
+    list_filter = ("family", "retention_class", "response_schema_version", "normalizer_version")
+    search_fields = ("endpoint", "payload_hash", "request_fingerprint", "gateway_request_id")
+    readonly_fields = (
+        "source", "family", "response_family", "endpoint", "request_params", "request_fingerprint", "observation_key",
+        "fetched_at", "http_status", "gateway_request_id", "payload_hash", "result_count", "response_schema_version",
+        "normalizer_version", "record_format_version", "sanitised_payload", "retention_class", "expires_at", "created_at",
+    )
+
+    @admin.display(description="Payload hash")
+    def short_payload_hash(self, obj):
+        return obj.payload_hash[:12]
 
     def has_add_permission(self, request):
         return False

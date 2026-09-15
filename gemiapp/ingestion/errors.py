@@ -83,6 +83,14 @@ class GemiResponseValidationError(GemiApiError):
         self.path = path
 
 
+class GemiSourceRecordError(GemiApiError):
+    """A source record could not be written while GEMI_SOURCE_RECORDS_ENABLED is on.
+
+    With source records enabled, provenance is mandatory: the call fails rather than hand on data it
+    cannot account for. While the setting is off nothing is recorded and this is never raised.
+    """
+
+
 class GemiRetryExhaustedError(GemiApiError):
     """Every attempt ended in a retryable failure: 429, a transient 5xx or a network error."""
 
