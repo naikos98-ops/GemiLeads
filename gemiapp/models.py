@@ -712,6 +712,147 @@ class GemiSourceRecord(models.Model):
         return f"{self.family} {self.endpoint} @ {self.fetched_at:%Y-%m-%d %H:%M} ({self.payload_hash[:12]})"
 
 
+class GemiReferenceEntry(models.Model):
+    """Fields shared by the local GEMI reference tables (filled by gemiapp.ingestion.reference_data).
+
+    Each concrete table is a canonical copy of one GEMI metadata endpoint, written only by
+    sync_gemi_reference_data. These tables are new and separate from what the application uses today
+    (ActivityCode, the description strings on Company and CustomerRadar); nothing reads them yet.
+
+    Rows are never deleted when an item disappears from the source: ``is_present`` becomes False and
+    ``retired_at`` is set, so historical company records can still resolve old values, and a returning
+    item is revived in place. ``source_is_active`` is what the source says, when it says anything;
+    ``is_present`` is whether the item was in the latest successful sync -- two different facts.
+    """
+
+    source_id = models.CharField(max_length=32)
+    description = models.TextField(null=True, blank=True)
+    description_en = models.TextField(null=True, blank=True)
+    source_is_active = models.BooleanField(null=True, blank=True)
+    # As published (e.g. "2026-02-25 15:56:01"). Kept as text: the source does not state its timezone.
+    source_last_updated = models.CharField(max_length=32, null=True, blank=True)
+    is_present = models.BooleanField(default=True)
+    first_seen_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField()
+    retired_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["source_id"]
+
+    def __str__(self):
+        return f"{self.source_id} — {self.description}" if self.description else self.source_id
+
+
+class GemiKad(GemiReferenceEntry):
+    """GET /metadata/activities. A code is unique only together with its KAD version: the same code in
+    KAD 2008 and KAD 2026 is two rows, never merged. Not the ActivityCode catalogue the app uses today."""
+
+    kad_version = models.CharField(max_length=16, blank=True)  # "kad_2008" / "kad_2026"; "" when unpublished
+
+    class Meta(GemiReferenceEntry.Meta):
+        ordering = ["source_id", "kad_version"]
+        verbose_name = "GEMI KAD (reference)"
+        verbose_name_plural = "GEMI KAD (reference)"
+        constraints = [models.UniqueConstraint(fields=["source_id", "kad_version"], name="unique_gemi_kad_code_version")]
+        indexes = [models.Index(fields=["kad_version", "is_present"], name="gemikad_version_present_idx")]
+
+
+class GemiPrefecture(GemiReferenceEntry):
+    """GET /metadata/prefectures."""
+
+    class Meta(GemiReferenceEntry.Meta):
+        verbose_name = "GEMI prefecture (reference)"
+        verbose_name_plural = "GEMI prefectures (reference)"
+        constraints = [models.UniqueConstraint(fields=["source_id"], name="unique_gemi_prefecture_source")]
+
+
+class GemiMunicipality(GemiReferenceEntry):
+    """GET /metadata/municipalities.
+
+    ``source_prefecture_id`` is the upstream ``prefectureId`` kept as a plain identifier, deliberately
+    not a foreign key: upstream municipalities only reference prefectures 0-51 while the Attica
+    sub-units 52-55 exist separately, so the hierarchy is not a clean relation. A later geographic
+    mapping layer resolves Attica.
+    """
+
+    source_prefecture_id = models.CharField(max_length=32, null=True, blank=True)
+
+    class Meta(GemiReferenceEntry.Meta):
+        verbose_name = "GEMI municipality (reference)"
+        verbose_name_plural = "GEMI municipalities (reference)"
+        constraints = [models.UniqueConstraint(fields=["source_id"], name="unique_gemi_municipality_source")]
+
+
+class GemiCompanyStatus(GemiReferenceEntry):
+    """GET /metadata/companyStatuses. ``source_is_active`` is the source's own active/inactive meaning
+    of each status -- what a later task needs to stop treating deleted companies as active."""
+
+    class Meta(GemiReferenceEntry.Meta):
+        verbose_name = "GEMI company status (reference)"
+        verbose_name_plural = "GEMI company statuses (reference)"
+        constraints = [models.UniqueConstraint(fields=["source_id"], name="unique_gemi_status_source")]
+
+
+class GemiLegalType(GemiReferenceEntry):
+    """GET /metadata/legalTypes."""
+
+    class Meta(GemiReferenceEntry.Meta):
+        verbose_name = "GEMI legal type (reference)"
+        verbose_name_plural = "GEMI legal types (reference)"
+        constraints = [models.UniqueConstraint(fields=["source_id"], name="unique_gemi_legal_type_source")]
+
+
+class GemiOffice(GemiReferenceEntry):
+    """GET /metadata/gemiOffices. Identity and descriptions only: the endpoint's address, phone, fax,
+    email and url are not stored."""
+
+    class Meta(GemiReferenceEntry.Meta):
+        verbose_name = "GEMI office (reference)"
+        verbose_name_plural = "GEMI offices (reference)"
+        constraints = [models.UniqueConstraint(fields=["source_id"], name="unique_gemi_office_source")]
+
+
+class GemiDecisionSubject(GemiReferenceEntry):
+    """GET /metadata/assemblySubjects: the coded subjects of GEMI announcements."""
+
+    class Meta(GemiReferenceEntry.Meta):
+        verbose_name = "GEMI decision subject (reference)"
+        verbose_name_plural = "GEMI decision subjects (reference)"
+        constraints = [models.UniqueConstraint(fields=["source_id"], name="unique_gemi_decision_subject_source")]
+
+
+class GemiReferenceSyncRun(models.Model):
+    """One non-dry-run execution of sync_gemi_reference_data. Counts and anomaly notes only, no payload."""
+
+    STATUSES = [("running", "Σε εξέλιξη"), ("success", "Επιτυχία"), ("failed", "Αποτυχία")]
+
+    status = models.CharField(max_length=12, choices=STATUSES, default="running")
+    families = models.JSONField(default=list, blank=True)
+    # {family: {fetched, created, updated, reappeared, unchanged, retired, conflicting_duplicates, retirement_skipped}}
+    counts = models.JSONField(default=dict, blank=True)
+    anomalies = models.JSONField(default=list, blank=True)
+    error_message = models.TextField(blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+        verbose_name = "GEMI reference sync run"
+        verbose_name_plural = "GEMI reference sync runs"
+
+    @property
+    def duration_seconds(self):
+        if self.finished_at is None:
+            return None
+        return (self.finished_at - self.started_at).total_seconds()
+
+    def __str__(self):
+        return f"{self.started_at:%Y-%m-%d %H:%M} {self.status}"
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 

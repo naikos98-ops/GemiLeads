@@ -255,6 +255,17 @@ def normalize_company(
     )
 
 
+def normalize_text(value: Any) -> str | None:
+    """This module's text rule, shared with the reference-data sync: NFC, whitespace collapsed,
+    blank or null -> None (never the string "None")."""
+    return _text(value)
+
+
+def normalize_identifier(value: Any) -> str | None:
+    """This module's identifier rule: integers and strings become trimmed strings; nothing is invented."""
+    return _identifier(value)
+
+
 # --- helpers ------------------------------------------------------------------------------------
 
 def _text(value: Any) -> str | None:

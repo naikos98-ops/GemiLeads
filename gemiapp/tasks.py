@@ -221,3 +221,16 @@ def purge_gemi_source_records_task():
     from gemiapp.ingestion.source_records import purge_expired_source_records
 
     return purge_expired_source_records()
+
+
+def sync_gemi_reference_data_task():
+    """Refresh the GEMI reference tables. Returns the per-family counts.
+
+    Intended to run weekly, but deliberately not in apps.SCHEDULES yet: it shares production's GEMI
+    rate budget and there is no staging environment or staging key. Scheduling belongs to the A5
+    release step after the G0/G1 gates. Until then run `manage.py sync_gemi_reference_data`.
+    """
+    from gemiapp.ingestion.reference_data import sync_reference_data
+
+    result = sync_reference_data()
+    return {key: counts.as_dict() for key, counts in result.families.items()}

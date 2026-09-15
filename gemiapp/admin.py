@@ -8,6 +8,14 @@ from .models import (
     DigestDelivery,
     DigestPreference,
     EmailEngagementEvent,
+    GemiCompanyStatus,
+    GemiDecisionSubject,
+    GemiKad,
+    GemiLegalType,
+    GemiMunicipality,
+    GemiOffice,
+    GemiPrefecture,
+    GemiReferenceSyncRun,
     GemiSourceRecord,
     ImportRun,
     OutreachSuppression,
@@ -109,6 +117,51 @@ class StripeWebhookEventAdmin(admin.ModelAdmin):
     list_filter = ("status", "event_type")
     search_fields = ("stripe_event_id", "event_type")
     readonly_fields = ("stripe_event_id", "event_type", "payload", "status", "error_message", "received_at", "processed_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+class GemiReferenceAdmin(admin.ModelAdmin):
+    """Inspection only. Reference rows are written exclusively by sync_gemi_reference_data and hold no
+    personal data; editing one by hand would misrepresent the source."""
+
+    list_display = ("source_id", "description", "is_present", "source_is_active", "last_seen_at", "retired_at")
+    list_filter = ("is_present", "source_is_active")
+    search_fields = ("source_id", "description", "description_en")
+
+    def get_readonly_fields(self, request, obj=None):
+        return [f.name for f in self.model._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(GemiKad)
+class GemiKadAdmin(GemiReferenceAdmin):
+    list_display = ("source_id", "kad_version", "description", "is_present", "last_seen_at", "retired_at")
+    list_filter = ("kad_version", "is_present")
+
+
+@admin.register(GemiMunicipality)
+class GemiMunicipalityAdmin(GemiReferenceAdmin):
+    list_display = ("source_id", "description", "source_prefecture_id", "is_present", "last_seen_at", "retired_at")
+
+
+admin.site.register([GemiPrefecture, GemiCompanyStatus, GemiLegalType, GemiOffice, GemiDecisionSubject], GemiReferenceAdmin)
+
+
+@admin.register(GemiReferenceSyncRun)
+class GemiReferenceSyncRunAdmin(admin.ModelAdmin):
+    list_display = ("started_at", "status", "families", "finished_at")
+    list_filter = ("status",)
+    readonly_fields = ("status", "families", "counts", "anomalies", "error_message", "started_at", "finished_at")
 
     def has_add_permission(self, request):
         return False

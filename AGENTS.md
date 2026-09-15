@@ -144,6 +144,26 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — A5: GEMI reference tables και sync (2026-09-15).** Migration
+  `0033_gemi_reference_data`, `gemiapp/ingestion/reference_data.py`, `manage.py sync_gemi_reference_data`:
+  - Επτά νέοι πίνακες αναφοράς, **ξεχωριστοί** από το `ActivityCode` και τα strings των Company/Radars
+    (τίποτα στη ζωντανή εφαρμογή δεν τους διαβάζει ακόμη): `GemiKad` (ταυτότητα = κωδικός + `kad_version`,
+    οι ΚΑΔ 2008 και 2026 δεν συγχωνεύονται), `GemiPrefecture`, `GemiMunicipality` (το upstream
+    `prefectureId` ως απλό αναγνωριστικό, χωρίς foreign key, λόγω της ασυμφωνίας Αττικής 52–55),
+    `GemiCompanyStatus` (με το `isActive` της πηγής), `GemiLegalType`, `GemiOffice` (χωρίς διεύθυνση και
+    στοιχεία επικοινωνίας), `GemiDecisionSubject`, και `GemiReferenceSyncRun` για καταγραφή εκτελέσεων.
+  - Sync: fetch και A2 validation και των 7 endpoints μέσω του κοινού GemiClient (χαμηλότερο lane) →
+    υπολογισμός αλλαγών στη μνήμη → **μία συναλλαγή** για όλες τις οικογένειες. Αποτυχία σε οποιοδήποτε
+    endpoint ή στη βάση = καμία αλλαγή. Όσα εξαφανίζονται από την πηγή δεν διαγράφονται
+    (`is_present=False`, `retired_at`) και επανέρχονται στην ίδια γραμμή.
+  - Αν μια οικογένεια επιστρέψει κενή ή με λιγότερο από το μισό πλήθος, γίνεται warning και δεν
+    αποσύρεται τίποτα (εκτός με `--force-retire`). `--dry-run` χωρίς καμία εγγραφή (ούτε source records).
+  - Λειτουργεί με `GEMI_SOURCE_RECORDS_ENABLED=0`· με 1 καταγράφει και provenance. Το
+    `sync_gemi_reference_data_task` **δεν** έχει μπει στο `apps.SCHEDULES`.
+  - Migration δοκιμάστηκε σε αντίγραφο της dev βάσης (forward → reverse → forward): όλοι οι
+    προϋπάρχοντες πίνακες ίδιοι· προστέθηκαν μόνο τα 8 content types και 32 permissions των νέων μοντέλων.
+    26 νέα tests· **851 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
 - **Gemi Leads 2.0 — A4: minimised GEMI source records (2026-09-15).** Νέο μοντέλο `GemiSourceRecord`
   (migration `0032_gemi_source_records`) και `gemiapp/ingestion/source_records.py`:
   - **Feature flag `GEMI_SOURCE_RECORDS_ENABLED`, προεπιλογή `0`**: όσο είναι 0 δεν γράφεται τίποτα και
@@ -334,7 +354,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: A5** (reference tables και `sync_reference_data`).
+- **Gemi Leads 2.0 — επόμενο πακέτο: A6** (στήλες κωδικών και lifecycle στο `Company` με batched
+  backfill από το `raw_data`).
+- **Release gate για το A5 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η migration
+  `0033_gemi_reference_data` δεν εφαρμόζεται σε production πριν από το G0/G1. Κατά το release: πρώτος
+  συγχρονισμός με `--dry-run`, έπειτα κανονικός, και εβδομαδιαίο schedule μόνο όταν υπάρχει ξεχωριστό
+  GEMI key ή μετρημένο περιθώριο στο κοινό όριο των 8 αιτημάτων/λεπτό.
 - **Release gate για το A4 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η migration
   `0032_gemi_source_records` **δεν** εφαρμόζεται σε production πριν υπάρξει staging βάση (G0) και
   δοκιμαστεί εκεί με forward/rollback (G1). Όταν ανοίξει: `GEMI_SOURCE_RECORDS_ENABLED` παραμένει `0`
@@ -371,7 +396,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-15 — Gemi Leads 2.0 A4 (minimised GEMI source records).** Νέα: `GemiSourceRecord`
+- **2026-09-15 — Gemi Leads 2.0 A5 (GEMI reference tables και sync).** Νέα: επτά πίνακες αναφοράς και
+  `GemiReferenceSyncRun` (`gemiapp/models.py`), migration `0033_gemi_reference_data.py`,
+  `gemiapp/ingestion/reference_data.py`, `manage.py sync_gemi_reference_data`,
+  `gemiapp/test_gemi_reference_data.py`. Αλλαγές: `ingestion/normalizer.py` (δημόσια `normalize_text` /
+  `normalize_identifier`), `ingestion/__init__.py`, `admin.py` (read-only), `tasks.py` (task χωρίς
+  schedule), `test_gemi_source_records.py` (το migration test φορτώνει την 0032 με όνομα). Επαλήθευση:
+  851 tests OK, `check` / `makemigrations --check` / build:css / collectstatic καθαρά, migration
+  forward/reverse/forward σε αντίγραφο της dev βάσης. Deploy, schedule και settings αμετάβλητα.
+- **2026-09-15 — Gemi Leads 2.0 A4 (minimised GEMI source records).** Commit `7574142`. Νέα: `GemiSourceRecord`
   (`gemiapp/models.py`), migration `0032_gemi_source_records.py`, `gemiapp/ingestion/source_records.py`,
   `manage.py purge_gemi_source_records`, `gemiapp/test_gemi_source_records.py`. Αλλαγές:
   `ingestion/client.py` (source recorder μόνο με ενεργό flag), `ingestion/errors.py`,

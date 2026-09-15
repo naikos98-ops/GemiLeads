@@ -147,9 +147,7 @@ class SourceRecordModelTests(TestCase):
         self.assertEqual(GemiSourceRecord.objects.filter(response_schema_version=2, normalizer_version__isnull=True).count(), 1)
 
     def test_the_migration_only_creates_the_source_record_table(self):
-        loader = MigrationLoader(None, ignore_no_migrations=True)
-        (leaf,) = [node for node in loader.graph.leaf_nodes() if node[0] == "gemiapp"]
-        migration = loader.get_migration(*leaf)
+        migration = MigrationLoader(None, ignore_no_migrations=True).get_migration("gemiapp", "0032_gemi_source_records")
 
         self.assertEqual(migration.dependencies, [("gemiapp", "0031_cancel_pending_outreach")])
         self.assertEqual(len(migration.operations), 1)
