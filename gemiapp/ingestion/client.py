@@ -41,9 +41,11 @@ from .errors import (
     GemiConfigurationError,
     GemiNotFoundError,
     GemiResponseFormatError,
+    GemiResponseValidationError,
     GemiRetryExhaustedError,
 )
 from .rate_budget import GemiLane, GemiRateBudget
+from .schemas import ResponseFamily, validate_response
 
 logger = logging.getLogger(__name__)
 
@@ -284,17 +286,15 @@ class GemiClient:
     def search_companies(
         self, params: Mapping[str, Any], *, lane: GemiLane, max_wait: float | None = None
     ) -> dict[str, Any]:
-        """``GET /companies``. A search with no matches is returned as an empty result page."""
+        """``GET /companies``, validated against the company-search contract. A search with no
+        matches is returned as an empty result page."""
         try:
-            payload = self.get(SEARCH_PATH, params, lane=lane, max_wait=max_wait)
+            return self.get(SEARCH_PATH, params, lane=lane, max_wait=max_wait, family=ResponseFamily.COMPANY_SEARCH)
         except GemiNotFoundError:
             return {
                 "searchMetadata": {"totalCount": 0, "resultsOffset": _int(params.get("resultsOffset"), 0), "resultsSize": "0"},
                 "searchResults": [],
             }
-        if not isinstance(payload, dict):
-            raise GemiResponseFormatError("Μη αναμενόμενη μορφή απάντησης αναζήτησης από το GEMI API.", status=200)
-        return payload
 
     def get(
         self,
@@ -303,8 +303,14 @@ class GemiClient:
         *,
         lane: GemiLane,
         max_wait: float | None = None,
+        family: ResponseFamily | None = None,
     ) -> Any:
-        """GET ``path`` and return the decoded JSON body (None for an empty body)."""
+        """GET ``path`` and return the decoded JSON body (None for an empty body).
+
+        With ``family``, the body is validated against that response contract
+        (gemiapp.ingestion.schemas) before it is returned; a mismatch raises
+        GemiResponseValidationError and nothing is returned. Every collector should pass one.
+        """
         if not self._api_key:
             raise GemiConfigurationError(MISSING_KEY_MESSAGE)
         lane = GemiLane(lane)
@@ -331,7 +337,10 @@ class GemiClient:
                     self._budget.defer_until(self._clock() + reset_in, reason=f"rate-limit window exhausted after {path}")
                 if 200 <= response.status < 300:
                     logger.debug("GEMI %s -> %s (lane %s, attempt %s).", path, response.status, lane.name, attempt)
-                    return self._decode(response)
+                    payload = self._decode(response)
+                    if family is not None:
+                        self._validate(family, payload, path, response_headers.get("x-kong-request-id", ""), lane)
+                    return payload
 
                 status = response.status
                 detail = parse_error_body(response.body, response_headers, secret=self._api_key)
@@ -352,6 +361,19 @@ class GemiClient:
 
         logger.error("GEMI %s: giving up after %s attempts (%s).", path, self._max_attempts, failure)
         raise GemiRetryExhaustedError(failure, status=status, attempts=self._max_attempts)
+
+    @staticmethod
+    def _validate(family: ResponseFamily, payload: Any, path: str, request_id: str, lane: GemiLane) -> None:
+        try:
+            validate_response(family, payload, path=path, request_id=request_id)
+        except GemiResponseValidationError as exc:
+            # ERROR level on purpose: Sentry's default logging integration turns it into an event.
+            # Location and types only -- the payload itself is never logged.
+            logger.error(
+                "GEMI %s: response failed %s schema v%s validation: %s at %s (request_id=%s, lane %s).",
+                path, exc.family, exc.schema_version, exc.kind, exc.location, exc.request_id or "-", lane.name,
+            )
+            raise
 
     @staticmethod
     def _backoff(attempt: int) -> float:

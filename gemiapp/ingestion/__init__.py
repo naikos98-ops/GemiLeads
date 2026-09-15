@@ -10,11 +10,14 @@ from .errors import (
     GemiConfigurationError,
     GemiNotFoundError,
     GemiResponseFormatError,
+    GemiResponseValidationError,
     GemiRetryExhaustedError,
 )
 from .rate_budget import BudgetConfig, CacheBudgetStore, GemiLane, GemiRateBudget
+from .schemas import GEMI_RESPONSE_SCHEMA_VERSION, ResponseFamily, validate_response
 
 __all__ = [
+    "GEMI_RESPONSE_SCHEMA_VERSION",
     "BudgetConfig",
     "CacheBudgetStore",
     "GemiApiError",
@@ -28,9 +31,12 @@ __all__ = [
     "GemiNotFoundError",
     "GemiRateBudget",
     "GemiResponseFormatError",
+    "GemiResponseValidationError",
     "GemiRetryExhaustedError",
+    "ResponseFamily",
     "current_gemi_lane",
     "gemi_lane",
     "get_gemi_client",
     "parse_error_body",
+    "validate_response",
 ]

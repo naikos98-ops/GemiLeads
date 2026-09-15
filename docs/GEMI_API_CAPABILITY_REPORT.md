@@ -236,7 +236,7 @@ and documents — draw from one 8/min budget per key.** The current code has no 
 | §57 Rate control and priority sync | REQUIRES WORKAROUND (single shared budget, 8/min) |
 | §58 Smart monitoring frequency | REQUIRES WORKAROUND (mandatory given the budget) |
 | §59 Full historical backfill | NOT SUPPORTED as a routine operation at this rate limit |
-| §76 Source schema-change detection | REQUIRES WORKAROUND (validate against the published spec) |
+| §76 Source schema-change detection | SUPPORTED (since A2): successful responses are validated against versioned contracts in `gemiapp/ingestion/schemas.py` before any data reaches the importer |
 
 ## 10. Open verifications (non-blocking unless noted)
 

@@ -10,7 +10,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
-from .ingestion import GemiLane, current_gemi_lane, gemi_lane, get_gemi_client
+from .ingestion import GemiLane, GemiResponseValidationError, current_gemi_lane, gemi_lane, get_gemi_client
 from .kad import display_kad_code, normalize_kad_code, normalize_kad_search
 from .models import (
     ActivityCode,
@@ -316,6 +316,10 @@ def import_for_date(target_date: date) -> ImportRun:
     except Exception as exc:
         run.status, run.error_message, run.finished_at = "failed", str(exc), timezone.now()
         run.save()
+        if isinstance(exc, GemiResponseValidationError):
+            # Raised by fetch_companies, i.e. before any company row of this run is written. The
+            # message names endpoint, schema version and failing location, never payload values.
+            logger.error("ImportRun %s (%s) stopped: the GEMI response failed validation. %s", run.pk, target_date, exc)
         raise
     return run
 

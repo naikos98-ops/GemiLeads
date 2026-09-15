@@ -144,6 +144,23 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — A2: επικύρωση σχήματος απαντήσεων ΓΕΜΗ (2026-09-15).** Κάθε επιτυχής απάντηση
+  που καταναλώνει η εφαρμογή ελέγχεται πριν φτάσει στον importer, με ρητά, versioned contracts στο
+  `gemiapp/ingestion/schemas.py` (`GEMI_RESPONSE_SCHEMA_VERSION = 1`):
+  - families: company search (wired στο `search_companies`), company detail και 7 reference-data
+    families (activities, prefectures, municipalities, company statuses, legal types, GEMI offices,
+    decision subjects) — οι τελευταίες έτοιμες για τους μελλοντικούς collectors, χωρίς νέο job·
+  - ελέγχονται μόνο πεδία από τα οποία εξαρτάται η εφαρμογή (π.χ. `arGemi`, `searchResults`,
+    `activities[].activity.id`, ημερομηνίες, reference ids)· άγνωστα πεδία αγνοούνται, nulls
+    επιτρέπονται όπου τεκμηριώθηκαν/παρατηρήθηκαν·
+  - αποτυχία → `GemiResponseValidationError` (invalid_structure / missing_field / wrong_type /
+    invalid_container), χωρίς retry, με endpoint, family, schema version, location, request id —
+    ποτέ τιμές payload. Log σε ERROR (Sentry event όπου υπάρχει `SENTRY_DSN`) και
+    `ImportRun.status=failed` με το μήνυμα.
+  - Καμία εγγραφή εταιρείας από μη έγκυρη σελίδα: το `fetch_companies` επικυρώνει κάθε σελίδα πριν
+    γραφτεί οτιδήποτε· στο backfill μένουν μόνο οι προηγούμενες έγκυρες σελίδες.
+  - 29 νέα tests (`gemiapp/test_gemi_validation.py`)· **762 tests OK**· καμία migration.
+
 - **Gemi Leads 2.0 — A1: κοινός GemiClient (2026-09-15, branch `feature/gemi-2-a1-gemi-client`,
   βάση `main` + `chore/norva-legal-identity`).** Κάθε κλήση στο ΓΕΜΗ περνά πλέον από το
   `gemiapp/ingestion/client.py::GemiClient`:
@@ -277,7 +294,10 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: A2** (επικύρωση του σχήματος των απαντήσεων ΓΕΜΗ). Πριν από
+- **Gemi Leads 2.0 — επόμενο πακέτο: A3** (Normaliser v1). Release gate για το A2: να επιβεβαιωθεί
+  ότι το `SENTRY_DSN` είναι ορισμένο στο production και ότι υπάρχει Sentry alert rule για ERROR
+  events των `gemiapp.ingestion.client` / `gemiapp.services`· χωρίς αυτό η αποτυχία φαίνεται μόνο
+  στο `ImportRun` (Superadmin → GEMI Pipeline) και στα logs. Πριν από
   οποιαδήποτε 2.0 migration σε production απαιτούνται: staging βάση, ξεχωριστό GEMI API key για
   staging και γνωστός όγκος δεδομένων production.
 - **Διόρθωση τεκμηρίωσης billing:** το README, το AI_SUMMARY και αυτό το αρχείο γράφουν ότι οι
@@ -297,7 +317,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-15 — Gemi Leads 2.0 A1 (κοινός GemiClient).** Βάση υλοποίησης: `main` (`d1a323c`, ίδιο
+- **2026-09-15 — Gemi Leads 2.0 A2 (επικύρωση σχήματος απαντήσεων ΓΕΜΗ).** Νέα:
+  `gemiapp/ingestion/schemas.py`, `gemiapp/test_gemi_validation.py`. Αλλαγές: `ingestion/errors.py`
+  (`GemiResponseValidationError`), `ingestion/client.py` (`family` στο `get`, validation στο
+  `search_companies`), `ingestion/__init__.py`, `services.py` (ERROR log με το id του ImportRun).
+  Επαλήθευση: 762 tests OK, `check` / `makemigrations --check` / build:css / collectstatic καθαρά.
+- **2026-09-15 — Gemi Leads 2.0 A1 (κοινός GemiClient).** Commit `2026b93`. Βάση υλοποίησης: `main` (`d1a323c`, ίδιο
   με production) + `chore/norva-legal-identity` (`f372ef4` NORVA, `94a50b0` blueprint). Νέα:
   `gemiapp/ingestion/` (client, rate_budget, errors), `gemiapp/test_gemi_client.py`. Αλλαγές:
   `gemiapp/services.py` (`_get` μέσω GemiClient, backfill χωρίς ατέρμονο retry), `config/settings.py`
