@@ -328,6 +328,12 @@ GEMI_SOURCE_RECORD_RETENTION_DAYS = {
 # The same response to the same request inside one window is one observation (e.g. a retried task);
 # the same response in a later window is recorded as a new observation.
 GEMI_SOURCE_RECORD_OBSERVATION_WINDOW_SECONDS = int(os.environ.get("GEMI_SOURCE_RECORD_OBSERVATION_WINDOW_SECONDS", "3600"))
+# Radar matching on canonical activity metadata (gemiapp.ingestion.activities). Off by default: Radars
+# match every activity the legacy importer kept, ended ones included, exactly as before. On: only
+# activities verified current in the latest GEMI observation, in the KAD version of the Radar catalogue,
+# participate. Do not enable in production before the parity report
+# (manage.py report_gemi_activity_matching_parity) has been reviewed and the cutover approved.
+GEMI_MATCH_CURRENT_ACTIVITIES_ONLY = os.environ.get("GEMI_MATCH_CURRENT_ACTIVITIES_ONLY", "0") == "1"
 
 Q_CLUSTER = {
     "name": "gemi_leads_cluster",

@@ -241,7 +241,7 @@ def _client_finder_qs(request):
     if kad:
         # distinct(): a company with more than one matching activity record would otherwise
         # be joined in once per match and show up as duplicate rows in the list.
-        qs = qs.filter(activity_records__code__istartswith=kad).distinct()
+        qs = qs.filter(activity_records__code__istartswith=kad, activity_records__legacy_listed=True).distinct()
 
     return qs, search, prefecture, legal_type, since, kad
 
@@ -304,7 +304,9 @@ def outreach_history(request):
         history_qs = history_qs.filter(status=status)
     kad = request.GET.get("hkad", "").strip()
     if kad:
-        history_qs = history_qs.filter(company__activity_records__code__istartswith=kad).distinct()
+        history_qs = history_qs.filter(
+            company__activity_records__code__istartswith=kad, company__activity_records__legacy_listed=True,
+        ).distinct()
 
     sort = request.GET.get("sort", "recent")
     if sort in ("opens", "clicks"):

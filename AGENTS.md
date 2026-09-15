@@ -144,6 +144,34 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — A7: κανονικά μεταδεδομένα `CompanyActivity` και ασφαλές upsert (2026-09-15).**
+  Migration `0035_companyactivity_canonical_metadata`, `gemiapp/ingestion/activities.py`,
+  `manage.py backfill_gemi_company_activities`, `manage.py report_gemi_activity_matching_parity`:
+  - Νέα πεδία: `activity_type_normalized` (primary/secondary/auxiliary/other/unknown· το `activity_type`
+    μένει όπως δημοσιεύεται), `kad_version` (όπως δημοσιεύεται), `date_from`/`date_to` με
+    `date_from_quality`/`date_to_quality` (A3), `is_current` με `current_as_of` (ημέρα της παρατήρησης
+    ΓΕΜΗ, όχι «σήμερα»), `source_key`, `in_latest_source`, `legacy_listed`.
+  - Ταυτότητα: (εταιρεία, `source_key`) = hash(κωδικός, έκδοση ΚΑΔ, τύπος, dtFrom). Οι ΚΑΔ 2008/2026 και
+    οι περίοδοι του ίδιου κωδικού είναι ξεχωριστές γραμμές· το dtTo και η περιγραφή ενημερώνονται στη θέση
+    τους. Ο παλιός unique (εταιρεία, κωδικός, τύπος) ισχύει πλέον μόνο για `legacy_listed` γραμμές.
+  - **Ο importer δεν κάνει πια delete/recreate**: diff/upsert, σταθερά primary keys, καμία διαγραφή·
+    δραστηριότητες που εξαφανίζονται κρατιούνται με `legacy_listed=False`.
+  - **`legacy_listed`** = ακριβώς οι γραμμές που θα κρατούσε ο παλιός importer. Όλα τα legacy reads
+    (Radar matching, radar preview, dashboard φίλτρο ΚΑΔ, καρτέλα εταιρείας, Superadmin φίλτρα/μετρητής)
+    φιλτράρουν σε αυτό, οπότε οι επιπλέον κανονικές γραμμές δεν αλλάζουν τίποτα ορατό.
+  - Flag **`GEMI_MATCH_CURRENT_ACTIVITIES_ONLY=0`** (default). Με 1: συμμετέχουν μόνο `is_current=True`,
+    `in_latest_source=True`, `kad_version=kad_2026`· άγνωστη τρέχουσα κατάσταση ή μη συμφιλιωμένες
+    γραμμές δεν συμμετέχουν. **Δεν ενεργοποιείται.**
+  - Αντίγραφο dev βάσης: 119.564 δραστηριότητες πηγής, 119.211 legacy γραμμές συμφιλιώθηκαν στη θέση
+    τους, 353 νέες γραμμές (άλλη έκδοση/περίοδος), 4 μη συμφιλιωμένες (demo) κρατήθηκαν, 0 διαγραφές·
+    δεύτερο backfill και replay του importer 0 αλλαγές. Legacy-visible γραμμές, matching, previews,
+    dashboard, matches, leads ίδια πριν/μετά. Προσομοίωση Radar ενός ΚΑΔ με flag=1: −2.230 ζεύγη
+    (εταιρεία, ΚΑΔ) (−1,87%), 514 εταιρείες, 1.335 κωδικοί (812 θα έμεναν χωρίς εταιρεία).
+  - Το reverse της 0035 είναι αυτόνομο: ένα reverse-only βήμα της ίδιας της migration διαγράφει μόνο τις
+    παράγωγες γραμμές `legacy_listed=False` (ξαναφτιάχνονται με backfill), κρατά κάθε legacy-visible γραμμή
+    και επαναφέρει τον παλιό unique. Κανένα χειροκίνητο βήμα.
+  - 41 νέα tests (μαζί με εκτελούμενο test forward → backfill → reverse → reapply)· **917 tests OK**.
+    **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
 - **Gemi Leads 2.0 — A6: κωδικοί αναφοράς και lifecycle στο `Company` (2026-09-15).** Migration
   `0034_company_gemi_metadata` (μόνο 9 nullable `AddField`, χωρίς FK, χωρίς indexes),
   `gemiapp/ingestion/company_metadata.py`, `manage.py backfill_gemi_company_metadata`:
@@ -377,8 +405,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: A7** κατά το `docs/GEMI_LEADS_2_BLUEPRINT.md` (αναμένει έγκριση
-  του A6).
+- **Gemi Leads 2.0 — επόμενο πακέτο: A8** (cutover καταλόγου ΚΑΔ) κατά το
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του A7.
+- **Release gate για το A7 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0035` αφαιρεί τον
+  πλήρη unique και δημιουργεί δύο partial unique indexes στο `CompanyActivity` (σύντομο κλείδωμα εγγραφών
+  σε PostgreSQL· μέγεθος πίνακα production άγνωστο). Στο release: migration, `backfill_gemi_company_activities
+  --dry-run`, κανονικό, δεύτερο (0 αλλαγές), `report_gemi_activity_matching_parity`. Η ενεργοποίηση του
+  `GEMI_MATCH_CURRENT_ACTIVITIES_ONLY` είναι ξεχωριστή, εγκεκριμένη απόφαση προϊόντος (αλλάζει ποιες
+  εταιρείες λαμβάνουν οι πελάτες). Rollback: `migrate gemiapp 0034` (αυτόνομο, αφαιρεί μόνο τις παράγωγες
+  γραμμές εκτός legacy list).
 - **Release gate για το A6 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0034` είναι μόνο
   nullable `AddField` (άμεση σε PostgreSQL). Στο release: migration, `backfill_gemi_company_metadata
   --dry-run`, έλεγχος πληθών, κανονικό backfill, δεύτερο backfill που πρέπει να δώσει 0 αλλαγές. Τα
@@ -424,7 +459,19 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-15 — Gemi Leads 2.0 A6 (κωδικοί αναφοράς και lifecycle στο `Company`).** Νέα: migration
+- **2026-09-15 — Gemi Leads 2.0 A7 (κανονικά μεταδεδομένα `CompanyActivity`, ασφαλές upsert).** Νέα:
+  migration `0035_companyactivity_canonical_metadata.py`, `gemiapp/ingestion/activities.py`,
+  `manage.py backfill_gemi_company_activities`, `manage.py report_gemi_activity_matching_parity`,
+  `gemiapp/test_gemi_company_activities.py`. Αλλαγές: `models.py` (`CompanyActivity`), `services.py`
+  (upsert αντί delete/recreate, flag στο matching και στο radar preview), `views.py` (dashboard φίλτρο
+  ΚΑΔ και καρτέλα εταιρείας σε `legacy_listed`), `superadmin/views.py`, `superadmin/services.py`,
+  `ingestion/normalizer.py` (δημόσια `normalize_activity_entry` / `normalized_date_key`, ίδια συμπεριφορά),
+  `ingestion/__init__.py`, `admin.py` (read-only), `config/settings.py` και `.env.example` (flag = 0).
+  Επαλήθευση: 917 tests OK, `check` / `makemigrations --check` / build:css καθαρά, forward → dry-run →
+  backfill → δεύτερο backfill → replay importer → parity report → αυτόνομο reverse με τις παράγωγες
+  γραμμές παρούσες (ίδιο με το baseline) → reapply + backfill (ίδια κανονική κατάσταση) στο αντίγραφο της
+  dev βάσης. Deploy, schedule, tasks και billing αμετάβλητα.
+- **2026-09-15 — Gemi Leads 2.0 A6 (κωδικοί αναφοράς και lifecycle στο `Company`).** Commit `2771a09`. Νέα: migration
   `0034_company_gemi_metadata.py`, `gemiapp/ingestion/company_metadata.py`,
   `manage.py backfill_gemi_company_metadata`, `gemiapp/test_gemi_company_metadata.py`. Αλλαγές:
   `models.py` (9 nullable πεδία στο `Company`), `ingestion/normalizer.py` (δημόσια

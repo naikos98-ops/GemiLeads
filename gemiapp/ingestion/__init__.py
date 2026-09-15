@@ -23,10 +23,12 @@ from .normalizer import (
     NormalizedDate,
     NormalizedReference,
     fields_not_approved_for_history,
+    normalize_activity_entry,
     normalize_company,
     normalize_event_date,
     normalize_identifier,
     normalize_text,
+    normalized_date_key,
 )
 from .rate_budget import BudgetConfig, CacheBudgetStore, GemiLane, GemiRateBudget
 from .schemas import GEMI_RESPONSE_SCHEMA_VERSION, ResponseFamily, validate_response
@@ -43,9 +45,11 @@ from .reference_data import REFERENCE_FAMILY_KEYS, ReferenceSyncResult, sync_ref
 __all__ = [
     "REFERENCE_FAMILY_KEYS",
     "ReferenceSyncResult",
+    "normalize_activity_entry",
     "normalize_event_date",
     "normalize_identifier",
     "normalize_text",
+    "normalized_date_key",
     "sync_reference_data",
     "GEMI_NORMALIZER_VERSION",
     "GEMI_RESPONSE_SCHEMA_VERSION",

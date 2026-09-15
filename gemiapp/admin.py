@@ -69,6 +69,11 @@ class ActivityCodeAdmin(admin.ModelAdmin):
 class CompanyActivityAdmin(admin.ModelAdmin):
     list_display = ("company", "code", "activity_type")
     search_fields = ("company__name", "company__gemi_number", "code", "description")
+    # Gemi Leads 2.0 canonical metadata (A7), shown for inspection only.
+    readonly_fields = (
+        "activity_type_normalized", "kad_version", "date_from", "date_from_quality", "date_to", "date_to_quality",
+        "is_current", "current_as_of", "source_key", "in_latest_source", "legacy_listed",
+    )
 
 
 @admin.register(CustomerRadar)

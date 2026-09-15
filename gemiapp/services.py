@@ -11,11 +11,15 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 from .ingestion import GemiLane, GemiResponseValidationError, current_gemi_lane, gemi_lane, get_gemi_client
-from .kad import display_kad_code, normalize_kad_code, normalize_kad_search
+from .ingestion.activities import (
+    activity_participates_in_matching,
+    matching_activity_filter,
+    resolve_current_activities_only,
+    sync_company_activities as sync_canonical_company_activities,
+)
+from .kad import normalize_kad_search
 from .models import (
-    ActivityCode,
     Company,
-    CompanyActivity,
     CustomerRadar,
     DigestDelivery,
     DigestPreference,
@@ -117,37 +121,11 @@ def company_defaults(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def sync_company_activities(company: Company, activities: list[dict[str, Any]]) -> None:
-    records = []
-    catalog_fallbacks = {}
-    seen = set()
-    for activity in activities:
-        code = normalize_kad_code(activity.get("code"))
-        activity_type = str(activity.get("type") or "")
-        identity = (code, activity_type)
-        if not code or identity in seen:
-            continue
-        seen.add(identity)
-        description = str(activity.get("description") or "")
-        catalog_fallbacks.setdefault(code, description)
-        records.append(CompanyActivity(
-            company=company,
-            code=code,
-            description=description,
-            activity_type=activity_type,
-        ))
-    company.activity_records.all().delete()
-    CompanyActivity.objects.bulk_create(records, batch_size=200)
-    existing_codes = set(ActivityCode.objects.filter(normalized_code__in=catalog_fallbacks).values_list("normalized_code", flat=True))
-    ActivityCode.objects.bulk_create([
-        ActivityCode(
-            code=display_kad_code(code),
-            normalized_code=code,
-            description=description or "Δραστηριότητα ΓΕΜΗ",
-            search_text=normalize_kad_search(f"{display_kad_code(code)} {code} {description}"),
-        )
-        for code, description in catalog_fallbacks.items() if code not in existing_codes
-    ], ignore_conflicts=True)
+def sync_company_activities(company: Company, source_activities: Any, *, as_of: date | None = None):
+    """Persist one company's latest GEMI ``activities`` list by diff and upsert: no delete-and-recreate,
+    stable primary keys, legacy-visible rows identical to the previous importer
+    (gemiapp.ingestion.activities)."""
+    return sync_canonical_company_activities(company, source_activities, as_of=as_of)
 
 
 def filter_companies_for_radar(
@@ -158,6 +136,7 @@ def filter_companies_for_radar(
     legal_types=None,
     only_active=True,
     activity_codes=None,
+    current_activities_only=None,
 ):
     if prefectures:
         queryset = queryset.filter(prefecture__in=prefectures)
@@ -166,7 +145,11 @@ def filter_companies_for_radar(
     if only_active:
         queryset = queryset.filter(is_active=True)
     if activity_codes:
-        queryset = queryset.filter(activity_records__code__in=activity_codes).distinct()
+        # One filter() call: the code and the participation lookups must hold for the same activity row.
+        queryset = queryset.filter(
+            activity_records__code__in=activity_codes,
+            **matching_activity_filter(current_only=current_activities_only),
+        ).distinct()
     if name_query:
         # Matched against the denormalized, indexed accent-stripped name so the whole company
         # table never has to be pulled into Python just to answer a radar preview.
@@ -174,7 +157,10 @@ def filter_companies_for_radar(
     return queryset
 
 
-def company_matches_radar(company: Company, radar: CustomerRadar) -> tuple[bool, dict[str, Any]]:
+def company_matches_radar(
+    company: Company, radar: CustomerRadar, *, current_activities_only: bool | None = None
+) -> tuple[bool, dict[str, Any]]:
+    """``current_activities_only`` None follows GEMI_MATCH_CURRENT_ACTIVITIES_ONLY (default off: legacy)."""
     if radar.only_active and not company.is_active:
         return False, {}
     if radar.name_query and normalize_kad_search(radar.name_query) not in normalize_kad_search(company.name):
@@ -185,7 +171,11 @@ def company_matches_radar(company: Company, radar: CustomerRadar) -> tuple[bool,
         return False, {}
 
     wanted_codes = {item.normalized_code for item in radar.activity_codes.all()}
-    company_codes = {item.code for item in company.activity_records.all()}
+    current_only = resolve_current_activities_only(current_activities_only)
+    company_codes = {
+        item.code for item in company.activity_records.all()
+        if activity_participates_in_matching(item, current_only=current_only)
+    }
     matched_codes = sorted(wanted_codes & company_codes)
     if wanted_codes and not matched_codes:
         return False, {}
@@ -306,7 +296,7 @@ def import_for_date(target_date: date) -> ImportRun:
         for item in items:
             defaults = company_defaults(item)
             company, was_created = Company.objects.update_or_create(gemi_number=str(item.get("arGemi")), defaults=defaults)
-            sync_company_activities(company, defaults["activities"])
+            sync_company_activities(company, item.get("activities"))
             created += int(was_created)
             updated += int(not was_created)
         run.fetched_count, run.created_count, run.updated_count = len(items), created, updated
@@ -721,9 +711,9 @@ def import_companies_since_date(start_date: date = date(2026, 1, 1)) -> tuple[in
                         gemi_number=gemi_number,
                         defaults=defaults,
                     )
-                    # Keep Company.activities in the same state as import_for_date: both paths
-                    # write the identical company_defaults() shape rather than diverging on it.
-                    sync_company_activities(company, defaults["activities"])
+                    # Both import paths write the identical company_defaults() shape onto
+                    # Company.activities and persist CompanyActivity from the same source list.
+                    sync_company_activities(company, item.get("activities"))
 
                     if created:
                         created_count += 1

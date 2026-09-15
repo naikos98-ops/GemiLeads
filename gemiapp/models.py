@@ -145,15 +145,56 @@ class Company(models.Model):
 
 
 class CompanyActivity(models.Model):
+    """One company activity (KAD).
+
+    ``code``, ``description`` and ``activity_type`` (the type exactly as published) are the columns the
+    application has always read. The Gemi Leads 2.0 columns (A7) carry canonical GEMI metadata;
+    gemiapp.ingestion.activities documents their semantics, the row identity and how everything
+    customer-visible keeps its legacy behaviour.
+    """
+
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="activity_records")
     code = models.CharField("ΚΑΔ", max_length=16, db_index=True)
     description = models.CharField("Περιγραφή", max_length=1000, blank=True)
     activity_type = models.CharField("Τύπος", max_length=80, blank=True)
 
+    # --- Gemi Leads 2.0 canonical activity metadata (A7) -------------------------------------------
+    ACTIVITY_TYPES = [
+        ("primary", "Κύρια"), ("secondary", "Δευτερεύουσα"), ("auxiliary", "Βοηθητική"), ("other", "Λοιπή"),
+        ("unknown", "Μη αναγνωρισμένος τύπος"),
+    ]
+    # Null when the entry has no type or the row has not been reconciled; "unknown" for a published type
+    # this version does not recognise (still kept as published in activity_type).
+    activity_type_normalized = models.CharField(max_length=16, choices=ACTIVITY_TYPES, null=True, blank=True, editable=False)
+    # As published ("kad_2008" / "kad_2026"); never inferred from the code.
+    kad_version = models.CharField(max_length=32, null=True, blank=True, editable=False)
+    # dtFrom / dtTo under the A3 DatePolicy: the date only when VALID, the quality says why it is absent.
+    date_from = models.DateField(null=True, blank=True, editable=False)
+    date_from_quality = models.CharField(max_length=16, choices=Company.INCORPORATION_DATE_QUALITIES, null=True, blank=True, editable=False)
+    date_to = models.DateField(null=True, blank=True, editable=False)
+    date_to_quality = models.CharField(max_length=16, choices=Company.INCORPORATION_DATE_QUALITIES, null=True, blank=True, editable=False)
+    # A3 currentness evaluated on current_as_of, the day of the GEMI observation it was derived from.
+    is_current = models.BooleanField(null=True, blank=True, editable=False)
+    current_as_of = models.DateField(null=True, blank=True, editable=False)
+    # Canonical identity within the company; null = legacy row not reconciled with a GEMI record.
+    source_key = models.CharField(max_length=64, null=True, blank=True, editable=False)
+    # Whether the activity was in the company's latest reconciled GEMI observation.
+    in_latest_source = models.BooleanField(null=True, blank=True, editable=False)
+    # Whether the legacy importer would hold this row for the latest observation (one per code and type).
+    # Every legacy read uses only these rows. Every pre-A7 row is one, hence the default.
+    legacy_listed = models.BooleanField(default=True, editable=False)
+
     class Meta:
         ordering = ["company_id", "code"]
         constraints = [
-            models.UniqueConstraint(fields=["company", "code", "activity_type"], name="unique_company_activity")
+            models.UniqueConstraint(
+                fields=["company", "code", "activity_type"], condition=models.Q(legacy_listed=True),
+                name="unique_company_activity_listed",
+            ),
+            models.UniqueConstraint(
+                fields=["company", "source_key"], condition=models.Q(source_key__isnull=False),
+                name="unique_company_activity_source_key",
+            ),
         ]
 
     def __str__(self):

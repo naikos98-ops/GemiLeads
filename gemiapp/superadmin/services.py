@@ -135,7 +135,7 @@ def get_saas_overview_metrics():
     companies_7d = Company.objects.filter(incorporation_date__gte=today - timedelta(days=6)).count()
     latest_company = Company.objects.order_by("-incorporation_date").first()
     latest_registration_date = latest_company.incorporation_date if latest_company else None
-    total_company_activities = CompanyActivity.objects.count()
+    total_company_activities = CompanyActivity.objects.filter(legacy_listed=True).count()
     total_kads = ActivityCode.objects.count()
 
     # Digest Deliveries Metrics

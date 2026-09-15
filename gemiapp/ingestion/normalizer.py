@@ -274,6 +274,34 @@ def normalize_event_date(value: Any, *, as_of: date, date_policy: DatePolicy = D
     return _date(value, latest=as_of + date_policy.event_future_tolerance, policy=date_policy)
 
 
+def normalize_activity_entry(
+    entry: Any, *, as_of: date, date_policy: DatePolicy = DEFAULT_DATE_POLICY
+) -> NormalizedActivity | None:
+    """One ``activities`` entry under this module's rules (see "Activities and KAD"); None when the entry
+    has no activity code and therefore cannot be represented."""
+    if isinstance(as_of, datetime) or not isinstance(as_of, date):
+        raise TypeError("as_of must be a date (not a datetime).")
+    activity = entry.get("activity") if isinstance(entry, Mapping) else None
+    code = _identifier(activity.get("id")) if isinstance(activity, Mapping) else None
+    if code is None:
+        return None
+    date_to = _date(entry.get("dtTo"), latest=date_policy.latest_period_bound, policy=date_policy)
+    return NormalizedActivity(
+        code=code,
+        description=_text(activity.get("descr")),
+        activity_type=_text(entry.get("type")),
+        kad_version=_text(activity.get("kadVersion")),
+        date_from=_date(entry.get("dtFrom"), latest=date_policy.latest_period_bound, policy=date_policy),
+        date_to=date_to,
+        is_current=_is_current(entry.get("dtTo"), date_to, as_of),
+    )
+
+
+def normalized_date_key(value: NormalizedDate) -> str:
+    """A stable text key for a NormalizedDate; unreadable source values stay distinguishable."""
+    return _date_sort_key(value)
+
+
 # --- helpers ------------------------------------------------------------------------------------
 
 def _text(value: Any) -> str | None:
@@ -350,21 +378,11 @@ def _activities(entries: Any, *, as_of: date, policy: DatePolicy) -> tuple[tuple
     normalized: set[NormalizedActivity] = set()
     without_code = 0
     for entry in entries:
-        activity = entry.get("activity") if isinstance(entry, Mapping) else None
-        code = _identifier(activity.get("id")) if isinstance(activity, Mapping) else None
-        if code is None:
+        activity = normalize_activity_entry(entry, as_of=as_of, date_policy=policy)
+        if activity is None:
             without_code += 1
-            continue
-        date_to = _date(entry.get("dtTo"), latest=policy.latest_period_bound, policy=policy)
-        normalized.add(NormalizedActivity(
-            code=code,
-            description=_text(activity.get("descr")),
-            activity_type=_text(entry.get("type")),
-            kad_version=_text(activity.get("kadVersion")),
-            date_from=_date(entry.get("dtFrom"), latest=policy.latest_period_bound, policy=policy),
-            date_to=date_to,
-            is_current=_is_current(entry.get("dtTo"), date_to, as_of),
-        ))
+        else:
+            normalized.add(activity)
     return tuple(sorted(normalized, key=_activity_sort_key)), without_code
 
 

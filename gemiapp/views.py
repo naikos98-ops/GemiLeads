@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Max, Q
+from django.db.models import Count, Max, Prefetch, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -27,6 +27,7 @@ from .kad import normalize_kad_code, normalize_kad_search
 from .models import (
     ActivityCode,
     Company,
+    CompanyActivity,
     CustomerRadar,
     DigestPreference,
     DigestDelivery,
@@ -399,7 +400,8 @@ def _filtered_companies(request):
     if date_to:
         qs = qs.filter(incorporation_date__lte=min(date_to, today))
     if activity_codes:
-        qs = qs.filter(activity_records__code__in=activity_codes).distinct()
+        # legacy_listed: the rows the pre-A7 importer kept (gemiapp.ingestion.activities).
+        qs = qs.filter(activity_records__code__in=activity_codes, activity_records__legacy_listed=True).distinct()
     return qs
 
 
@@ -700,7 +702,14 @@ def lead_export_csv(request):
 
 @login_required
 def company_detail(request, gemi_number):
-    company = get_object_or_404(Company.objects.prefetch_related("activity_records"), gemi_number=gemi_number)
+    # Only the rows the pre-A7 importer kept: canonical extra rows (other KAD version, earlier periods,
+    # activities no longer published) are not shown (gemiapp.ingestion.activities).
+    company = get_object_or_404(
+        Company.objects.prefetch_related(
+            Prefetch("activity_records", queryset=CompanyActivity.objects.filter(legacy_listed=True))
+        ),
+        gemi_number=gemi_number,
+    )
 
     # A lead is a radar outcome, not a side effect of browsing. Creating one for a user without an
     # entitlement polluted their Lead Inbox and the Superadmin lead metrics with rows that have no
