@@ -234,3 +234,16 @@ def sync_gemi_reference_data_task():
 
     result = sync_reference_data()
     return {key: counts.as_dict() for key, counts in result.families.items()}
+
+
+def recompute_gemi_company_monitoring_task():
+    """Recompute the company monitoring universe (reasons, priority, next check). Returns the counts.
+
+    Local data only -- no GEMI call, no refresh. Intended to run nightly, but deliberately not in
+    apps.SCHEDULES yet: nothing consumes the monitoring tables before the refresh collector, and scheduling
+    belongs to a later release step after the G0/G1 gates. Until then run
+    `manage.py recompute_gemi_company_monitoring`.
+    """
+    from gemiapp.ingestion.monitoring import recompute_company_monitoring
+
+    return recompute_company_monitoring().summary()

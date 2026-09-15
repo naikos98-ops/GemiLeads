@@ -855,6 +855,95 @@ class ActivityCodeKadLink(models.Model):
         constraints = [models.UniqueConstraint(fields=["activity_code", "gemi_kad"], name="unique_activity_code_kad_link")]
 
 
+class CompanyMonitoring(models.Model):
+    """Monitoring state of one company, shared by every customer (A9).
+
+    Written by gemiapp.ingestion.monitoring, which documents the reasons, priority, cadence and decay.
+    Nothing reads it yet and nothing refreshes companies from it: the collector state
+    (last_checked_at, last_success_at, last_failure_at, consecutive_failures) belongs to a future
+    refresh collector and is never written by the recompute. No personal or contact data.
+    """
+
+    STATES = [("active", "Active"), ("decaying", "Decaying"), ("inactive", "Inactive")]
+    PRIORITIES = [("critical", "Critical"), ("high", "High"), ("normal", "Normal"), ("low", "Low")]
+    REASONS = [
+        ("new_company", "New company"), ("active_radar_match", "Active Radar match"),
+        ("active_opportunity", "Active opportunity"), ("recent_signal", "Recent signal"), ("manual", "Manual"),
+    ]
+
+    company = models.OneToOneField(Company, on_delete=models.CASCADE, related_name="monitoring")
+    state = models.CharField(max_length=16, choices=STATES)
+    # Null only while inactive. Derived from the active reasons by the central policy.
+    priority = models.CharField(max_length=16, choices=PRIORITIES, null=True, blank=True)
+    # The strongest active reason, for explainability; null while decaying or inactive.
+    primary_reason = models.CharField(max_length=32, choices=REASONS, null=True, blank=True)
+    policy_version = models.PositiveSmallIntegerField()
+    # Start of the current continuous monitored period (active or decaying).
+    monitored_since = models.DateTimeField()
+    decay_started_at = models.DateTimeField(null=True, blank=True)
+    inactive_since = models.DateTimeField(null=True, blank=True)
+    # Eligibility for the next refresh, not a promise that it runs then. Null only while inactive.
+    next_check_at = models.DateTimeField(null=True, blank=True)
+    last_checked_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_failure_at = models.DateTimeField(null=True, blank=True)
+    consecutive_failures = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["company_id"]
+        verbose_name = "Company monitoring"
+        verbose_name_plural = "Company monitoring"
+        indexes = [models.Index(fields=["state", "next_check_at"], name="monitoring_due_idx")]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(state="inactive", priority__isnull=True, next_check_at__isnull=True)
+                    | models.Q(state__in=["active", "decaying"], priority__isnull=False, next_check_at__isnull=False)
+                ),
+                name="monitoring_state_consistent",
+            ),
+        ]
+
+    def __str__(self):
+        return f"monitoring #{self.company_id} · {self.state}"
+
+
+class CompanyMonitoringReason(models.Model):
+    """One reason a company is (or was) monitored, with its activation history (A9). One row per
+    monitoring state and reason; a reason is reactivated in place, never duplicated."""
+
+    monitoring = models.ForeignKey(CompanyMonitoring, on_delete=models.CASCADE, related_name="reasons")
+    reason = models.CharField(max_length=32, choices=CompanyMonitoring.REASONS)
+    active = models.BooleanField()
+    first_active_at = models.DateTimeField()
+    # Start of the current (or most recent) active period.
+    activated_at = models.DateTimeField()
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+    activation_count = models.PositiveIntegerField()
+    # For temporary reasons (a new company's window, a time-limited manual request).
+    expires_at = models.DateTimeField(null=True, blank=True)
+    # Ids of the underlying objects, e.g. the matching Radars. Ids only.
+    source_ids = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["monitoring_id", "reason"]
+        indexes = [models.Index(fields=["reason", "active"], name="monitoring_reason_active_idx")]
+        constraints = [
+            models.UniqueConstraint(fields=["monitoring", "reason"], name="unique_monitoring_reason"),
+            models.CheckConstraint(
+                condition=models.Q(active=True, deactivated_at__isnull=True) | models.Q(active=False, deactivated_at__isnull=False),
+                name="monitoring_reason_active_consistent",
+            ),
+        ]
+
+    def __str__(self):
+        return f"monitoring #{self.monitoring_id} · {self.reason} · {'active' if self.active else 'inactive'}"
+
+
 class GemiPrefecture(GemiReferenceEntry):
     """GET /metadata/prefectures."""
 

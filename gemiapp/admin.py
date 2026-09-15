@@ -4,6 +4,8 @@ from .models import (
     ActivityCodeKadLink,
     Company,
     CompanyActivity,
+    CompanyMonitoring,
+    CompanyMonitoringReason,
     CompanyOutreach,
     CustomerRadar,
     DigestDelivery,
@@ -177,6 +179,37 @@ class ActivityCodeKadLinkAdmin(admin.ModelAdmin):
     list_select_related = ("activity_code", "gemi_kad")
     search_fields = ("activity_code__normalized_code", "gemi_kad__source_id")
     readonly_fields = ("activity_code", "gemi_kad", "match_basis", "description_matches", "created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+class CompanyMonitoringReasonInline(admin.TabularInline):
+    model = CompanyMonitoringReason
+    extra = 0
+    can_delete = False
+    readonly_fields = ("reason", "active", "first_active_at", "activated_at", "deactivated_at", "activation_count", "expires_at", "source_ids")
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CompanyMonitoring)
+class CompanyMonitoringAdmin(admin.ModelAdmin):
+    """Inspection only. Written by recompute_gemi_company_monitoring (and, later, the refresh collector)."""
+
+    list_display = ("company_id", "state", "priority", "primary_reason", "next_check_at", "last_checked_at")
+    list_filter = ("state", "priority", "primary_reason")
+    search_fields = ("company__gemi_number",)
+    inlines = (CompanyMonitoringReasonInline,)
+    readonly_fields = (
+        "company", "state", "priority", "primary_reason", "policy_version", "monitored_since", "decay_started_at",
+        "inactive_since", "next_check_at", "last_checked_at", "last_success_at", "last_failure_at",
+        "consecutive_failures", "created_at", "updated_at",
+    )
 
     def has_add_permission(self, request):
         return False

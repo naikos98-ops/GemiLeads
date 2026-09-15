@@ -144,6 +144,28 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — A9: σύνολο παρακολούθησης εταιρειών και πολιτική ανανέωσης (2026-09-16).** Migration
+  `0037_company_monitoring`, `gemiapp/ingestion/monitoring.py`, `manage.py recompute_gemi_company_monitoring`,
+  `recompute_gemi_company_monitoring_task` (**όχι** στο `apps.SCHEDULES`):
+  - `CompanyMonitoring`: μία γραμμή ανά εταιρεία (κοινή για όλους τους πελάτες) με state
+    active/decaying/inactive, priority, primary_reason, `next_check_at` και πεδία collector
+    (`last_checked_at` κ.λπ.) που **δεν γράφονται** από τον υπολογισμό. `CompanyMonitoringReason`: μία γραμμή
+    ανά εταιρεία+λόγο με ιστορικό (first_active_at, activated_at, deactivated_at, activation_count),
+    expires_at και source_ids (π.χ. ids Radars). Κανένα προσωπικό δεδομένο.
+  - Λόγοι: **NEW_COMPANY** (A6 `first_seen_at` εντός 30 ημερών και έγκυρη ημερομηνία σύστασης όχι παλαιότερη
+    των 30 ημερών από την πρώτη παρατήρηση· αποκλείει το bulk import παλιών εταιρειών), **ACTIVE_RADAR_MATCH**
+    (τα Radars και το predicate του ζωντανού matcher, με το cutoff `monitor_from`), **MANUAL** (μόνο service,
+    χωρίς UI). **ACTIVE_OPPORTUNITY** και **RECENT_SIGNAL**: δεσμευμένα, δεν συμπληρώνονται (το
+    `UserCompanyLead` δεν είναι opportunity· Signals δεν υπάρχουν).
+  - Πολιτική (ένα σημείο, `MonitoringPolicy`): opportunity critical, signal high, radar high, new normal,
+    manual normal (δεν υπερισχύει)· decaying low. Ανανέωση: 1/3/7/30 ημέρες. Χωρίς λόγο: decaying για 30
+    ημέρες, μετά inactive (το ιστορικό μένει). `next_check_at` ντετερμινιστικό (SHA-256 jitter ανά εταιρεία).
+  - **Ο importer δεν γράφει ακόμη το A6 `first_seen_at`**: πριν από recompute τρέξε
+    `backfill_gemi_company_metadata` μέχρι να το κάνει η canonical ingestion.
+  - Αντίγραφο dev βάσης (as_of 2026-09-16 09:00 UTC): 2.564 παρακολουθούμενες από 17.799· NEW_COMPANY 2.554,
+    ACTIVE_RADAR_MATCH 224, πολλαπλοί λόγοι 214· high 224 / normal 2.340· δεύτερος υπολογισμός 0 αλλαγές·
+    matching, previews, dashboard, επιλογέας ΚΑΔ ίδια πριν/μετά.
+  - 28 νέα tests· **968 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
 - **Gemi Leads 2.0 — A8: συμφιλίωση καταλόγου ΚΑΔ (2026-09-15).** Migration `0036_activitycode_kad_links`,
   `gemiapp/ingestion/kad_catalogue.py`, `manage.py reconcile_gemi_kad_catalogue`:
   - Το `ActivityCode` (ζωντανός κατάλογος: επιλογέας ΚΑΔ, κριτήρια Radars, fallback του importer) **δεν
@@ -422,7 +444,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: A9** κατά το `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του A8.
+- **Gemi Leads 2.0 — επόμενο πακέτο: A10** κατά το `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του A9.
+- **Release gate για το A9 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0037` δημιουργεί μόνο τους
+  πίνακες παρακολούθησης. Στο release: `backfill_gemi_company_metadata`, μετά
+  `recompute_gemi_company_monitoring --dry-run`, κανονικό, δεύτερο (0 αλλαγές). Το nightly task μπαίνει στο
+  `apps.SCHEDULES` μόνο μαζί με τον refresh collector· event-driven recompute (π.χ. αλλαγή Radar) μόνο πίσω
+  από flag.
 - **Release gate για το A8 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0036` δημιουργεί μόνο τον
   πίνακα `ActivityCodeKadLink`. Στο release (μετά το A5 sync σε staging): `reconcile_gemi_kad_catalogue
   --dry-run`, κανονικό, δεύτερο (0 αλλαγές), `--list-radar-criteria`. Η αναφορά κατάταξης ΚΑΔ και κριτηρίων
@@ -480,7 +507,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-15 — Gemi Leads 2.0 A8 (συμφιλίωση καταλόγου ΚΑΔ).** Νέα: `ActivityCodeKadLink`
+- **2026-09-16 — Gemi Leads 2.0 A9 (σύνολο παρακολούθησης εταιρειών και πολιτική ανανέωσης).** Νέα:
+  `CompanyMonitoring` και `CompanyMonitoringReason` (`gemiapp/models.py`), migration `0037_company_monitoring.py`,
+  `gemiapp/ingestion/monitoring.py`, `manage.py recompute_gemi_company_monitoring`,
+  `gemiapp/test_gemi_company_monitoring.py`. Αλλαγές: `tasks.py` (task χωρίς schedule), `admin.py` (read-only).
+  Επαλήθευση: 968 tests OK, `check` / `makemigrations --check` / build:css καθαρά, forward → dry-run →
+  recompute → δεύτερο (0 αλλαγές) → reverse → reapply + recompute (ίδια κατάσταση) στο αντίγραφο της dev
+  βάσης με parity matching/επιλογέα. Deploy, schedule, settings, services, views και billing αμετάβλητα.
+- **2026-09-15 — Gemi Leads 2.0 A8 (συμφιλίωση καταλόγου ΚΑΔ).** Commit `11af564`. Νέα: `ActivityCodeKadLink`
   (`gemiapp/models.py`), migration `0036_activitycode_kad_links.py`, `gemiapp/ingestion/kad_catalogue.py`,
   `manage.py reconcile_gemi_kad_catalogue`, `gemiapp/test_gemi_kad_catalogue.py`. Αλλαγές: `views.py`
   (`kad_search` μέσω `kad_picker_queryset`, ίδιο αποτέλεσμα με το flag 0), `admin.py` (read-only),
