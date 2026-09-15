@@ -144,6 +144,23 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — A3: Normaliser v1 (2026-09-15).** `gemiapp/ingestion/normalizer.py`
+  (`GEMI_NORMALIZER_VERSION = 1`, `normalize_company(record, *, as_of)`): καθαρή, ντετερμινιστική
+  συνάρτηση μόνο με standard library (χωρίς Django/βάση/δίκτυο/env/ρολόι) που μετατρέπει μια
+  επικυρωμένη (A2) εγγραφή εταιρείας σε `NormalizedCompany` (frozen dataclasses):
+  - ids και περιγραφές reference data χωριστά· null/κενή περιγραφή → `None`, ποτέ το κείμενο "None"·
+  - ημερομηνίες με `DateQuality` (valid / missing / invalid / out_of_range)· εύρος στο `DatePolicy`:
+    από 1830-01-01, γεγονότα έως `as_of` + 1 ημέρα, όρια περιόδων δραστηριοτήτων έως 2100-12-31·
+    καμία ημερομηνία δεν αντικαθίσταται με τη σημερινή·
+  - δραστηριότητες με κωδικό, περιγραφή, τύπο, `kad_version`, `dtFrom`, `dtTo` και `is_current`
+    (χωρίς dtTo ή dtTo μετά το `as_of` → τρέχουσα)· KAD 2008 και 2026 δεν συγχωνεύονται·
+    ντετερμινιστική ταξινόμηση και αφαίρεση πανομοιότυπων·
+  - εξαιρούνται persons, phone, fax, email, url, poBox, afm, objective, capital, stocks, branch κ.ά.·
+    `name`, `street`, `street_number` σημειώνονται `not_approved` για ιστορικές δομές·
+  - `is_active` μόνο όταν το δηλώνει η πηγή, αλλιώς `None`.
+  - **Καμία αλλαγή σε importer, Radars, digests ή billing** — ο normaliser δεν καλείται ακόμη.
+  - 36 νέα tests (`gemiapp/test_gemi_normalizer.py`)· **798 tests OK**· καμία migration.
+
 - **Gemi Leads 2.0 — A2: επικύρωση σχήματος απαντήσεων ΓΕΜΗ (2026-09-15).** Κάθε επιτυχής απάντηση
   που καταναλώνει η εφαρμογή ελέγχεται πριν φτάσει στον importer, με ρητά, versioned contracts στο
   `gemiapp/ingestion/schemas.py` (`GEMI_RESPONSE_SCHEMA_VERSION = 1`):
@@ -294,7 +311,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: A3** (Normaliser v1). Release gate για το A2: να επιβεβαιωθεί
+- **Gemi Leads 2.0 — επόμενο πακέτο: A4** (minimised `source_records`).
+- **Γνωστό σφάλμα δεδομένων, για A6/A7 (δεν διορθώθηκε στο A3):** οι εγγραφές ΓΕΜΗ δεν περιέχουν
+  `isActive` (ούτε στο `status`), οπότε το `company_defaults()` αποθηκεύει `is_active=True` σε
+  **κάθε** εταιρεία — και σε διαγραμμένες. Επαληθεύτηκε στη dev βάση: 17.799/17.799 ενεργές, μαζί με
+  8 σε κατάσταση «Διαγραφή». Το φίλτρο «Μόνο ενεργές επιχειρήσεις» των Radars δεν έχει επομένως
+  πραγματικό αποτέλεσμα. Η διόρθωση χρειάζεται τα companyStatuses reference data (A5) και parity
+  report, γιατί αλλάζει ποια leads βλέπουν οι πελάτες.
+- **Release gate για το A2:** να επιβεβαιωθεί
   ότι το `SENTRY_DSN` είναι ορισμένο στο production και ότι υπάρχει Sentry alert rule για ERROR
   events των `gemiapp.ingestion.client` / `gemiapp.services`· χωρίς αυτό η αποτυχία φαίνεται μόνο
   στο `ImportRun` (Superadmin → GEMI Pipeline) και στα logs. Πριν από
@@ -317,7 +341,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-15 — Gemi Leads 2.0 A2 (επικύρωση σχήματος απαντήσεων ΓΕΜΗ).** Νέα:
+- **2026-09-15 — Gemi Leads 2.0 A3 (Normaliser v1).** Νέα: `gemiapp/ingestion/normalizer.py`,
+  `gemiapp/test_gemi_normalizer.py`. Αλλαγές: `gemiapp/ingestion/__init__.py` (exports). Κανένα
+  production code path δεν άλλαξε. Επαλήθευση: 798 tests OK, `check` / `makemigrations --check` /
+  build:css / collectstatic καθαρά, καμία migration.
+- **2026-09-15 — Gemi Leads 2.0 A2 (επικύρωση σχήματος απαντήσεων ΓΕΜΗ).** Commit `74def43`. Νέα:
   `gemiapp/ingestion/schemas.py`, `gemiapp/test_gemi_validation.py`. Αλλαγές: `ingestion/errors.py`
   (`GemiResponseValidationError`), `ingestion/client.py` (`family` στο `get`, validation στο
   `search_companies`), `ingestion/__init__.py`, `services.py` (ERROR log με το id του ImportRun).
