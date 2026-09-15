@@ -23,6 +23,7 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.decorators import method_decorator
 from django_ratelimit.decorators import ratelimit
 from .forms import CustomerRadarForm, DigestPreferenceForm, LeadNotesForm, LeadStatusForm, SignupForm
+from .ingestion.kad_catalogue import kad_picker_queryset
 from .kad import normalize_kad_code, normalize_kad_search
 from .models import (
     ActivityCode,
@@ -872,7 +873,8 @@ def kad_search(request):
         return JsonResponse({"results": []})
     normalized_text = normalize_kad_search(query)
     normalized_code = normalize_kad_code(query)
-    results = ActivityCode.objects.all()
+    # The whole ActivityCode catalogue unless GEMI_KAD_PICKER_CURRENT_TAXONOMY_ONLY is on (default off).
+    results = kad_picker_queryset()
     if normalized_code and not any(character.isalpha() for character in query):
         results = results.filter(normalized_code__startswith=normalized_code)
     else:

@@ -334,6 +334,11 @@ GEMI_SOURCE_RECORD_OBSERVATION_WINDOW_SECONDS = int(os.environ.get("GEMI_SOURCE_
 # participate. Do not enable in production before the parity report
 # (manage.py report_gemi_activity_matching_parity) has been reviewed and the cutover approved.
 GEMI_MATCH_CURRENT_ACTIVITIES_ONLY = os.environ.get("GEMI_MATCH_CURRENT_ACTIVITIES_ONLY", "0") == "1"
+# KAD picker limited to the current KAD 2026 taxonomy (gemiapp.ingestion.kad_catalogue). Off by default: the
+# picker searches the whole ActivityCode catalogue exactly as before. On: only entries linked to a present
+# KAD 2026 reference row, which needs synchronised reference data and reconcile_gemi_kad_catalogue. Saved
+# Radar criteria are never rewritten either way. Do not enable before an approved catalogue cutover.
+GEMI_KAD_PICKER_CURRENT_TAXONOMY_ONLY = os.environ.get("GEMI_KAD_PICKER_CURRENT_TAXONOMY_ONLY", "0") == "1"
 
 Q_CLUSTER = {
     "name": "gemi_leads_cluster",

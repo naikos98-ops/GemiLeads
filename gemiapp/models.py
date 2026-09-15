@@ -829,6 +829,32 @@ class GemiKad(GemiReferenceEntry):
         indexes = [models.Index(fields=["kad_version", "is_present"], name="gemikad_version_present_idx")]
 
 
+class ActivityCodeKadLink(models.Model):
+    """A link between a live ActivityCode entry and a GEMI reference KAD row with exactly the same code digits
+    (A8). One entry may link to both a KAD 2008 and a KAD 2026 row, so upstream identities never collapse.
+
+    Derived data, written only by reconcile_gemi_kad_catalogue; ActivityCode itself is unchanged, and nothing
+    customer-facing reads these links while GEMI_KAD_PICKER_CURRENT_TAXONOMY_ONLY is off. See
+    gemiapp.ingestion.kad_catalogue.
+    """
+
+    MATCH_BASES = [("code", "Ίδιος κωδικός ΚΑΔ")]
+
+    activity_code = models.ForeignKey(ActivityCode, on_delete=models.CASCADE, related_name="kad_links")
+    gemi_kad = models.ForeignKey(GemiKad, on_delete=models.CASCADE, related_name="activity_code_links")
+    match_basis = models.CharField(max_length=16, choices=MATCH_BASES)
+    # Evidence only, never identity: whether the descriptions agree (case-, accent- and whitespace-insensitive).
+    description_matches = models.BooleanField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["activity_code_id", "gemi_kad_id"]
+        verbose_name = "ActivityCode ↔ GEMI KAD link"
+        verbose_name_plural = "ActivityCode ↔ GEMI KAD links"
+        constraints = [models.UniqueConstraint(fields=["activity_code", "gemi_kad"], name="unique_activity_code_kad_link")]
+
+
 class GemiPrefecture(GemiReferenceEntry):
     """GET /metadata/prefectures."""
 

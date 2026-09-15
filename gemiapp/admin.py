@@ -1,6 +1,7 @@
 from django.contrib import admin
 from .models import (
     ActivityCode,
+    ActivityCodeKadLink,
     Company,
     CompanyActivity,
     CompanyOutreach,
@@ -165,6 +166,23 @@ class GemiMunicipalityAdmin(GemiReferenceAdmin):
 
 
 admin.site.register([GemiPrefecture, GemiCompanyStatus, GemiLegalType, GemiOffice, GemiDecisionSubject], GemiReferenceAdmin)
+
+
+@admin.register(ActivityCodeKadLink)
+class ActivityCodeKadLinkAdmin(admin.ModelAdmin):
+    """Inspection only. Links are derived by reconcile_gemi_kad_catalogue from ActivityCode and GemiKad."""
+
+    list_display = ("activity_code", "gemi_kad", "match_basis", "description_matches", "updated_at")
+    list_filter = ("description_matches", "gemi_kad__kad_version", "gemi_kad__is_present")
+    list_select_related = ("activity_code", "gemi_kad")
+    search_fields = ("activity_code__normalized_code", "gemi_kad__source_id")
+    readonly_fields = ("activity_code", "gemi_kad", "match_basis", "description_matches", "created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(GemiReferenceSyncRun)

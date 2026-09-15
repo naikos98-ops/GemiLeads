@@ -144,6 +144,23 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — A8: συμφιλίωση καταλόγου ΚΑΔ (2026-09-15).** Migration `0036_activitycode_kad_links`,
+  `gemiapp/ingestion/kad_catalogue.py`, `manage.py reconcile_gemi_kad_catalogue`:
+  - Το `ActivityCode` (ζωντανός κατάλογος: επιλογέας ΚΑΔ, κριτήρια Radars, fallback του importer) **δεν
+    αλλάζει**. Νέος πίνακας-γέφυρα `ActivityCodeKadLink`: σύνδεση με κάθε `GemiKad` (A5) με ακριβώς τον ίδιο
+    κωδικό, μία ανά έκδοση ΚΑΔ· η περιγραφή καταγράφεται μόνο ως τεκμήριο (`description_matches`).
+  - Κατάταξη ανά ΚΑΔ: `kad_2026` / `kad_2008_only` / `both_versions` / `other_version_only` / `unresolved`
+    (αιτία: `no_reference_data`, `not_in_reference`, `retired_in_reference`). Read-only κατάταξη και των
+    αποθηκευμένων κριτηρίων Radars· **τίποτα δεν ξαναγράφεται ή διαγράφεται**.
+  - Flag **`GEMI_KAD_PICKER_CURRENT_TAXONOMY_ONLY=0`** (default): ο επιλογέας ΚΑΔ ψάχνει όλο το `ActivityCode`
+    όπως πριν· με 1 μόνο όσα συνδέονται με παρόντα ΚΑΔ 2026. Το `GEMI_MATCH_CURRENT_ACTIVITIES_ONLY` μένει 0.
+  - Crosswalk ΚΑΔ 2008 → 2026: **unresolved** (το ΓΕΜΗ δεν δημοσιεύει· τίποτα δεν συμπεραίνεται). Ιεραρχία
+    ΚΑΔ: **δεν παράγεται** (π.χ. το 01.00.00.00 είναι «ΑΓΡΟΤΗΣ ΕΙΔΙΚΟΥ ΚΑΘΕΣΤΩΤΟΣ», όχι το τμήμα 01).
+  - **Αντίγραφο dev βάσης: `GemiKad` άδειο** (το A5 sync δεν έχει τρέξει ποτέ ζωντανά) → όλα τα 10.467
+    `unresolved/no_reference_data`, 0 σύνδεσμοι. Τεκμήρια: 816 fallback ΚΑΔ, από τους οποίους 783 εμφανίζονται
+    στις εταιρείες μόνο ως ΚΑΔ 2008· τα 4 κριτήρια Radars είναι demo τετραψήφιοι κωδικοί (52.29, 62.01,
+    43.21, 56.10). Επιλογέας, κατάλογος, κριτήρια, matching, previews, dashboard ίδια πριν/μετά.
+  - 23 νέα tests· **940 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
 - **Gemi Leads 2.0 — A7: κανονικά μεταδεδομένα `CompanyActivity` και ασφαλές upsert (2026-09-15).**
   Migration `0035_companyactivity_canonical_metadata`, `gemiapp/ingestion/activities.py`,
   `manage.py backfill_gemi_company_activities`, `manage.py report_gemi_activity_matching_parity`:
@@ -405,8 +422,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: A8** (cutover καταλόγου ΚΑΔ) κατά το
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του A7.
+- **Gemi Leads 2.0 — επόμενο πακέτο: A9** κατά το `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του A8.
+- **Release gate για το A8 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0036` δημιουργεί μόνο τον
+  πίνακα `ActivityCodeKadLink`. Στο release (μετά το A5 sync σε staging): `reconcile_gemi_kad_catalogue
+  --dry-run`, κανονικό, δεύτερο (0 αλλαγές), `--list-radar-criteria`. Η αναφορά κατάταξης ΚΑΔ και κριτηρίων
+  Radars με πραγματικά reference data είναι προϋπόθεση για οποιοδήποτε cutover του επιλογέα
+  (`GEMI_KAD_PICKER_CURRENT_TAXONOMY_ONLY`) ή migration κριτηρίων.
 - **Release gate για το A7 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0035` αφαιρεί τον
   πλήρη unique και δημιουργεί δύο partial unique indexes στο `CompanyActivity` (σύντομο κλείδωμα εγγραφών
   σε PostgreSQL· μέγεθος πίνακα production άγνωστο). Στο release: migration, `backfill_gemi_company_activities
@@ -459,7 +480,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-15 — Gemi Leads 2.0 A7 (κανονικά μεταδεδομένα `CompanyActivity`, ασφαλές upsert).** Νέα:
+- **2026-09-15 — Gemi Leads 2.0 A8 (συμφιλίωση καταλόγου ΚΑΔ).** Νέα: `ActivityCodeKadLink`
+  (`gemiapp/models.py`), migration `0036_activitycode_kad_links.py`, `gemiapp/ingestion/kad_catalogue.py`,
+  `manage.py reconcile_gemi_kad_catalogue`, `gemiapp/test_gemi_kad_catalogue.py`. Αλλαγές: `views.py`
+  (`kad_search` μέσω `kad_picker_queryset`, ίδιο αποτέλεσμα με το flag 0), `admin.py` (read-only),
+  `config/settings.py` και `.env.example` (flag = 0). Επαλήθευση: 940 tests OK, `check` /
+  `makemigrations --check` / build:css καθαρά, forward → dry-run → reconcile → δεύτερο → reverse → reapply
+  στο αντίγραφο της dev βάσης με parity επιλογέα/καταλόγου/κριτηρίων/matching. Deploy, schedule, tasks,
+  billing και services αμετάβλητα.
+- **2026-09-15 — Gemi Leads 2.0 A7 (κανονικά μεταδεδομένα `CompanyActivity`, ασφαλές upsert).** Commit `c9e5dfa`. Νέα:
   migration `0035_companyactivity_canonical_metadata.py`, `gemiapp/ingestion/activities.py`,
   `manage.py backfill_gemi_company_activities`, `manage.py report_gemi_activity_matching_parity`,
   `gemiapp/test_gemi_company_activities.py`. Αλλαγές: `models.py` (`CompanyActivity`), `services.py`
