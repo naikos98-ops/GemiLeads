@@ -144,6 +144,24 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — B1: θεμέλιο Signals (2026-09-16).** Πρώτο πακέτο του Stage B. Migration
+  `0039_company_signal`, `gemiapp/company_signals.py`:
+  - `CompanySignal`: ένα επιχειρηματικό γεγονός ανά εταιρεία — **γεγονός συστήματος, όχι πελάτη** (καμία
+    σχέση με χρήστη). Πεδία: company (PROTECT), signal_type, source_type, rule_version, dedupe_key (unique),
+    confidence (decimal 0–1 με db constraint), mode (shadow/live), effective_date/effective_at/
+    effective_precision, detected_at, created_at/updated_at. **Κανένα payload, καμία PII.**
+  - **Ταυτότητα γεγονότος:** SHA-256 πάνω σε (έκδοση κλειδιού, τύπος, αριθμός ΓΕΜΗ, `event_key` του
+    producer). **Εκτός** ταυτότητας: pk, detected_at, job id, τυχαίες τιμές, mode και rule_version — ώστε
+    retry, επανεπεξεργασία, νέα έκδοση κανόνα και προαγωγή shadow→live να μη διπλασιάζουν το γεγονός.
+  - **Registry κανόνων** (`SIGNAL_RULES`): ένα σημείο για τα `name:vN`. Τύπος χωρίς κανόνα = ταξινομία μόνο
+    και **δεν καταγράφεται**. Μόνο `new_company:v1` είναι δηλωμένος (υλοποίηση στο B2).
+  - **Χρόνος:** `detected_at` = πότε το είδε το Gemi Leads (δεν ξαναγράφεται ποτέ). Ο χρόνος της πηγής
+    κρατιέται στην ακρίβεια που δίνει η πηγή — ημερομηνία ως ημερομηνία, **ποτέ πλασματικά μεσάνυχτα** —
+    με db constraint που επιβάλλει τη συνέπεια precision/πεδίων.
+  - **Shadow/Live** ρητά, με explicit `promote_company_signal` (τίποτα δεν προάγει αυτόματα).
+  - **Κανένας producer, κανένα schedule, μηδέν γραμμές μετά τη migration.** Τα Signals **δεν** συνδέονται με
+    Radars/digests/ειδοποιήσεις — αυτό ξεκινά στο B2.
+  - 27 νέα tests· **1.025 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
 - **Gemi Leads 2.0 — A10: Discovery v2 σε shadow (2026-09-16).** Τελευταίο πακέτο του Stage A. Migration
   `0038_gemi_discovery`, `gemiapp/ingestion/discovery.py`, `manage.py run_gemi_discovery_v2`,
   `manage.py bootstrap_gemi_discovery_v2`, `run_gemi_discovery_v2_shadow_task` (**όχι** στο `apps.SCHEDULES`):
@@ -471,8 +489,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — το Stage A (Data Foundation) ολοκληρώθηκε με το A10· επόμενο πακέτο: B1** κατά το
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του A10.
+- **Gemi Leads 2.0 — το Stage A (Data Foundation) ολοκληρώθηκε με το A10· επόμενο πακέτο: B2**
+  (παραγωγή σημάτων `NEW_COMPANY` από τα ευρήματα του Discovery v2) κατά το
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του B1.
+- **Release gate για το B1 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0039` δημιουργεί μόνο τον
+  πίνακα `CompanySignal`, ο οποίος μένει **άδειος**: κανένας detector, κανένα task, καμία σύνδεση με πελάτες.
+  Ιστορικά σήματα από το B2 πρέπει να δημιουργούνται σε `shadow` ώστε να μη γίνουν ποτέ ειδοποιήσιμα.
 - **Release gate για το A10 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0038` δημιουργεί μόνο
   τους πίνακες discovery. Στο release: migration, `bootstrap_gemi_discovery_v2` (επαληθευμένη σάρωση),
   μετά καθημερινές shadow εκτελέσεις και `run_gemi_discovery_v2 --compare <ημερομηνία>`. **Το Discovery v2
@@ -540,7 +562,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-16 — Gemi Leads 2.0 A10 (Discovery v2 σε shadow· τέλος Stage A).** Νέα: `GemiDiscoveryCursor`,
+- **2026-09-16 — Gemi Leads 2.0 B1 (θεμέλιο Signals· αρχή Stage B).** Νέα: `CompanySignal`
+  (`gemiapp/models.py`), migration `0039_company_signal.py`, `gemiapp/company_signals.py` (ταξινομία,
+  ταυτότητα γεγονότος, registry κανόνων, υπηρεσία εγγραφής), `gemiapp/test_company_signals.py`. Αλλαγές:
+  `admin.py` (read-only). Επαλήθευση: 1.025 tests OK, `check` / `makemigrations --check` / build:css καθαρά,
+  forward → άδειος πίνακας → parity → reverse → reapply στο αντίγραφο της dev βάσης. Importer, discovery,
+  services, views, tasks, schedules και billing αμετάβλητα.
+- **2026-09-16 — Gemi Leads 2.0 A10 (Discovery v2 σε shadow· τέλος Stage A).** Commit `a4294b7`. Νέα: `GemiDiscoveryCursor`,
   `GemiDiscoveryRun`, `GemiDiscoveryObservation` (`gemiapp/models.py`), migration `0038_gemi_discovery.py`,
   `gemiapp/ingestion/discovery.py`, `manage.py run_gemi_discovery_v2`, `manage.py bootstrap_gemi_discovery_v2`,
   `gemiapp/test_gemi_discovery.py`. Αλλαγές: `tasks.py` (shadow task χωρίς schedule), `admin.py` (read-only),

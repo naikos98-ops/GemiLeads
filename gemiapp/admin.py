@@ -7,6 +7,7 @@ from .models import (
     CompanyMonitoring,
     CompanyMonitoringReason,
     CompanyOutreach,
+    CompanySignal,
     CustomerRadar,
     DigestDelivery,
     DigestPreference,
@@ -226,6 +227,36 @@ class GemiReferenceSyncRunAdmin(admin.ModelAdmin):
     list_display = ("started_at", "status", "families", "finished_at")
     list_filter = ("status",)
     readonly_fields = ("status", "families", "counts", "anomalies", "error_message", "started_at", "finished_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CompanySignal)
+class CompanySignalAdmin(admin.ModelAdmin):
+    """Inspection only. Signals are detected events: they are written by detectors (from B2) and must
+    never be added or edited by hand, which would misrepresent what was observed."""
+
+    list_display = ("gemi_number", "signal_type", "mode", "confidence", "effective", "detected_at", "rule_version", "source_type")
+    list_filter = ("signal_type", "mode", "source_type", "effective_precision")
+    list_select_related = ("company",)
+    search_fields = ("company__gemi_number", "dedupe_key")
+    date_hierarchy = "detected_at"
+    readonly_fields = (
+        "company", "signal_type", "source_type", "rule_version", "dedupe_key", "confidence", "mode",
+        "effective_date", "effective_at", "effective_precision", "detected_at", "created_at", "updated_at",
+    )
+
+    @admin.display(description="Αρ. ΓΕΜΗ", ordering="company__gemi_number")
+    def gemi_number(self, obj):
+        return obj.company.gemi_number
+
+    @admin.display(description="Χρόνος γεγονότος")
+    def effective(self, obj):
+        return obj.effective_at or obj.effective_date or "—"
 
     def has_add_permission(self, request):
         return False

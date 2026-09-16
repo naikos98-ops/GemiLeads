@@ -4,6 +4,10 @@ from django.db import models
 from django.db.models.functions import Lower
 from django.utils import timezone
 
+# The signal taxonomy lives in one module (gemiapp.company_signals) and is imported here for the field
+# choices; that module never imports models at import time, so there is no cycle.
+from . import company_signals
+
 
 class ActivityCode(models.Model):
     code = models.CharField("ΚΑΔ", max_length=20, unique=True)
@@ -853,6 +857,66 @@ class ActivityCodeKadLink(models.Model):
         verbose_name = "ActivityCode ↔ GEMI KAD link"
         verbose_name_plural = "ActivityCode ↔ GEMI KAD links"
         constraints = [models.UniqueConstraint(fields=["activity_code", "gemi_kad"], name="unique_activity_code_kad_link")]
+
+
+class CompanySignal(models.Model):
+    """One business event detected for one company from GEMI-derived evidence (B1).
+
+    A company-level fact, never tenant-owned: the same event may matter to many customers and Radars, so
+    nothing here references a user. gemiapp.company_signals documents the taxonomy, the event identity, the
+    rule registry and the writer service; B1 has no producers, so the table stays empty.
+
+    The row holds identifiers, an event type, dates, a rule version and a confidence -- no payload, no
+    evidence blob, and therefore no persons, contact data or raw_data. ``company`` is PROTECTed because a
+    signal is irreplaceable history and the application never deletes real GEMI companies (only the demo
+    seed deletes its own prefixed rows).
+    """
+
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="signals")
+    signal_type = models.CharField(max_length=32, choices=company_signals.SIGNAL_TYPE_CHOICES)
+    # Which evidence pipeline produced it, and the detector semantics that interpreted it ("name:vN").
+    source_type = models.CharField(max_length=24, choices=company_signals.SOURCE_TYPE_CHOICES)
+    rule_version = models.CharField(max_length=64)
+    # The event's identity: see gemiapp.company_signals.build_dedupe_key. Independent of mode, rule
+    # version, detection time and any job, so one real-world event exists exactly once.
+    dedupe_key = models.CharField(max_length=64, unique=True)
+    confidence = models.DecimalField(max_digits=5, decimal_places=4)
+    mode = models.CharField(max_length=8, choices=company_signals.MODE_CHOICES)
+    # When the source says the event happened, at the precision the source actually provides.
+    effective_date = models.DateField(null=True, blank=True)
+    effective_at = models.DateTimeField(null=True, blank=True)
+    effective_precision = models.CharField(max_length=8, choices=company_signals.PRECISION_CHOICES)
+    # When Gemi Leads first detected it; set once and never reset by a later detection.
+    detected_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-detected_at", "-id"]
+        verbose_name = "Company signal"
+        indexes = [
+            models.Index(fields=["company", "-detected_at"], name="signal_company_detected_idx"),
+            models.Index(fields=["signal_type", "-detected_at"], name="signal_type_detected_idx"),
+            models.Index(fields=["mode", "-detected_at"], name="signal_mode_detected_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(confidence__gte=0) & models.Q(confidence__lte=1),
+                name="company_signal_confidence_range",
+            ),
+            # No fabricated time-of-day: the precision and the two effective fields must agree.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(effective_precision="none", effective_date__isnull=True, effective_at__isnull=True)
+                    | models.Q(effective_precision="date", effective_date__isnull=False, effective_at__isnull=True)
+                    | models.Q(effective_precision="datetime", effective_date__isnull=True, effective_at__isnull=False)
+                ),
+                name="company_signal_effective_precision_consistent",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.signal_type} · company #{self.company_id} · {self.mode}"
 
 
 class GemiDiscoveryRun(models.Model):
