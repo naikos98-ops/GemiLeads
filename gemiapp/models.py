@@ -1212,6 +1212,61 @@ class CompanyMonitoringReason(models.Model):
         return f"monitoring #{self.monitoring_id} · {self.reason} · {'active' if self.active else 'inactive'}"
 
 
+class CompanySignalSnapshotEvidence(models.Model):
+    """The consecutive snapshot pair and the exact subject a Tier-1 change signal was produced from (B5).
+
+    Like the discovery evidence of B2, provenance lives beside the generic CompanySignal rather than in it.
+    Structured facts only -- source ids and KAD identity, never descriptions, names or snapshot JSON -- so a
+    later consumer can tell what changed without reparsing history; the snapshots stay the full audit trail.
+    Both snapshots are PROTECTed: history cited by a signal cannot disappear. The row follows its signal.
+    """
+
+    STATUS = "status"
+    KAD = "kad"
+    LEGAL_FORM = "legal_form"
+    MUNICIPALITY = "municipality"
+    SUBJECT_KINDS = [(STATUS, "Status"), (KAD, "KAD"), (LEGAL_FORM, "Legal form"), (MUNICIPALITY, "Municipality")]
+
+    signal = models.OneToOneField(CompanySignal, on_delete=models.CASCADE, related_name="snapshot_evidence")
+    previous_snapshot = models.ForeignKey(
+        "CompanySnapshot", on_delete=models.PROTECT, related_name="signal_evidence_as_previous",
+    )
+    current_snapshot = models.ForeignKey(
+        "CompanySnapshot", on_delete=models.PROTECT, related_name="signal_evidence_as_current",
+    )
+    subject_kind = models.CharField(max_length=16, choices=SUBJECT_KINDS)
+    # STATUS / LEGAL_FORM / MUNICIPALITY: the GEMI source ids on each side of the transition.
+    before_source_id = models.CharField(max_length=32, null=True, blank=True)
+    after_source_id = models.CharField(max_length=32, null=True, blank=True)
+    # KAD: the presence identity (code, version); the version may be null when the source gives none.
+    activity_code = models.CharField(max_length=32, null=True, blank=True)
+    kad_version = models.CharField(max_length=32, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Company signal snapshot evidence"
+        verbose_name_plural = "Company signal snapshot evidence"
+        indexes = [models.Index(fields=["subject_kind"], name="signal_snapshot_subject_idx")]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(subject_kind="kad", activity_code__isnull=False, before_source_id__isnull=True,
+                             after_source_id__isnull=True)
+                    | models.Q(subject_kind__in=["status", "legal_form", "municipality"], activity_code__isnull=True,
+                               kad_version__isnull=True, before_source_id__isnull=False, after_source_id__isnull=False)
+                ),
+                name="signal_snapshot_subject_consistent",
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(previous_snapshot=models.F("current_snapshot")),
+                name="signal_snapshot_pair_distinct",
+            ),
+        ]
+
+    def __str__(self):
+        return f"signal #{self.signal_id} · snapshots #{self.previous_snapshot_id}→#{self.current_snapshot_id}"
+
+
 class GemiRefreshRun(models.Model):
     """One execution of the monitored company refresh collector (B4): what it planned, fetched and stored.
 

@@ -14,8 +14,9 @@ NEW_COMPANY, STATUS_CHANGED, KAD_ADDED, KAD_REMOVED, LEGAL_FORM_CHANGED, LOCATIO
 approved later corporate events. Listing a type is taxonomy only: without a registered rule the service
 refuses to record it, so a type cannot be produced by accident.
 
-``SOURCE_TYPE_CHOICES`` names the evidence pipeline: DISCOVERY exists today (A10); SNAPSHOT_DIFF,
-DOCUMENT_METADATA and DOCUMENT_ANALYSIS are declared but no producer exists. A source type outside the
+``SOURCE_TYPE_CHOICES`` names the evidence pipeline: DISCOVERY (A10, produced by B2) and SNAPSHOT_DIFF (B3
+snapshots, produced by B5) exist; DOCUMENT_METADATA and DOCUMENT_ANALYSIS are declared but no producer
+exists. A source type outside the
 list is refused, so a new pipeline needs a deliberate code change rather than an arbitrary string.
 
 Event identity (``dedupe_key``)
@@ -185,6 +186,13 @@ SIGNAL_RULES: tuple[SignalRule, ...] = (
     # company for the first time. Not "incorporated today" -- a late publication is just as much a first
     # observation.
     SignalRule(NEW_COMPANY, "new_company:v1", frozenset({DISCOVERY}), implemented=True),
+    # Implemented by gemiapp.snapshot_change_signals (B5): field-aware comparison of two consecutive B3
+    # company snapshots. A changed snapshot hash alone never produces any of these.
+    SignalRule(STATUS_CHANGED, "status_changed:v1", frozenset({SNAPSHOT_DIFF}), implemented=True),
+    SignalRule(KAD_ADDED, "kad_added:v1", frozenset({SNAPSHOT_DIFF}), implemented=True),
+    SignalRule(KAD_REMOVED, "kad_removed:v1", frozenset({SNAPSHOT_DIFF}), implemented=True),
+    SignalRule(LEGAL_FORM_CHANGED, "legal_form_changed:v1", frozenset({SNAPSHOT_DIFF}), implemented=True),
+    SignalRule(LOCATION_CHANGED, "location_changed:v1", frozenset({SNAPSHOT_DIFF}), implemented=True),
 )
 
 SIGNAL_TYPES = tuple(value for value, _ in SIGNAL_TYPE_CHOICES)

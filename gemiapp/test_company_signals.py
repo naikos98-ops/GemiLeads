@@ -156,11 +156,16 @@ class TaxonomyAndRegistryTests(TestCase):
         with_rules = {rule.signal_type for rule in SIGNAL_RULES}
         self.assertEqual(with_rules | FUTURE_SIGNAL_TYPES, set(SIGNAL_TYPES))
         self.assertFalse(with_rules & FUTURE_SIGNAL_TYPES)
-        self.assertEqual(with_rules, {NEW_COMPANY})  # B2 adds the first detector
+        # B2 implements NEW_COMPANY; B5 implements the five Tier-1 snapshot-diff types. Everything else, the
+        # later corporate events, stays taxonomy only.
+        self.assertEqual(with_rules, {
+            NEW_COMPANY, STATUS_CHANGED, KAD_ADDED, "kad_removed", "legal_form_changed", "location_changed",
+        })
         rule = rule_for(NEW_COMPANY)
-        # B2 implements this detector (gemiapp.new_company_signals); every other type stays taxonomy only.
         self.assertEqual((rule.rule_version, rule.source_types, rule.implemented), ("new_company:v1", frozenset({DISCOVERY}), True))
-        self.assertIsNone(rule_for(STATUS_CHANGED))
+        rule = rule_for(STATUS_CHANGED)
+        self.assertEqual((rule.rule_version, rule.source_types, rule.implemented), ("status_changed:v1", frozenset({SNAPSHOT_DIFF}), True))
+        self.assertIsNone(rule_for("capital_increase"))
 
     def test_the_registry_rejects_duplicates_and_malformed_versions(self):
         from .company_signals import SignalRule, _validate_registry
@@ -179,7 +184,7 @@ class TaxonomyAndRegistryTests(TestCase):
     def test_a_type_without_a_rule_cannot_be_recorded(self):
         company = make_company()
         with self.assertRaises(ValueError):
-            record(company, signal_type=STATUS_CHANGED)
+            record(company, signal_type="capital_increase")  # a later corporate event: taxonomy only
         with self.assertRaises(ValueError):
             record(company, source_type=SNAPSHOT_DIFF)  # not an allowed source for this rule
         for bad in ({"signal_type": "invented"}, {"source_type": "invented"}, {"mode": "maybe"}):

@@ -9,6 +9,7 @@ from .models import (
     CompanyOutreach,
     CompanySignal,
     CompanySignalDiscoveryEvidence,
+    CompanySignalSnapshotEvidence,
     CompanySnapshot,
     CustomerRadar,
     DigestDelivery,
@@ -311,6 +312,35 @@ class CompanySignalDiscoveryEvidenceAdmin(admin.ModelAdmin):
     list_select_related = ("signal", "discovery_observation")
     search_fields = ("signal__company__gemi_number", "discovery_observation__gemi_number")
     readonly_fields = ("signal", "discovery_observation", "created_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CompanySignalSnapshotEvidence)
+class CompanySignalSnapshotEvidenceAdmin(admin.ModelAdmin):
+    """Inspection only. Written by the B5 change detector; the snapshot pair and subject are what make a
+    change signal auditable and must never be edited by hand."""
+
+    list_display = (
+        "signal", "signal_type", "gemi_number", "previous_snapshot", "current_snapshot", "subject_kind",
+        "before_source_id", "after_source_id", "activity_code", "kad_version", "created_at",
+    )
+    list_filter = ("subject_kind",)
+    list_select_related = ("signal", "signal__company", "previous_snapshot", "current_snapshot")
+    search_fields = ("signal__company__gemi_number", "activity_code")
+    readonly_fields = tuple(field.name for field in CompanySignalSnapshotEvidence._meta.fields)
+
+    @admin.display(description="Τύπος σήματος", ordering="signal__signal_type")
+    def signal_type(self, obj):
+        return obj.signal.signal_type
+
+    @admin.display(description="Αρ. ΓΕΜΗ", ordering="signal__company__gemi_number")
+    def gemi_number(self, obj):
+        return obj.signal.company.gemi_number
 
     def has_add_permission(self, request):
         return False

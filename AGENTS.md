@@ -144,6 +144,32 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — B5: ανίχνευση αλλαγών snapshots και σήματα Tier-1 (2026-09-16).** Migration
+  `0043_company_signal_snapshot_evidence`, `gemiapp/snapshot_change_signals.py`,
+  `manage.py materialize_snapshot_change_signals`:
+  - **Detector** (`detect_snapshot_changes`, καμία query/εγγραφή) και **materializer** χωριστά. Συγκρίνεται
+    μόνο ο **άμεσος** προκάτοχος (observed_at, id). Baseline → κανένα σήμα. Διαφορετικό/μη υποστηριζόμενο
+    schema version → `incompatible_snapshot_schema`, τίποτα δεν μαντεύεται.
+  - **Ένα αλλαγμένο hash δεν είναι ποτέ σήμα από μόνο του**: οι κανόνες είναι field-aware.
+  - **STATUS / LEGAL_FORM / LOCATION (δήμος):** μόνο known → διαφορετικό known· null ↔ known σιωπηλό.
+    STATUS: effective = `lastStatusChange` μόνο αν VALID· οι άλλοι δύο: precision NONE. Νομός, πόλη, ΤΚ μόνα
+    τους δεν είναι LOCATION_CHANGED.
+  - **KAD:** ταυτότητα παρουσίας `(code, kad_version)`· τύπος/λεκτικό/περίοδος δεν μετράνε. Effective =
+    η μία VALID ημερομηνία στην οποία συμφωνούν οι εγγραφές (dtFrom για add, dtTo για remove), αλλιώς NONE.
+  - **Version quality:** ίδιος κωδικός null ↔ known version → καταστολή (όχι ψεύτικο remove+add).
+  - **Μετάβαση ΚΑΔ 2008→2026** (`KAD_TAXONOMY_TRANSITION_DATE = 2026-03-01`): καταστέλλεται μόνο
+    removal 2008 με dtTo ακριβώς 2026-03-01 όταν το τρέχον snapshot έχει εγγραφή 2026 με dtFrom 2026-03-01,
+    και addition 2026 με dtFrom 2026-03-01 όταν το προηγούμενο έχει εγγραφή 2008 με dtTo 2026-03-01.
+    Χωρίς crosswalk, περιγραφές ή fuzzy matching· άλλες ημερομηνίες δεν καταστέλλονται ποτέ.
+  - **Ταυτότητα γεγονότος v1:** `{"transition": {from_state, to_state, observed_at UTC}, "subject": ...}` —
+    rerun = ίδιο σήμα, A→B→A→B = ξεχωριστή δεύτερη εμφάνιση. `detected_at = current.observed_at`.
+  - **Πάντα SHADOW**, SNAPSHOT_DIFF, confidence 1.0000· καμία παράμετρος mode, κανένα `--live`.
+  - `CompanySignalSnapshotEvidence`: signal OneToOne (CASCADE), previous/current snapshot **PROTECT**,
+    `subject_kind` + source ids ή (activity_code, kad_version)· καμία JSON, καμία περιγραφή.
+  - Το B4 **δεν** καλεί τον detector· δεν υπάρχει task ούτε schedule.
+  - Αντίγραφο dev βάσης: 0 snapshots ⇒ **0 transitions, 0 σήματα** (dry run και πραγματική εκτέλεση).
+  - 62 νέα tests· **1.221 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
 - **Gemi Leads 2.0 — B4: refresh collector παρακολουθούμενων εταιρειών (2026-09-16).** Migration
   `0042_gemi_refresh_run`, `gemiapp/ingestion/refresh.py`, `manage.py run_gemi_company_refresh`:
   - **Αλυσίδα:** due monitoring (A9) → plan → GemiClient lane `MONITORED_REFRESH` (A1) → A2 → `observed_at`
@@ -570,9 +596,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: B5** (ανίχνευση αλλαγών μεταξύ διαδοχικών snapshots και σήματα
-  Tier-1: STATUS_CHANGED, KAD_ADDED, KAD_REMOVED, LEGAL_FORM_CHANGED, LOCATION_CHANGED) κατά
-  το `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του B4.
+- **Gemi Leads 2.0 — επόμενο πακέτο: B6 — company timeline** (το τελευταίο βήμα της Phase B στο §118 του
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του B5.
+- **Release gate για το B5 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0043` δημιουργεί μόνο
+  τον πίνακα evidence, που μένει **άδειος**. Στο release, μετά από πραγματικά snapshots του B4:
+  `materialize_snapshot_change_signals --dry-run`, έλεγχος ακρίβειας των shadow σημάτων (ιδίως γύρω από
+  τη μετάβαση ΚΑΔ 2026-03-01), και μόνο μετά ξεχωριστή απόφαση για σύνδεση B4→B5 ή LIVE σήματα.
 - **Release gate για το B4 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0042` δημιουργεί μόνο
   τον πίνακα `GemiRefreshRun`, που μένει **άδειος**: το deploy του κώδικα δεν κάνει καμία κλήση ΓΕΜΗ.
   Πριν από οποιαδήποτε εκτέλεση χρειάζεται **G6** (επαλήθευση request-budget) πέρα από τα G0/G1, και στο
