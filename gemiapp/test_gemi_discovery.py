@@ -5,7 +5,7 @@ Fixture GEMI pages only -- no live call (NoNetworkMixin guards urlopen).
 
 import copy
 import urllib.parse
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from io import StringIO
 from unittest.mock import patch
 
@@ -415,6 +415,8 @@ class ComparisonTests(NoNetworkMixin, TestCase):
         known_company(999, older)
         known_company(998, older)
         run_discovery(client=client, policy=POLICY, as_of=AS_OF)
+        # The comparison selects runs by their start date; pin it to AS_OF instead of the wall clock.
+        GemiDiscoveryRun.objects.update(started_at=timezone.make_aware(datetime.combine(AS_OF, time(12, 0))))
         Company.objects.filter(gemi_number="1002").delete()  # v2 saw it; legacy has not imported it
 
         report = compare_with_legacy(AS_OF)
