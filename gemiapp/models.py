@@ -1419,6 +1419,97 @@ class GemiReferenceSyncRun(models.Model):
         return f"{self.started_at:%Y-%m-%d %H:%M} {self.status}"
 
 
+class Organization(models.Model):
+    """A customer organization using Gemi Leads (C1, blueprint §22 `organizations`): the future tenant.
+
+    Foundation only. Nothing is owned by an organization yet: Radars, leads, digests and subscriptions still
+    belong to a User, and no existing query reads this table. Organizations are created only through
+    gemiapp.organizations.create_organization, which also creates the owner membership and the profile.
+
+    A customer organization is not a GEMI ``Company``. The two are unrelated on purpose: a tenant may be a
+    foreign business or an agency, and a monitored company is never a customer by virtue of being monitored.
+    No billing, Stripe, Radar, lead or signal data lives here.
+    """
+
+    name = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "id"]
+        constraints = [models.CheckConstraint(condition=~models.Q(name=""), name="organization_name_not_blank")]
+
+    def __str__(self):
+        return self.name
+
+
+class OrganizationMember(models.Model):
+    """A user's membership of an organization with one role (C1, blueprint §22 `organization_members`, §64).
+
+    Taxonomy and invariants only: C1 grants no permission, and no view, middleware or session reads a
+    membership. Multi-member organizations stay blocked by release gate G5 (tenant isolation) -- nothing in
+    the product lets a second member join or act.
+    """
+
+    OWNER = "owner"
+    ADMIN = "admin"
+    SALES_MANAGER = "sales_manager"
+    SALES_USER = "sales_user"
+    VIEWER = "viewer"
+    ROLES = [
+        (OWNER, "Owner"), (ADMIN, "Admin"), (SALES_MANAGER, "Sales manager"), (SALES_USER, "Sales user"),
+        (VIEWER, "Viewer"),
+    ]
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="members")
+    # CASCADE like every other user-owned row: deleting an account removes its memberships, never the tenant.
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="organization_memberships")
+    role = models.CharField(max_length=16, choices=ROLES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["organization_id", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["organization", "user"], name="unique_organization_member"),
+            models.CheckConstraint(
+                condition=models.Q(role__in=["owner", "admin", "sales_manager", "sales_user", "viewer"]),
+                name="organization_member_role_valid",
+            ),
+        ]
+        indexes = [models.Index(fields=["user", "organization"], name="org_member_user_idx")]
+
+    def __str__(self):
+        return f"{self.organization_id} · user #{self.user_id} · {self.role}"
+
+
+class OrganizationProfile(models.Model):
+    """What the customer organization declares about its own business (C1, blueprint §23 `organization_profiles`).
+
+    The §23 onboarding answer to «Τι πουλάς;»: business, products, target and location, as the customer states
+    them. Free text, deliberately: it is declared context, not trusted structured data, and nothing matches,
+    filters or scores with it. Structured targeting (KAD, industry groups, areas, legal forms, signal types)
+    belongs to the ICP (§24) and to Radars (§25), never here. No personal contact data.
+    """
+
+    organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name="profile")
+    # «Business» -- what kind of business the organization is, e.g. "Insurance broker".
+    business = models.CharField(max_length=200, blank=True)
+    # «Products» -- what it sells, one per line as the customer wrote them.
+    products = models.CharField(max_length=1000, blank=True)
+    # «Target» -- the kinds of customers it sells to, in its own words ("Transport, delivery, restaurants").
+    target_customers = models.CharField(max_length=1000, blank=True)
+    # «Location» -- the area it declares it serves ("Attica"). Not a geographic filter.
+    location = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Organization profile"
+
+    def __str__(self):
+        return f"profile · organization #{self.organization_id}"
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 

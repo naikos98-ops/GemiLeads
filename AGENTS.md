@@ -144,6 +144,23 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — C1: θεμέλιο οργανισμών (2026-09-16).** Migration `0044_organization_foundation`,
+  `gemiapp/organizations.py`:
+  - Μοντέλα `Organization`, `OrganizationMember` (ρόλοι §22/§64: owner, admin, sales_manager, sales_user,
+    viewer· unique (organization, user)), `OrganizationProfile` (§23: business, products, target_customers,
+    location — δηλωμένο ελεύθερο κείμενο, **όχι** targeting, όχι ICP/Radar).
+  - **Κανένα δεδομένο δεν έχει γίνει organization-owned.** Radars, leads, RadarMatch, DigestPreference,
+    DigestDelivery και `UserSubscription`/billing/entitlements μένουν **User-owned**. Κανένα FK προς
+    organization σε υπάρχον μοντέλο· καμία δημιουργία οργανισμού για υπάρχοντες χρήστες (dev copy: 0/0/0).
+  - Organization ≠ GEMI `Company`: καμία σχέση μεταξύ τους.
+  - Δημιουργία **μόνο** μέσω `create_organization` (ατομικά: organization + OWNER + profile).
+  - **Multi-member οργανισμοί μπλοκαρισμένοι από το G5 (tenant isolation):** το `add_organization_member`
+    είναι εσωτερικό και δεν καλείται από πουθενά· το admin δεν προσθέτει/αλλάζει τίποτα. Κανένα URL, view,
+    middleware, session/current organization, πρόσκληση ή UI.
+  - Το επόμενο πακέτο δεν πρέπει να περάσει κατευθείαν σε organization-owned production queries: η
+    μεταφορά ιδιοκτησίας θέλει δικό της, ρητό migration/cutover πακέτο (και μετά G5 για πολλά μέλη).
+  - 21 νέα tests· **1.276 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
 - **Gemi Leads 2.0 — B6: read model χρονολογίου εταιρείας (2026-09-16).** `gemiapp/company_timeline.py`,
   `manage.py show_company_timeline` (εσωτερικό, μόνο ανάγνωση). **Κανένα νέο μοντέλο, καμία migration.**
   - **Read model, όχι πίνακας:** το `CompanySignal` μένει η μόνη πηγή αλήθειας· το `get_company_timeline`
@@ -614,9 +631,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — η Phase B (Historical Engine) ολοκληρώθηκε με το B6· επόμενο πακέτο: C1 — Organization
-  profile** (Phase C, βήμα 20 στο §118 του `docs/GEMI_LEADS_2_BLUEPRINT.md`, με τα §22–23: organizations,
-  μέλη/ρόλοι, `organization_profiles`)· αναμένει έγκριση του B6.
+- **Gemi Leads 2.0 — επόμενο πακέτο: C2 — ICP (Ideal Customer Profile)** (Phase C, βήμα 21 στο §118 και §24
+  του `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C1. Η μεταφορά ιδιοκτησίας δεδομένων σε
+  οργανισμούς και το G5 παραμένουν ανοιχτά.
+- **Release gate για το C1 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0044` δημιουργεί τρεις
+  **άδειους** πίνακες· καμία data migration. Multi-member ενεργοποίηση μόνο μετά το **G5**.
 - **Release gate για το B5 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0043` δημιουργεί μόνο
   τον πίνακα evidence, που μένει **άδειος**. Στο release, μετά από πραγματικά snapshots του B4:
   `materialize_snapshot_change_signals --dry-run`, έλεγχος ακρίβειας των shadow σημάτων (ιδίως γύρω από

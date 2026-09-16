@@ -29,6 +29,9 @@ from .models import (
     GemiReferenceSyncRun,
     GemiSourceRecord,
     ImportRun,
+    Organization,
+    OrganizationMember,
+    OrganizationProfile,
     OutreachSuppression,
     PersonSuppression,
     RadarMatch,
@@ -434,3 +437,37 @@ class EmailEngagementEventAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+class OrganizationReadOnlyAdmin(admin.ModelAdmin):
+    """Inspection only (C1). Organizations are created through gemiapp.organizations.create_organization so
+    the owner membership and profile always exist, and members cannot be added here: multi-member
+    organizations stay blocked by release gate G5."""
+
+    def get_readonly_fields(self, request, obj=None):
+        return [field.name for field in self.model._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Organization)
+class OrganizationAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("name", "id", "created_at", "updated_at")
+    search_fields = ("name",)
+
+
+@admin.register(OrganizationMember)
+class OrganizationMemberAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("organization", "user", "role", "created_at")
+    list_filter = ("role",)
+    list_select_related = ("organization", "user")
+
+
+@admin.register(OrganizationProfile)
+class OrganizationProfileAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("organization", "business", "location", "updated_at")
+    list_select_related = ("organization",)
