@@ -1031,6 +1031,31 @@ class GemiDiscoveryObservation(models.Model):
         return f"{self.gemi_number} · {self.classification}"
 
 
+class CompanySignalDiscoveryEvidence(models.Model):
+    """The discovery observation a NEW_COMPANY signal was produced from (B2).
+
+    Kept beside CompanySignal rather than inside it: a signal stays generic, and each producer brings its
+    own provenance table instead of adding source-specific columns for every future pipeline. The link is
+    to the *first* eligible observation of that company and is never replaced by a later sighting.
+
+    ``discovery_observation`` is PROTECTed so discovery evidence cannot disappear under a signal that cites
+    it; the evidence row itself follows its signal.
+    """
+
+    signal = models.OneToOneField(CompanySignal, on_delete=models.CASCADE, related_name="discovery_evidence")
+    discovery_observation = models.ForeignKey(
+        GemiDiscoveryObservation, on_delete=models.PROTECT, related_name="produced_signals",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Company signal discovery evidence"
+        verbose_name_plural = "Company signal discovery evidence"
+
+    def __str__(self):
+        return f"signal #{self.signal_id} · observation #{self.discovery_observation_id}"
+
+
 class CompanyMonitoring(models.Model):
     """Monitoring state of one company, shared by every customer (A9).
 

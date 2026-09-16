@@ -144,6 +144,29 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — B2: παραγωγός σημάτων NEW_COMPANY (2026-09-16).** Migration
+  `0040_company_signal_discovery_evidence`, `gemiapp/new_company_signals.py`,
+  `manage.py materialize_new_company_signals`:
+  - **Σημασία:** NEW_COMPANY = «το Gemi Leads είδε για πρώτη φορά αυτή την εταιρεία», με βάση τα ευρήματα του
+    Discovery v2. **Δεν** σημαίνει «σύσταση σήμερα»: μια καθυστερημένη δημοσίευση είναι εξίσου έγκυρο
+    NEW_COMPANY.
+  - **Επιλέξιμα ευρήματα:** παρατηρήσεις A10 με κατάταξη `new_incorporation`, `late_publication`,
+    `invalid_date` (όλες σημαίνουν «δεν υπήρχε τοπικά»). Οι `known` **ποτέ**.
+  - **Ταυτότητα:** σταθερό `event_key = {"event": "first_observed"}` → ένα γεγονός ανά εταιρεία για πάντα·
+    εκτός ταυτότητας: ημερομηνία σύστασης, run/observation id, detected_at, κατάταξη, mode, έκδοση κανόνα.
+  - **`detected_at`** = `started_at` του **παλαιότερου** run με επιλέξιμη παρατήρηση (οι παρατηρήσεις έχουν
+    μόνο `created_at`, που είναι η στιγμή μαζικής εγγραφής στο τέλος του run). Ποτέ η ώρα της εντολής, ποτέ
+    το `Company.imported_at`· επανεκτέλεση δεν το μετακινεί.
+  - **`effective_date`** = η ημερομηνία σύστασης μόνο όταν η A3 ποιότητα είναι `valid` (ακρίβεια DATE, χωρίς
+    πλασματική ώρα)· αλλιώς **καμία** ώρα πηγής (NONE) — η ημερομηνία ανίχνευσης δεν την αντικαθιστά ποτέ.
+  - **Εταιρεία που δεν υπάρχει ακόμη** (φυσιολογικό στο shadow): καμία δημιουργία Company, κανένα σήμα· η
+    παρατήρηση μένει ως εκκρεμές τεκμήριο και υλοποιείται στην επόμενη εκτέλεση, με το αρχικό `detected_at`.
+  - **Προέλευση:** `CompanySignalDiscoveryEvidence` (σήμα ↔ πρώτη επιλέξιμη παρατήρηση, PROTECT)· δεν
+    αντικαθίσταται ποτέ από μεταγενέστερη παρατήρηση.
+  - **Πάντα SHADOW.** Δεν υπάρχει παράμετρος, flag ή επιλογή εντολής που να παράγει LIVE· καμία σύνδεση με
+    Radars, digests, monitoring ή ειδοποιήσεις. Ο κανόνας `new_company:v1` είναι πλέον `implemented`.
+  - **Αντίγραφο dev βάσης: 0 παρατηρήσεις Discovery** → 0 υποψήφιες, 0 σήματα (καμία κατασκευή ιστορικού).
+  - 23 νέα tests· **1.048 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
 - **Gemi Leads 2.0 — B1: θεμέλιο Signals (2026-09-16).** Πρώτο πακέτο του Stage B. Migration
   `0039_company_signal`, `gemiapp/company_signals.py`:
   - `CompanySignal`: ένα επιχειρηματικό γεγονός ανά εταιρεία — **γεγονός συστήματος, όχι πελάτη** (καμία
@@ -489,9 +512,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — το Stage A (Data Foundation) ολοκληρώθηκε με το A10· επόμενο πακέτο: B2**
-  (παραγωγή σημάτων `NEW_COMPANY` από τα ευρήματα του Discovery v2) κατά το
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του B1.
+- **Gemi Leads 2.0 — το Stage A (Data Foundation) ολοκληρώθηκε με το A10· επόμενο πακέτο: B3** κατά το
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του B2.
+- **Release gate για το B2 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** τα σήματα NEW_COMPANY
+  παράγονται **μόνο** από ευρήματα Discovery v2, που παραμένει shadow. Άρα: πρώτα το 14ήμερο shadow gate του
+  A10 και η αξιολόγηση των διαφορών legacy/v2· μετά ξεχωριστή, ρητή απόφαση για LIVE σήματα. Καμία σύνδεση
+  με Radars/digests/monitoring πριν από αυτό.
 - **Release gate για το B1 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0039` δημιουργεί μόνο τον
   πίνακα `CompanySignal`, ο οποίος μένει **άδειος**: κανένας detector, κανένα task, καμία σύνδεση με πελάτες.
   Ιστορικά σήματα από το B2 πρέπει να δημιουργούνται σε `shadow` ώστε να μη γίνουν ποτέ ειδοποιήσιμα.
@@ -562,7 +588,16 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-16 — Gemi Leads 2.0 B1 (θεμέλιο Signals· αρχή Stage B).** Νέα: `CompanySignal`
+- **2026-09-16 — Gemi Leads 2.0 B2 (παραγωγός σημάτων NEW_COMPANY).** Νέα: `CompanySignalDiscoveryEvidence`
+  (`gemiapp/models.py`), migration `0040_company_signal_discovery_evidence.py`,
+  `gemiapp/new_company_signals.py`, `manage.py materialize_new_company_signals`,
+  `gemiapp/test_new_company_signals.py`. Αλλαγές: `company_signals.py` (ο κανόνας `new_company:v1` έγινε
+  implemented), `admin.py` (read-only), `test_company_signals.py` (δύο προσδοκίες του B1 που άλλαξε σκόπιμα
+  το B2). Επαλήθευση: 1.048 tests OK, `check` / `makemigrations --check` / build:css καθαρά, forward →
+  dry-run → υλοποίηση → δεύτερη εκτέλεση → parity → reverse → reapply στο αντίγραφο της dev βάσης (0
+  ευρήματα, άρα 0 σήματα). Importer, discovery, monitoring, services, views, tasks, schedules και billing
+  αμετάβλητα.
+- **2026-09-16 — Gemi Leads 2.0 B1 (θεμέλιο Signals· αρχή Stage B).** Commit `2b926b2`. Νέα: `CompanySignal`
   (`gemiapp/models.py`), migration `0039_company_signal.py`, `gemiapp/company_signals.py` (ταξινομία,
   ταυτότητα γεγονότος, registry κανόνων, υπηρεσία εγγραφής), `gemiapp/test_company_signals.py`. Αλλαγές:
   `admin.py` (read-only). Επαλήθευση: 1.025 tests OK, `check` / `makemigrations --check` / build:css καθαρά,

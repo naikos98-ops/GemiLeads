@@ -8,6 +8,7 @@ from .models import (
     CompanyMonitoringReason,
     CompanyOutreach,
     CompanySignal,
+    CompanySignalDiscoveryEvidence,
     CustomerRadar,
     DigestDelivery,
     DigestPreference,
@@ -257,6 +258,23 @@ class CompanySignalAdmin(admin.ModelAdmin):
     @admin.display(description="Χρόνος γεγονότος")
     def effective(self, obj):
         return obj.effective_at or obj.effective_date or "—"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CompanySignalDiscoveryEvidence)
+class CompanySignalDiscoveryEvidenceAdmin(admin.ModelAdmin):
+    """Inspection only. Written by the NEW_COMPANY producer; the link to the first discovery observation
+    is what makes a signal auditable and must never be edited by hand."""
+
+    list_display = ("signal", "discovery_observation", "created_at")
+    list_select_related = ("signal", "discovery_observation")
+    search_fields = ("signal__company__gemi_number", "discovery_observation__gemi_number")
+    readonly_fields = ("signal", "discovery_observation", "created_at")
 
     def has_add_permission(self, request):
         return False

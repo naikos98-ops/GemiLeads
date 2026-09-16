@@ -181,8 +181,10 @@ class SignalRule:
 
 # The one place detector semantics are named. A type missing here is taxonomy only and cannot be recorded.
 SIGNAL_RULES: tuple[SignalRule, ...] = (
-    # B2 implements the detector; B1 only reserves the semantics it will record under.
-    SignalRule(NEW_COMPANY, "new_company:v1", frozenset({DISCOVERY}), implemented=False),
+    # Implemented by gemiapp.new_company_signals (B2): Discovery v2 evidence that Gemi Leads observed a
+    # company for the first time. Not "incorporated today" -- a late publication is just as much a first
+    # observation.
+    SignalRule(NEW_COMPANY, "new_company:v1", frozenset({DISCOVERY}), implemented=True),
 )
 
 SIGNAL_TYPES = tuple(value for value, _ in SIGNAL_TYPE_CHOICES)

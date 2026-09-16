@@ -10,6 +10,7 @@ from io import StringIO
 from unittest.mock import patch
 
 from django.contrib import admin
+from django.contrib.auth.models import User
 from django.core import mail
 from django.db import DataError, IntegrityError, models, transaction
 from django.db.migrations.loader import MigrationLoader
@@ -82,9 +83,14 @@ class SchemaTests(TestCase):
             self.assertNotIsInstance(field, models.JSONField, field.name)
 
     def test_a_signal_belongs_to_a_company_and_to_no_customer(self):
-        related = {field.related_model for field in CompanySignal._meta.get_fields() if field.is_relation}
-        self.assertEqual(related, {Company})
+        # The signal's own relations: only the company. Producers attach their provenance through their own
+        # tables (a reverse relation), which is why reverse relations are excluded here.
+        forward = {field.related_model for field in CompanySignal._meta.concrete_fields if field.is_relation}
+        self.assertEqual(forward, {Company})
         self.assertIs(CompanySignal._meta.get_field("company").remote_field.on_delete, models.PROTECT)
+        everything = {field.related_model for field in CompanySignal._meta.get_fields() if field.is_relation}
+        for tenant_model in (User, UserSubscription, CustomerRadar, UserCompanyLead):
+            self.assertNotIn(tenant_model, everything)
 
     def test_choices_indexes_and_the_unique_event_identity(self):
         self.assertEqual({value for value, _ in CompanySignal._meta.get_field("signal_type").choices}, set(SIGNAL_TYPES))
@@ -152,7 +158,8 @@ class TaxonomyAndRegistryTests(TestCase):
         self.assertFalse(with_rules & FUTURE_SIGNAL_TYPES)
         self.assertEqual(with_rules, {NEW_COMPANY})  # B2 adds the first detector
         rule = rule_for(NEW_COMPANY)
-        self.assertEqual((rule.rule_version, rule.source_types, rule.implemented), ("new_company:v1", frozenset({DISCOVERY}), False))
+        # B2 implements this detector (gemiapp.new_company_signals); every other type stays taxonomy only.
+        self.assertEqual((rule.rule_version, rule.source_types, rule.implemented), ("new_company:v1", frozenset({DISCOVERY}), True))
         self.assertIsNone(rule_for(STATUS_CHANGED))
 
     def test_the_registry_rejects_duplicates_and_malformed_versions(self):
