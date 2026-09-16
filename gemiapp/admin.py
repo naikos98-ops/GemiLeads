@@ -24,6 +24,7 @@ from .models import (
     GemiMunicipality,
     GemiOffice,
     GemiPrefecture,
+    GemiRefreshRun,
     GemiReferenceSyncRun,
     GemiSourceRecord,
     ImportRun,
@@ -340,6 +341,19 @@ class GemiDiscoveryCursorAdmin(DiscoveryReadOnlyAdmin):
 class GemiDiscoveryRunAdmin(DiscoveryReadOnlyAdmin):
     list_display = ("started_at", "stream", "mode", "status", "pages_fetched", "new_records", "late_publication_records", "cursor_advanced")
     list_filter = ("mode", "status", "stream")
+
+
+@admin.register(GemiRefreshRun)
+class GemiRefreshRunAdmin(DiscoveryReadOnlyAdmin):
+    """Inspection only. Refresh runs are written by run_gemi_company_refresh; aggregate counts, no payload."""
+
+    list_display = (
+        "started_at", "status", "due_companies", "planned_companies", "deferred_no_strategy", "request_count",
+        "target_records_observed", "baselines_created", "changed_snapshots_created", "unchanged_snapshots",
+        "search_misses", "company_failures", "incomplete_groups",
+    )
+    list_filter = ("status",)
+    date_hierarchy = "started_at"
 
 
 @admin.register(GemiDiscoveryObservation)

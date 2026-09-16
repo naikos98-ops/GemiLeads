@@ -144,6 +144,35 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — B4: refresh collector παρακολουθούμενων εταιρειών (2026-09-16).** Migration
+  `0042_gemi_refresh_run`, `gemiapp/ingestion/refresh.py`, `manage.py run_gemi_company_refresh`:
+  - **Αλυσίδα:** due monitoring (A9) → plan → GemiClient lane `MONITORED_REFRESH` (A1) → A2 → `observed_at`
+    → A3 → snapshot (B3) → ενημέρωση check state (A9). **Κανένα σήμα**: το B4 ξέρει μόνο ότι «άλλαξε η
+    κατάσταση» — το *τι* άλλαξε ανήκει στο B5.
+  - **Planner χωρίς δίκτυο** (`build_company_refresh_plan`): με ~7 αιτήματα/λεπτό συνολικά, ένα detail
+    αίτημα ανά εταιρεία είναι αδύνατο. Προτεραιότητα: (1) Radar search, (2) direct detail μόνο για
+    ACTIVE_OPPORTUNITY / RECENT_SIGNAL, (3) `deferred_no_efficient_strategy`.
+  - **Μετάφραση Radar → GEMI query:** μόνο κριτήρια που μεταφράζονται ακριβώς (8ψήφιοι ΚΑΔ, ids νομών και
+    νομικών μορφών από το A5, `isActive`). Ό,τι δεν μεταφράζεται **πέφτει**, άρα το query μόνο ευρύνεται
+    και καμία due εταιρεία δεν χάνεται. Το `name` δεν στέλνεται ποτέ (άγνωστη σημασιολογία upstream).
+  - **Merge μόνο στο `activities`** (OR μέσα στο ίδιο κριτήριο)· καμία καρτεσιανή συγχώνευση δύο διαστάσεων.
+  - **Πύλη αποδοτικότητας:** εκτίμηση σελίδων από **τοπικά** δεδομένα· μια ομάδα γίνεται δεκτή μόνο αν
+    χωράει στο `GEMI_REFRESH_MAX_PAGES_PER_QUERY` **και** κοστίζει λιγότερα αιτήματα από τους στόχους της.
+  - **Η αναζήτηση είναι μόνο μηχανισμός λήψης:** εταιρείες που επιστρέφονται χωρίς να είναι due στόχοι
+    αγνοούνται πλήρως. Καμία εγγραφή σε RadarMatch, κριτήρια Radar, λόγους monitoring ή leads.
+  - **Η απουσία δεν είναι τεκμήριο:** στόχος που λείπει από **πλήρη** αναζήτηση είναι `search_miss`,
+    παραμένει due και **δεν** κλιμακώνεται αυτόματα σε detail. Σε ημιτελή ομάδα δεν μετράει καν ως miss.
+  - **Χρόνος:** ένα `run_at` για την επιλογή due· κάθε HTTP απάντηση έχει δικό της `observed_at`
+    (`as_of` = τοπική ημερομηνία του). Το ρολόι είναι injectable για τα tests.
+  - **A6:** μόνο `first_seen_at` (ποτέ προς τα εμπρός) και `last_seen_at`. Το `last_synced_at` μένει
+    **άθικτο**: το B4 δεν κάνει cutover της canonical αποθήκευσης. Καμία legacy στήλη δεν γράφεται.
+  - **Αντίγραφο dev βάσης (plan-only, ΜΗΔΕΝ δίκτυο):** στις 2026-09-16 09:00Z **0 due**· στις
+    2026-09-24 09:00Z **2.564 due** → **όλες deferred, 0 αιτήματα**: τα dev Radars δεν μεταφράζονται
+    (κενοί A5 πίνακες, 4ψήφιοι ΚΑΔ, ένα Radar χωρίς κριτήρια). Εξολοκλήρου αναμενόμενο, όχι σφάλμα.
+  - **Δεν είναι στο `apps.SCHEDULES`** και δεν υπάρχει flag: ασφάλεια = καμία χρονοδρομολόγηση +
+    ρητή κλήση + G0/G1.
+  - 78 νέα tests· **1.159 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
 - **Gemi Leads 2.0 — B3: ελαχιστοποιημένα snapshots εταιρειών (2026-09-16).** Migration
   `0041_company_snapshot`, `gemiapp/company_snapshots.py`:
   - `CompanySnapshot`: η κανονική **επιχειρηματική κατάσταση** μιας εταιρείας σε μία παρατήρηση — όχι το
@@ -541,9 +570,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — το Stage A (Data Foundation) ολοκληρώθηκε με το A10· επόμενο πακέτο: B4**
-  (συλλογή φρέσκων παρατηρήσεων για τις παρακολουθούμενες εταιρείες, που θα καλεί τον writer του B3) κατά
-  το `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του B3.
+- **Gemi Leads 2.0 — επόμενο πακέτο: B5** (ανίχνευση αλλαγών μεταξύ διαδοχικών snapshots και σήματα
+  Tier-1: STATUS_CHANGED, KAD_ADDED, KAD_REMOVED, LEGAL_FORM_CHANGED, LOCATION_CHANGED) κατά
+  το `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του B4.
+- **Release gate για το B4 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0042` δημιουργεί μόνο
+  τον πίνακα `GemiRefreshRun`, που μένει **άδειος**: το deploy του κώδικα δεν κάνει καμία κλήση ΓΕΜΗ.
+  Πριν από οποιαδήποτε εκτέλεση χρειάζεται **G6** (επαλήθευση request-budget) πέρα από τα G0/G1, και στο
+  release: `sync_gemi_reference_data` (χωρίς A5 ids κανένα Radar δεν μεταφράζεται), μετά
+  `run_gemi_company_refresh --plan-only`, και μόνο τότε μικρή ρητή εκτέλεση με `--max-requests 2`.
+  Το task μπαίνει στο `apps.SCHEDULES` μόνο μετά από ξεχωριστή απόφαση.
 - **Release gate για το B3 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0041` δημιουργεί μόνο
   τον πίνακα snapshots, που μένει **άδειος**: κανένα baseline δεν φτιάχνεται από παλιά `raw_data`. Τα πρώτα
   baselines θα προκύψουν από τις φρέσκες παρατηρήσεις του B4. Αλλαγή της κανονικής κατάστασης απαιτεί ρητή

@@ -260,3 +260,18 @@ def run_gemi_discovery_v2_shadow_task():
     from gemiapp.ingestion.discovery import SHADOW, run_discovery
 
     return run_discovery(mode=SHADOW).summary()
+
+
+def run_gemi_company_refresh_task():
+    """One monitored company refresh run (B4). Returns the counts.
+
+    Fetches fresh GEMI observations for the companies that are due under the A9 policy and stores each one
+    as a B3 snapshot. It interprets no change and creates no signal, and it never touches Radars, matching,
+    digests or leads. Deliberately not in apps.SCHEDULES: the collector must not refresh production
+    companies automatically before the G0 staging, G1 migration and G6 request-budget gates. Until then run
+    `manage.py run_gemi_company_refresh --plan-only` to inspect the plan, and the same command without the
+    flag for an explicit, capped execution.
+    """
+    from gemiapp.ingestion.refresh import run_company_refresh
+
+    return run_company_refresh().summary()

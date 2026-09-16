@@ -1212,6 +1212,65 @@ class CompanyMonitoringReason(models.Model):
         return f"monitoring #{self.monitoring_id} · {self.reason} · {'active' if self.active else 'inactive'}"
 
 
+class GemiRefreshRun(models.Model):
+    """One execution of the monitored company refresh collector (B4): what it planned, fetched and stored.
+
+    Written by gemiapp.ingestion.refresh, which documents the planner, the search strategy and the caps.
+    Aggregate counts only -- no payload, no company names, no customer names, no contact or person data.
+    Plan-only executions create no row at all.
+    """
+
+    STATUSES = [
+        ("running", "Σε εξέλιξη"), ("success", "Επιτυχία"), ("partial", "Μερική"), ("failed", "Αποτυχία"),
+    ]
+
+    status = models.CharField(max_length=16, choices=STATUSES, default="running")
+    # The single timestamp the run selected due companies with; every count below is relative to it.
+    run_at = models.DateTimeField()
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    # Planning
+    due_companies = models.PositiveIntegerField(default=0)
+    planned_companies = models.PositiveIntegerField(default=0)
+    search_groups = models.PositiveIntegerField(default=0)
+    deferred_no_strategy = models.PositiveIntegerField(default=0)
+    # Requests, counted once per logical GemiClient call (A1 owns transport retries and their telemetry).
+    request_count = models.PositiveIntegerField(default=0)
+    search_requests = models.PositiveIntegerField(default=0)
+    detail_requests = models.PositiveIntegerField(default=0)
+    records_examined = models.PositiveIntegerField(default=0)
+    target_records_observed = models.PositiveIntegerField(default=0)
+    # Snapshot outcomes, as B3 reported them. Which field changed is deliberately not inspected: that is B5.
+    baselines_created = models.PositiveIntegerField(default=0)
+    changed_snapshots_created = models.PositiveIntegerField(default=0)
+    unchanged_snapshots = models.PositiveIntegerField(default=0)
+    # Outcomes that leave a company due
+    search_misses = models.PositiveIntegerField(default=0)
+    duplicate_observations_avoided = models.PositiveIntegerField(default=0)
+    company_failures = models.PositiveIntegerField(default=0)
+    incomplete_groups = models.PositiveIntegerField(default=0)
+    # {"cap": "...", "groups": [{"key": ..., "pages": n, "targets": n, "found": n, "complete": bool}]}: a
+    # strict internal schema of counts and opaque group keys only, never criteria text or company data.
+    group_stats = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+        verbose_name = "GEMI refresh run"
+        verbose_name_plural = "GEMI refresh runs"
+        indexes = [models.Index(fields=["status", "-started_at"], name="refresh_run_status_idx")]
+
+    @property
+    def duration_seconds(self):
+        if self.finished_at is None:
+            return None
+        return (self.finished_at - self.started_at).total_seconds()
+
+    def __str__(self):
+        return f"refresh {self.started_at:%Y-%m-%d %H:%M} · {self.status}"
+
+
 class GemiPrefecture(GemiReferenceEntry):
     """GET /metadata/prefectures."""
 

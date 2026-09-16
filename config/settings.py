@@ -355,6 +355,22 @@ GEMI_DISCOVERY_MIN_OVERLAP_PAGES = int(os.environ.get("GEMI_DISCOVERY_MIN_OVERLA
 GEMI_DISCOVERY_BOOTSTRAP_CONFIRMATIONS = int(os.environ.get("GEMI_DISCOVERY_BOOTSTRAP_CONFIRMATIONS", "50"))
 GEMI_DISCOVERY_BOOTSTRAP_MAX_PAGES = int(os.environ.get("GEMI_DISCOVERY_BOOTSTRAP_MAX_PAGES", "10"))
 
+# --- Monitored company refresh collector (Gemi Leads 2.0, B4) -----------------------------------
+# The one place B4's request safety caps live; B4 reads nothing numeric from anywhere else. The shared
+# A1 rate budget (7 requests/minute across the application, against the API's 8/minute) remains the
+# ultimate guard -- these caps only stop one refresh run from monopolising it.
+#
+# The collector is never scheduled and never runs by itself: only `manage.py run_gemi_company_refresh`
+# or an explicit task invocation executes it, so deploying the code performs zero GEMI requests. That,
+# plus the G0/G1 gates, is the safety mechanism; no feature flag is used (see gemiapp/ingestion/refresh.py).
+#
+# Defaults are deliberately small: 20 requests is under three minutes of the shared budget, so a run
+# cannot starve the digest import or discovery lanes.
+GEMI_REFRESH_MAX_REQUESTS_PER_RUN = int(os.environ.get("GEMI_REFRESH_MAX_REQUESTS_PER_RUN", "20"))
+GEMI_REFRESH_MAX_PAGES_PER_QUERY = int(os.environ.get("GEMI_REFRESH_MAX_PAGES_PER_QUERY", "5"))
+GEMI_REFRESH_MAX_DIRECT_DETAILS_PER_RUN = int(os.environ.get("GEMI_REFRESH_MAX_DIRECT_DETAILS_PER_RUN", "5"))
+GEMI_REFRESH_PAGE_SIZE = int(os.environ.get("GEMI_REFRESH_PAGE_SIZE", "200"))
+
 Q_CLUSTER = {
     "name": "gemi_leads_cluster",
     "workers": 2,
