@@ -38,6 +38,12 @@ from .models import (
     OrganizationICPStatus,
     OrganizationMember,
     OrganizationProfile,
+    OrganizationRadar,
+    OrganizationRadarExclusion,
+    OrganizationRadarKad,
+    OrganizationRadarLegalForm,
+    OrganizationRadarRegion,
+    OrganizationRadarSignalType,
     OutreachSuppression,
     PersonSuppression,
     RadarMatch,
@@ -520,3 +526,47 @@ class OrganizationICPSignalTypeAdmin(OrganizationReadOnlyAdmin):
     list_display = ("icp", "signal_type")
     list_filter = ("signal_type",)
     list_select_related = ("icp",)
+
+
+@admin.register(OrganizationRadar)
+class OrganizationRadarAdmin(OrganizationReadOnlyAdmin):
+    """Inspection only (C3). Dormant Phase-C Radars change only through gemiapp.organization_radars;
+    CustomerRadar remains the production Radar."""
+
+    list_display = ("organization", "name", "active", "score_threshold", "created_at")
+    list_filter = ("active",)
+    list_select_related = ("organization",)
+    search_fields = ("name",)
+
+
+@admin.register(OrganizationRadarKad)
+class OrganizationRadarKadAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("radar", "kad")
+    list_select_related = ("radar", "kad")
+
+
+@admin.register(OrganizationRadarRegion)
+class OrganizationRadarRegionAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("radar", "level", "prefecture", "municipality")
+    list_filter = ("level",)
+    list_select_related = ("radar", "prefecture", "municipality")
+
+
+@admin.register(OrganizationRadarLegalForm)
+class OrganizationRadarLegalFormAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("radar", "legal_type")
+    list_select_related = ("radar", "legal_type")
+
+
+@admin.register(OrganizationRadarSignalType)
+class OrganizationRadarSignalTypeAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("radar", "signal_type")
+    list_filter = ("signal_type",)
+    list_select_related = ("radar",)
+
+
+@admin.register(OrganizationRadarExclusion)
+class OrganizationRadarExclusionAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("radar", "subject", "kad", "prefecture", "municipality", "legal_type")
+    list_filter = ("subject",)
+    list_select_related = ("radar", "kad", "prefecture", "municipality", "legal_type")

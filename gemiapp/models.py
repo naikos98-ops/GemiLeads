@@ -1655,6 +1655,158 @@ class OrganizationICPSignalType(models.Model):
         ]
 
 
+class OrganizationRadar(models.Model):
+    """A Phase-C Radar (C3, blueprint §25 `radars`): an organization-owned stored search definition.
+
+    Dormant configuration. ``CustomerRadar`` remains the production Radar: matching, RadarMatch, digests,
+    subscription limits, A9 monitoring and the B4 refresh planner all read only the legacy model. Nothing reads
+    this one yet, so ``active`` is configuration state and triggers nothing. Written only through
+    gemiapp.organization_radars, which documents every rule.
+    """
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="radars")
+    name = models.CharField(max_length=80)
+    # New Phase-C Radars start inactive: nothing executes them until the matching cutover exists.
+    active = models.BooleanField(default=False)
+    # Minimum opportunity score on the §30/§31 0-100 scale. Null = not set; nothing evaluates it yet.
+    score_threshold = models.PositiveSmallIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Organization radar"
+        ordering = ["organization_id", "name", "id"]
+        indexes = [models.Index(fields=["organization", "active"], name="org_radar_org_active_idx")]
+        constraints = [
+            models.CheckConstraint(condition=~models.Q(name=""), name="org_radar_name_not_blank"),
+            models.CheckConstraint(
+                condition=models.Q(score_threshold__isnull=True)
+                | (models.Q(score_threshold__gte=0) & models.Q(score_threshold__lte=100)),
+                name="org_radar_score_threshold_range",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} · organization #{self.organization_id}"
+
+
+class OrganizationRadarKad(models.Model):
+    """§25 `radar_kads`: an exact KAD the Radar targets (GemiKad = code and version)."""
+
+    radar = models.ForeignKey(OrganizationRadar, on_delete=models.CASCADE, related_name="kads")
+    kad = models.ForeignKey(GemiKad, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization radar KAD"
+        constraints = [models.UniqueConstraint(fields=["radar", "kad"], name="unique_org_radar_kad")]
+
+
+class OrganizationRadarRegion(models.Model):
+    """§25 `radar_regions`: a GEMI prefecture or municipality, with an explicit level and a key per level."""
+
+    PREFECTURE = "prefecture"
+    MUNICIPALITY = "municipality"
+    LEVELS = [(PREFECTURE, "Prefecture"), (MUNICIPALITY, "Municipality")]
+
+    radar = models.ForeignKey(OrganizationRadar, on_delete=models.CASCADE, related_name="regions")
+    level = models.CharField(max_length=16, choices=LEVELS)
+    prefecture = models.ForeignKey(GemiPrefecture, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    municipality = models.ForeignKey(GemiMunicipality, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization radar region"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(level="prefecture", prefecture__isnull=False, municipality__isnull=True)
+                    | models.Q(level="municipality", municipality__isnull=False, prefecture__isnull=True)
+                ),
+                name="org_radar_region_level_consistent",
+            ),
+            models.UniqueConstraint(fields=["radar", "prefecture"], condition=models.Q(prefecture__isnull=False),
+                                    name="unique_org_radar_prefecture"),
+            models.UniqueConstraint(fields=["radar", "municipality"], condition=models.Q(municipality__isnull=False),
+                                    name="unique_org_radar_municipality"),
+        ]
+
+
+class OrganizationRadarLegalForm(models.Model):
+    """§25 `radar_legal_forms`: a GEMI legal type the Radar targets."""
+
+    radar = models.ForeignKey(OrganizationRadar, on_delete=models.CASCADE, related_name="legal_forms")
+    legal_type = models.ForeignKey(GemiLegalType, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization radar legal form"
+        constraints = [models.UniqueConstraint(fields=["radar", "legal_type"], name="unique_org_radar_legal_form")]
+
+
+class OrganizationRadarSignalType(models.Model):
+    """§25 `radar_signal_types`: a business event type the Radar watches (CompanySignal taxonomy)."""
+
+    radar = models.ForeignKey(OrganizationRadar, on_delete=models.CASCADE, related_name="signal_types")
+    signal_type = models.CharField(max_length=32, choices=company_signals.SIGNAL_TYPE_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization radar signal type"
+        constraints = [
+            models.UniqueConstraint(fields=["radar", "signal_type"], name="unique_org_radar_signal_type"),
+            models.CheckConstraint(
+                condition=models.Q(signal_type__in=[value for value, _ in company_signals.SIGNAL_TYPE_CHOICES]),
+                name="org_radar_signal_type_known",
+            ),
+        ]
+
+
+class OrganizationRadarExclusion(models.Model):
+    """§25 `radar_exclusions`: one structured negative criterion on a canonical dimension the Radar supports --
+    an exact KAD, a prefecture, a municipality or a legal type. No free text, names or expressions."""
+
+    KAD = "kad"
+    PREFECTURE = "prefecture"
+    MUNICIPALITY = "municipality"
+    LEGAL_FORM = "legal_form"
+    SUBJECTS = [(KAD, "KAD"), (PREFECTURE, "Prefecture"), (MUNICIPALITY, "Municipality"), (LEGAL_FORM, "Legal form")]
+
+    radar = models.ForeignKey(OrganizationRadar, on_delete=models.CASCADE, related_name="exclusions")
+    subject = models.CharField(max_length=16, choices=SUBJECTS)
+    kad = models.ForeignKey(GemiKad, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    prefecture = models.ForeignKey(GemiPrefecture, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    municipality = models.ForeignKey(GemiMunicipality, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    legal_type = models.ForeignKey(GemiLegalType, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization radar exclusion"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(subject="kad", kad__isnull=False, prefecture__isnull=True, municipality__isnull=True,
+                             legal_type__isnull=True)
+                    | models.Q(subject="prefecture", prefecture__isnull=False, kad__isnull=True,
+                               municipality__isnull=True, legal_type__isnull=True)
+                    | models.Q(subject="municipality", municipality__isnull=False, kad__isnull=True,
+                               prefecture__isnull=True, legal_type__isnull=True)
+                    | models.Q(subject="legal_form", legal_type__isnull=False, kad__isnull=True,
+                               prefecture__isnull=True, municipality__isnull=True)
+                ),
+                name="org_radar_exclusion_subject_consistent",
+            ),
+            models.UniqueConstraint(fields=["radar", "kad"], condition=models.Q(kad__isnull=False),
+                                    name="unique_org_radar_excluded_kad"),
+            models.UniqueConstraint(fields=["radar", "prefecture"], condition=models.Q(prefecture__isnull=False),
+                                    name="unique_org_radar_excluded_prefecture"),
+            models.UniqueConstraint(fields=["radar", "municipality"], condition=models.Q(municipality__isnull=False),
+                                    name="unique_org_radar_excluded_municipality"),
+            models.UniqueConstraint(fields=["radar", "legal_type"], condition=models.Q(legal_type__isnull=False),
+                                    name="unique_org_radar_excluded_legal_form"),
+        ]
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 

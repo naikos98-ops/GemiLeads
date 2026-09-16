@@ -144,6 +144,27 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — C3: θεμέλιο Organization Radar (2026-09-16).** Migration `0046_organization_radar`,
+  `gemiapp/organization_radars.py`:
+  - **Ολοκληρώθηκαν C1 (οργανισμοί), C2 (ICP) και C3 (Organization Radar).** Το `OrganizationRadar` (§25) ανήκει
+    σε οργανισμό (πολλά ανά οργανισμό) και είναι **αδρανής** ρύθμιση: τίποτα δεν το διαβάζει.
+  - **Το `CustomerRadar` παραμένει το production Radar** (forms, matching, RadarMatch, digests, όρια συνδρομής,
+    A9 monitoring, B4 planner). Κανένας συγχρονισμός, καμία backfill, καμία αντιστοίχιση — θέλει ρητό cutover.
+  - Πεδία: name (≤80, διπλά επιτρέπονται), active (**προεπιλογή False**), score_threshold (προαιρετικό 0–100 κατά
+    §30/§31· αποθηκεύεται μόνο, **κανένα scoring/σύγκριση**).
+  - Κριτήρια: `radar_kads` (GemiKad = κωδικός + έκδοση), `radar_regions` (νομός/δήμος με ρητό level),
+    `radar_legal_forms` (GemiLegalType), `radar_signal_types` (μόνο υλοποιημένοι detectors), `radar_exclusions`
+    (δομημένα: ΚΑΔ, νομός, δήμος, νομική μορφή· όχι signal types, όχι ελεύθερο κείμενο).
+  - Ίδια ταυτότητα δεν μπορεί να είναι και στόχος και αποκλεισμός (service· η DB απορρίπτει διπλά ανά πίνακα).
+  - **Ενεργό Radar** χρειάζεται ≥1 θετικό κριτήριο (ΚΑΔ/περιοχή/μορφή/τύπο σήματος)· signal-type-only επιτρέπεται,
+    exclusions-only όχι. Ενεργοποίηση = μόνο ρύθμιση: **κανένα** matching, RadarMatch, monitoring, task ή κλήση.
+  - Το ICP δεν αντιγράφεται ούτε περιορίζει Radar. Υπηρεσίες ατομικές, με ρητό Organization· Radar άλλου
+    οργανισμού απορρίπτεται. Admin μόνο ανάγνωσης· κανένα UI/URL/API/middleware/task.
+  - Τα υπάρχοντα flows μένουν **User-owned**· κανένα tenant cutover· το **G5** μπλοκάρει ακόμη multi-member χρήση.
+    Η εκκρεμής απαίτηση για τηλέφωνο στο Dossier (παρακάτω) παραμένει.
+  - Αντίγραφο dev: όλοι οι πίνακες OrganizationRadar = 0. 30 νέα tests· **1.337 tests OK**.
+    **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
 - **Gemi Leads 2.0 — C2: ICP οργανισμού (2026-09-16).** Migration `0045_organization_icp`,
   `gemiapp/organization_icp.py`:
   - **Ολοκληρώθηκαν C1 (θεμέλιο οργανισμών) και C2 (ICP).** Υπάρχει πλέον **εσωτερικά** η πρώτη
@@ -651,9 +672,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: C3 — Radar** (Phase C, βήμα 22 στο §118 και §25 του
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C2. Να ακολουθηθεί η σειρά της Phase C· η μεταφορά
-  ιδιοκτησίας δεδομένων σε οργανισμούς και το G5 παραμένουν ανοιχτά.
+- **Gemi Leads 2.0 — επόμενο πακέτο: C4 — Industry templates** (Phase C, βήμα 23 στο §118 και §27 του
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C3. Να ακολουθηθεί η σειρά της Phase C· η μεταφορά
+  ιδιοκτησίας δεδομένων σε οργανισμούς, η σύνδεση matching με τα Organization Radars και το G5 παραμένουν ανοιχτά.
+- **Release gate για το C3 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0046` δημιουργεί έξι **άδειους**
+  πίνακες Radar· καμία data migration από `CustomerRadar`.
 - **Εκκρεμής απαίτηση προϊόντος — τηλέφωνο στο Company Dossier:** το μελλοντικό Dossier εταιρείας πρέπει να
   δείχνει το τηλέφωνο της εταιρείας όταν το δίνει το ΓΕΜΗ. **Δεν έχει υλοποιηθεί.** Κανόνας αρχιτεκτονικής:
   τα στοιχεία επικοινωνίας ζουν σε **ξεχωριστό, ελαχιστοποιημένο layer επαφών εταιρείας** (contact points) με
