@@ -144,6 +144,24 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — B6: read model χρονολογίου εταιρείας (2026-09-16).** `gemiapp/company_timeline.py`,
+  `manage.py show_company_timeline` (εσωτερικό, μόνο ανάγνωση). **Κανένα νέο μοντέλο, καμία migration.**
+  - **Read model, όχι πίνακας:** το `CompanySignal` μένει η μόνη πηγή αλήθειας· το `get_company_timeline`
+    διαβάζει σήματα + evidence B2/B5 και επιστρέφει frozen `CompanyTimelineEntry`. Ένα entry ανά σήμα.
+  - **Σειρά:** `detected_at` DESC, μετά `id` DESC. Το effective time εκτίθεται χωριστά και δεν μετακινεί
+    ποτέ entry (π.χ. καθυστερημένη δημοσίευση).
+  - **Mode ρητό:** προεπιλογή SHADOW, ή LIVE· ανάμειξη μόνο με το ρητό `ALL_MODES` (εσωτερικό debugging).
+  - **group_key:** `snapshot:<current snapshot id>` για B5, `discovery:<signal id>` για NEW_COMPANY,
+    `signal:<id>` όταν η προέλευση δεν είναι COMPLETE. Δεν αποθηκεύεται τίποτα.
+  - **Provenance:** COMPLETE / MISSING / INVALID / UNSUPPORTED· ένα σήμα με πρόβλημα **εμφανίζεται**
+    χωρίς subject facts αντί να κρυφτεί ή να σπάσει το timeline.
+  - Μόνο αναγνωριστικά (source ids, ΚΑΔ/έκδοση)· **καμία** επίλυση περιγραφών (ανεξάρτητο από A5).
+  - **Keyset pagination** `(detected_at, id)` με opaque cursor· default 50, max 200. **2 queries** ανά
+    σελίδα ανεξαρτήτως μεγέθους· ποτέ join στο `Company` (ούτε `raw_data`).
+  - Κανένα URL/view/template/task/schedule. Αντίγραφο dev: 0 σήματα ⇒ 0 timeline events.
+  - 34 νέα tests· **1.255 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`** (το B6 δεν έχει
+    δική του migration· εξαρτάται από τις 0039–0043).
+
 - **Gemi Leads 2.0 — B5: ανίχνευση αλλαγών snapshots και σήματα Tier-1 (2026-09-16).** Migration
   `0043_company_signal_snapshot_evidence`, `gemiapp/snapshot_change_signals.py`,
   `manage.py materialize_snapshot_change_signals`:
@@ -596,8 +614,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: B6 — company timeline** (το τελευταίο βήμα της Phase B στο §118 του
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του B5.
+- **Gemi Leads 2.0 — η Phase B (Historical Engine) ολοκληρώθηκε με το B6· επόμενο πακέτο: C1 — Organization
+  profile** (Phase C, βήμα 20 στο §118 του `docs/GEMI_LEADS_2_BLUEPRINT.md`, με τα §22–23: organizations,
+  μέλη/ρόλοι, `organization_profiles`)· αναμένει έγκριση του B6.
 - **Release gate για το B5 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0043` δημιουργεί μόνο
   τον πίνακα evidence, που μένει **άδειος**. Στο release, μετά από πραγματικά snapshots του B4:
   `materialize_snapshot_change_signals --dry-run`, έλεγχος ακρίβειας των shadow σημάτων (ιδίως γύρω από
