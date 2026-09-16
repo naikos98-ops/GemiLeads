@@ -30,6 +30,12 @@ from .models import (
     GemiSourceRecord,
     ImportRun,
     Organization,
+    OrganizationICP,
+    OrganizationICPKad,
+    OrganizationICPLegalForm,
+    OrganizationICPRegion,
+    OrganizationICPSignalType,
+    OrganizationICPStatus,
     OrganizationMember,
     OrganizationProfile,
     OutreachSuppression,
@@ -471,3 +477,46 @@ class OrganizationMemberAdmin(OrganizationReadOnlyAdmin):
 class OrganizationProfileAdmin(OrganizationReadOnlyAdmin):
     list_display = ("organization", "business", "location", "updated_at")
     list_select_related = ("organization",)
+
+
+@admin.register(OrganizationICP)
+class OrganizationICPAdmin(OrganizationReadOnlyAdmin):
+    """Inspection only (C2). ICPs change only through gemiapp.organization_icp, all-or-nothing."""
+
+    list_display = ("organization", "minimum_age_months", "maximum_age_months", "updated_at")
+    list_select_related = ("organization",)
+
+
+@admin.register(OrganizationICPKad)
+class OrganizationICPKadAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("icp", "kad", "polarity")
+    list_filter = ("polarity",)
+    list_select_related = ("icp", "kad")
+
+
+@admin.register(OrganizationICPRegion)
+class OrganizationICPRegionAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("icp", "level", "prefecture", "municipality", "polarity")
+    list_filter = ("level", "polarity")
+    list_select_related = ("icp", "prefecture", "municipality")
+
+
+@admin.register(OrganizationICPLegalForm)
+class OrganizationICPLegalFormAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("icp", "legal_type", "polarity")
+    list_filter = ("polarity",)
+    list_select_related = ("icp", "legal_type")
+
+
+@admin.register(OrganizationICPStatus)
+class OrganizationICPStatusAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("icp", "status", "polarity")
+    list_filter = ("polarity",)
+    list_select_related = ("icp", "status")
+
+
+@admin.register(OrganizationICPSignalType)
+class OrganizationICPSignalTypeAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("icp", "signal_type")
+    list_filter = ("signal_type",)
+    list_select_related = ("icp",)

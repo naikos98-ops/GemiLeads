@@ -1510,6 +1510,151 @@ class OrganizationProfile(models.Model):
         return f"profile · organization #{self.organization_id}"
 
 
+class OrganizationICP(models.Model):
+    """The organization's Ideal Customer Profile (C2, blueprint §24): which kinds of businesses could be good
+    customers for it. One per organization -- the broad customer definition; specific watches are Radars.
+
+    Structured configuration only, owned by the Organization and nothing else: no matching, scoring, lead,
+    opportunity or monitoring reads it yet. Written only through gemiapp.organization_icp, which documents
+    every dimension, the dimensions deliberately not implemented (industry groups, priorities) and why.
+    """
+
+    organization = models.OneToOneField(Organization, on_delete=models.CASCADE, related_name="icp")
+    # Company age as a range in whole months, evaluated later against an explicit as_of. Null = open end.
+    minimum_age_months = models.PositiveIntegerField(null=True, blank=True)
+    maximum_age_months = models.PositiveIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Organization ICP"
+        verbose_name_plural = "Organization ICPs"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(minimum_age_months__isnull=True) | models.Q(maximum_age_months__isnull=True)
+                    | models.Q(minimum_age_months__lte=models.F("maximum_age_months"))
+                ),
+                name="icp_age_range_ordered",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(minimum_age_months__isnull=True) | models.Q(minimum_age_months__gte=0))
+                    & (models.Q(maximum_age_months__isnull=True) | models.Q(maximum_age_months__gte=0))
+                ),
+                name="icp_age_non_negative",
+            ),
+        ]
+
+    def __str__(self):
+        return f"ICP · organization #{self.organization_id}"
+
+
+ICP_POLARITIES = [("include", "Include"), ("exclude", "Exclude")]
+_ICP_POLARITY_VALID = models.Q(polarity__in=["include", "exclude"])
+
+
+class OrganizationICPKad(models.Model):
+    """One exact KAD criterion (code and version, via GemiKad). Identity ignores polarity, so the same KAD can
+    neither repeat nor be both included and excluded."""
+
+    icp = models.ForeignKey(OrganizationICP, on_delete=models.CASCADE, related_name="kads")
+    kad = models.ForeignKey(GemiKad, on_delete=models.PROTECT, related_name="+")
+    polarity = models.CharField(max_length=8, choices=ICP_POLARITIES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization ICP KAD"
+        constraints = [
+            models.UniqueConstraint(fields=["icp", "kad"], name="unique_icp_kad"),
+            models.CheckConstraint(condition=_ICP_POLARITY_VALID, name="icp_kad_polarity_valid"),
+        ]
+
+
+class OrganizationICPRegion(models.Model):
+    """One geographic criterion at an explicit level: a GEMI prefecture or a GEMI municipality. Separate
+    foreign keys per level, so equal source ids at different levels can never collide."""
+
+    PREFECTURE = "prefecture"
+    MUNICIPALITY = "municipality"
+    LEVELS = [(PREFECTURE, "Prefecture"), (MUNICIPALITY, "Municipality")]
+
+    icp = models.ForeignKey(OrganizationICP, on_delete=models.CASCADE, related_name="regions")
+    level = models.CharField(max_length=16, choices=LEVELS)
+    prefecture = models.ForeignKey(GemiPrefecture, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    municipality = models.ForeignKey(GemiMunicipality, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    polarity = models.CharField(max_length=8, choices=ICP_POLARITIES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization ICP region"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(level="prefecture", prefecture__isnull=False, municipality__isnull=True)
+                    | models.Q(level="municipality", municipality__isnull=False, prefecture__isnull=True)
+                ),
+                name="icp_region_level_consistent",
+            ),
+            models.UniqueConstraint(fields=["icp", "prefecture"], condition=models.Q(prefecture__isnull=False),
+                                    name="unique_icp_prefecture"),
+            models.UniqueConstraint(fields=["icp", "municipality"], condition=models.Q(municipality__isnull=False),
+                                    name="unique_icp_municipality"),
+            models.CheckConstraint(condition=_ICP_POLARITY_VALID, name="icp_region_polarity_valid"),
+        ]
+
+
+class OrganizationICPLegalForm(models.Model):
+    """One legal-form criterion by GEMI legal-type identity, never by description."""
+
+    icp = models.ForeignKey(OrganizationICP, on_delete=models.CASCADE, related_name="legal_forms")
+    legal_type = models.ForeignKey(GemiLegalType, on_delete=models.PROTECT, related_name="+")
+    polarity = models.CharField(max_length=8, choices=ICP_POLARITIES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization ICP legal form"
+        constraints = [
+            models.UniqueConstraint(fields=["icp", "legal_type"], name="unique_icp_legal_form"),
+            models.CheckConstraint(condition=_ICP_POLARITY_VALID, name="icp_legal_form_polarity_valid"),
+        ]
+
+
+class OrganizationICPStatus(models.Model):
+    """One business-status criterion by GEMI status identity -- never Company.is_active or a description."""
+
+    icp = models.ForeignKey(OrganizationICP, on_delete=models.CASCADE, related_name="statuses")
+    status = models.ForeignKey(GemiCompanyStatus, on_delete=models.PROTECT, related_name="+")
+    polarity = models.CharField(max_length=8, choices=ICP_POLARITIES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization ICP status"
+        verbose_name_plural = "Organization ICP statuses"
+        constraints = [
+            models.UniqueConstraint(fields=["icp", "status"], name="unique_icp_status"),
+            models.CheckConstraint(condition=_ICP_POLARITY_VALID, name="icp_status_polarity_valid"),
+        ]
+
+
+class OrganizationICPSignalType(models.Model):
+    """One business event type the organization cares about (CompanySignal taxonomy). Include-only."""
+
+    icp = models.ForeignKey(OrganizationICP, on_delete=models.CASCADE, related_name="signal_types")
+    signal_type = models.CharField(max_length=32, choices=company_signals.SIGNAL_TYPE_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization ICP signal type"
+        constraints = [
+            models.UniqueConstraint(fields=["icp", "signal_type"], name="unique_icp_signal_type"),
+            models.CheckConstraint(
+                condition=models.Q(signal_type__in=[value for value, _ in company_signals.SIGNAL_TYPE_CHOICES]),
+                name="icp_signal_type_known",
+            ),
+        ]
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 

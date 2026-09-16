@@ -144,6 +144,26 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — C2: ICP οργανισμού (2026-09-16).** Migration `0045_organization_icp`,
+  `gemiapp/organization_icp.py`:
+  - **Ολοκληρώθηκαν C1 (θεμέλιο οργανισμών) και C2 (ICP).** Υπάρχει πλέον **εσωτερικά** η πρώτη
+    organization-owned πληροφορία: ένα `OrganizationICP` ανά οργανισμό (§24), δημιουργείται ρητά.
+  - Κριτήρια με κανονική ταυτότητα ΓΕΜΗ: **ΚΑΔ** (`GemiKad` = κωδικός + έκδοση, ποτέ prefix/περιγραφή),
+    **περιοχές** (νομός ή δήμος με ρητό level και ξεχωριστό FK), **νομικές μορφές** (`GemiLegalType`),
+    **κατάσταση** (`GemiCompanyStatus`, **ποτέ** `Company.is_active`), **ηλικία** σε μήνες (min/max, ανοιχτά
+    άκρα), **τύποι σημάτων** (μόνο όσοι έχουν υλοποιημένο detector).
+  - **Αποκλεισμοί** = polarity INCLUDE/EXCLUDE στα ΚΑΔ/περιοχές/μορφές/καταστάσεις· η ταυτότητα αγνοεί το
+    polarity, άρα ούτε διπλά ούτε «include και exclude» (DB uniqueness + μήνυμα service).
+  - **Δεν υλοποιήθηκαν σκόπιμα:** industry groups (δεν υπάρχει κανονική ταξινόμηση — θέλει πρώτα το πακέτο
+    industry templates και ιεραρχία ΚΑΔ §9) και priorities (το §24 δεν ορίζει κλίμακα· **κανένα βάρος/score**).
+  - Άδειο ICP = **μη ρυθμισμένο**, ποτέ «ταιριάζουν όλες». Ενημέρωση μόνο με `replace_organization_icp`
+    (όλα ή τίποτα). Admin μόνο ανάγνωσης.
+  - **Καμία** αντιστοίχιση/scoring/lead/opportunity/σήμα/monitoring από το ICP· κανένα ICP από Radars,
+    προφίλ ή χρήστες. Τα υπάρχοντα flows (Radars, leads, digests, billing) μένουν **User-owned**· κανένα
+    tenant cutover, κανένα UI/URL/middleware/task. Το **G5** μπλοκάρει ακόμη multi-member χρήση.
+  - Αντίγραφο dev: όλοι οι πίνακες ICP = 0. 31 νέα tests· **1.307 tests OK**.
+    **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
 - **Gemi Leads 2.0 — C1: θεμέλιο οργανισμών (2026-09-16).** Migration `0044_organization_foundation`,
   `gemiapp/organizations.py`:
   - Μοντέλα `Organization`, `OrganizationMember` (ρόλοι §22/§64: owner, admin, sales_manager, sales_user,
@@ -631,9 +651,18 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: C2 — ICP (Ideal Customer Profile)** (Phase C, βήμα 21 στο §118 και §24
-  του `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C1. Η μεταφορά ιδιοκτησίας δεδομένων σε
-  οργανισμούς και το G5 παραμένουν ανοιχτά.
+- **Gemi Leads 2.0 — επόμενο πακέτο: C3 — Radar** (Phase C, βήμα 22 στο §118 και §25 του
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C2. Να ακολουθηθεί η σειρά της Phase C· η μεταφορά
+  ιδιοκτησίας δεδομένων σε οργανισμούς και το G5 παραμένουν ανοιχτά.
+- **Εκκρεμής απαίτηση προϊόντος — τηλέφωνο στο Company Dossier:** το μελλοντικό Dossier εταιρείας πρέπει να
+  δείχνει το τηλέφωνο της εταιρείας όταν το δίνει το ΓΕΜΗ. **Δεν έχει υλοποιηθεί.** Κανόνας αρχιτεκτονικής:
+  τα στοιχεία επικοινωνίας ζουν σε **ξεχωριστό, ελαχιστοποιημένο layer επαφών εταιρείας** (contact points) με
+  δική του πηγή/διατήρηση/ιδιωτικότητα — **όχι** σε `CompanySnapshot`, `CompanySignal`, timeline,
+  `OrganizationProfile` ή ICP, και ποτέ έκθεση του raw GEMI payload· το Dossier διαβάζει μόνο το εγκεκριμένο
+  layer. Λόγος: τηλέφωνο/email μπορεί να είναι προσωπικά δεδομένα (ατομικές επιχειρήσεις).
+- **Release gate για το C2 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0045` δημιουργεί έξι
+  **άδειους** πίνακες ICP· καμία data migration. Το ICP προϋποθέτει συγχρονισμένα reference data (A5) για
+  να έχει κριτήρια.
 - **Release gate για το C1 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0044` δημιουργεί τρεις
   **άδειους** πίνακες· καμία data migration. Multi-member ενεργοποίηση μόνο μετά το **G5**.
 - **Release gate για το B5 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0043` δημιουργεί μόνο
