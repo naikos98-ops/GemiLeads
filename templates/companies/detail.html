@@ -51,6 +51,21 @@
           <dd>{{ company.address|default:'—' }}{% if company.postal_code %}, {{ company.postal_code }}{% endif %}</dd>
         </div>
         <div>
+          <dt>ΤΗΛΕΦΩΝΟ ΓΕΜΗ</dt>
+          <dd>
+            {% if user.is_staff or user.is_superuser or user.subscription.has_entitlement %}
+              {% for phone in company.gemi_phones %}
+                <a href="{{ phone.tel_uri }}" style="color: var(--product-green); font-weight: 700;">☎ {{ phone.display }}</a>{% if not forloop.last %}<br>{% endif %}
+              {% empty %}
+                <span style="color: var(--product-muted); font-weight: 400;">Δεν υπάρχει διαθέσιμο τηλέφωνο στο ΓΕΜΗ</span>
+              {% endfor %}
+            {% else %}
+              <span style="color: #775215; font-size: var(--type-small); font-weight: 700;">🔒 Απαιτείται συνδρομή</span>
+              <a href="{% url 'pricing' %}" style="font-size: var(--type-small); margin-left: 6px;">Ενεργοποίηση →</a>
+            {% endif %}
+          </dd>
+        </div>
+        <div>
           <dt>EMAIL ΕΠΙΚΟΙΝΩΝΙΑΣ</dt>
           <dd>
             {% if user.is_staff or user.is_superuser or user.subscription.has_entitlement %}

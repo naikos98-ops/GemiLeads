@@ -144,6 +144,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Hotfix — τηλέφωνο ΓΕΜΗ στο Company Dossier (2026-09-16).** Το `templates/companies/detail.html` δείχνει
+  πεδίο «ΤΗΛΕΦΩΝΟ ΓΕΜΗ» με `tel:` link, ή «Δεν υπάρχει διαθέσιμο τηλέφωνο στο ΓΕΜΗ», πίσω από την ίδια πύλη
+  συνδρομής με το email. Read-through μέσω `Company.gemi_phones` → `gemiapp/company_contact.py`, που διαβάζει
+  **μόνο** το top-level πεδίο `phone` του αποθηκευμένου `raw_data` (ποτέ `persons`, `fax`, `objective`, ποτέ
+  regex στο JSON). Καμία migration, καμία αλλαγή importer, κανένα αίτημα ΓΕΜΗ στο άνοιγμα, καμία καταγραφή.
+  Κάλυψη στο dev copy: ~89% των εταιρειών έχουν εμφανίσιμο τηλέφωνο.
+
 - **Final consolidation pass — όλες οι υπόλοιπες επιφάνειες (2026-09-10).** Μεταφέρθηκαν στο
   Signal Ledger system και οι 24 εναπομείνασες σελίδες: 11 Superadmin subpages
   (Subscriptions, Radars, Leads, GEMI Pipeline, Email Digests, System Health, Audit Log,
@@ -257,6 +264,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Για email έχει επιλεγεί το Brevo Free για το MVP. Το `gemileads.gr` θα χρησιμοποιηθεί για εταιρικό mailbox και πιστοποιημένο sender domain.
 
 ## Τι απομένει
+
+- **Εκκρεμής αρχιτεκτονική απαίτηση — layer επαφών εταιρείας:** το hotfix τηλεφώνου είναι προσωρινή γέφυρα
+  (read-through από `raw_data`). Πρέπει να αντικατασταθεί από **ξεχωριστό, ελαχιστοποιημένο layer επαφών
+  εταιρείας** (contact points) με ρητή πηγή, χρόνο επαλήθευσης, διατήρηση και σημασιολογία ιδιωτικότητας.
+  Τα στοιχεία επικοινωνίας **δεν** μπαίνουν σε snapshots, σήματα, timeline, organization profile, ICP ή Radar
+  (Gemi Leads 2.0), και το raw GEMI payload δεν εκτίθεται ποτέ. Το τηλέφωνο ατομικής επιχείρησης μπορεί να
+  είναι προσωπικό δεδομένο.
 
 *(Όλα τα βήματα παραγωγής, Stripe integration, Email & Domain, Landing Page, Paid Subscription Logic και Superadmin Control Center έχουν ολοκληρωθεί. Η εφαρμογή είναι σε beta: το billing παραμένει σκόπιμα κλειστό. Το cold outreach είναι επίσης σκόπιμα παγωμένο και δεν αποτελεί εκκρεμότητα επανενεργοποίησης.)*
 
