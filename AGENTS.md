@@ -144,6 +144,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Hotfix — τηλέφωνο ΓΕΜΗ στο Company Dossier (2026-09-16).** Το `templates/companies/detail.html` δείχνει
+  πεδίο «ΤΗΛΕΦΩΝΟ ΓΕΜΗ» με `tel:` link, ή «Δεν υπάρχει διαθέσιμο τηλέφωνο στο ΓΕΜΗ», πίσω από την ίδια πύλη
+  συνδρομής με το email. Read-through μέσω `Company.gemi_phones` → `gemiapp/company_contact.py`, που διαβάζει
+  **μόνο** το top-level πεδίο `phone` του αποθηκευμένου `raw_data` (ποτέ `persons`, `fax`, `objective`, ποτέ
+  regex στο JSON). Καμία migration, καμία αλλαγή importer, κανένα αίτημα ΓΕΜΗ στο άνοιγμα, καμία καταγραφή.
+  Κάλυψη στο dev copy: ~89% των εταιρειών έχουν εμφανίσιμο τηλέφωνο.
+
 - **Gemi Leads 2.0 — C3: θεμέλιο Organization Radar (2026-09-16).** Migration `0046_organization_radar`,
   `gemiapp/organization_radars.py`:
   - **Ολοκληρώθηκαν C1 (οργανισμοί), C2 (ICP) και C3 (Organization Radar).** Το `OrganizationRadar` (§25) ανήκει
@@ -677,8 +684,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   ιδιοκτησίας δεδομένων σε οργανισμούς, η σύνδεση matching με τα Organization Radars και το G5 παραμένουν ανοιχτά.
 - **Release gate για το C3 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0046` δημιουργεί έξι **άδειους**
   πίνακες Radar· καμία data migration από `CustomerRadar`.
-- **Εκκρεμής απαίτηση προϊόντος — τηλέφωνο στο Company Dossier:** το μελλοντικό Dossier εταιρείας πρέπει να
-  δείχνει το τηλέφωνο της εταιρείας όταν το δίνει το ΓΕΜΗ. **Δεν έχει υλοποιηθεί.** Κανόνας αρχιτεκτονικής:
+- **Εκκρεμής απαίτηση — layer επαφών εταιρείας:** το Dossier δείχνει ήδη το τηλέφωνο ΓΕΜΗ μέσω του hotfix
+  (read-through από `raw_data["phone"]`, βλ. «Τρέχουσα κατάσταση»), που είναι **προσωρινή γέφυρα**. Πρέπει να
+  αντικατασταθεί από το εξής, με ρητή πηγή, χρόνο επαλήθευσης, διατήρηση και σημασιολογία ιδιωτικότητας. Κανόνας αρχιτεκτονικής:
   τα στοιχεία επικοινωνίας ζουν σε **ξεχωριστό, ελαχιστοποιημένο layer επαφών εταιρείας** (contact points) με
   δική του πηγή/διατήρηση/ιδιωτικότητα — **όχι** σε `CompanySnapshot`, `CompanySignal`, timeline,
   `OrganizationProfile` ή ICP, και ποτέ έκθεση του raw GEMI payload· το Dossier διαβάζει μόνο το εγκεκριμένο

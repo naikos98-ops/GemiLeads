@@ -109,6 +109,14 @@ class Company(models.Model):
         return f"https://publicity.businessportal.gr/company/{self.gemi_number}"
 
     @property
+    def gemi_phones(self):
+        """The company's contact phone(s) as published by ΓΕΜΗ, read from the stored record's top-level
+        ``phone`` field only (see gemiapp.company_contact). Never from ``persons``, never fetched."""
+        from .company_contact import extract_company_contact_phones
+
+        return extract_company_contact_phones(self.raw_data)
+
+    @property
     def people(self):
         """Partners, managers and legal representatives, as published by ΓΕΜΗ.
 
