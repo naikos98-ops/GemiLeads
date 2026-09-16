@@ -9,6 +9,7 @@ from .models import (
     CompanyOutreach,
     CompanySignal,
     CompanySignalDiscoveryEvidence,
+    CompanySnapshot,
     CustomerRadar,
     DigestDelivery,
     DigestPreference,
@@ -258,6 +259,40 @@ class CompanySignalAdmin(admin.ModelAdmin):
     @admin.display(description="Χρόνος γεγονότος")
     def effective(self, obj):
         return obj.effective_at or obj.effective_date or "—"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(CompanySnapshot)
+class CompanySnapshotAdmin(admin.ModelAdmin):
+    """Inspection only. Snapshots are observed history written by the B3 writer; editing one by hand would
+    misrepresent what the source said at that observation."""
+
+    list_display = (
+        "gemi_number", "observed_at", "last_observed_at", "is_baseline", "short_state_hash", "status_source_id",
+        "legal_type_source_id", "municipality_source_id", "activity_count", "schema_version", "normalizer_version",
+    )
+    list_filter = ("is_baseline", "schema_version", "normalizer_version")
+    list_select_related = ("company",)
+    search_fields = ("company__gemi_number", "state_hash")
+    date_hierarchy = "observed_at"
+    readonly_fields = tuple(field.name for field in CompanySnapshot._meta.fields)
+
+    @admin.display(description="Αρ. ΓΕΜΗ", ordering="company__gemi_number")
+    def gemi_number(self, obj):
+        return obj.company.gemi_number
+
+    @admin.display(description="State hash")
+    def short_state_hash(self, obj):
+        return obj.state_hash[:12]
+
+    @admin.display(description="Δραστηριότητες")
+    def activity_count(self, obj):
+        return len(obj.activities_state or [])
 
     def has_add_permission(self, request):
         return False

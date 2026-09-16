@@ -144,6 +144,35 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — B3: ελαχιστοποιημένα snapshots εταιρειών (2026-09-16).** Migration
+  `0041_company_snapshot`, `gemiapp/company_snapshots.py`:
+  - `CompanySnapshot`: η κανονική **επιχειρηματική κατάσταση** μιας εταιρείας σε μία παρατήρηση — όχι το
+    payload του ΓΕΜΗ, όχι το `raw_data`, όχι σήμα. Χτίζεται **μόνο** από την A3 `NormalizedCompany`.
+  - **Κατάσταση v1 (όλα μπαίνουν στο hash):** status id, lastStatusChange + ποιότητα, legal type id,
+    GEMI office id, νομός/δήμος/πόλη/ΤΚ, ημερομηνία σύστασης + ποιότητα, τρέχουσες δραστηριότητες και
+    `unknown_current_activity_count`. **Ταυτότητα με source ids, ποτέ περιγραφές**: αλλαγή λεκτικού δεν
+    είναι αλλαγή κατάστασης.
+  - **Τρέχουσες δραστηριότητες:** A3/A7 `is_current` — True μέσα, False έξω, **None ποτέ** ως
+    επιβεβαιωμένα τρέχουσα (μετριέται χωριστά). **Δεν** εφαρμόζεται ο περιορισμός KAD-2026 του A7: μια
+    τρέχουσα ΚΑΔ 2008 παραμένει και η έκδοση ΚΑΔ είναι μέρος ταυτότητας, γιατί το B5 χρειάζεται αυτό το
+    τεκμήριο για να ξεχωρίσει πραγματική αλλαγή από τη μετάβαση 2008→2026.
+  - **`state_hash`:** SHA-256 πάνω σε canonical JSON (ταξινομημένα κλειδιά, compact separators, ISO
+    ημερομηνίες, χωρίς floats). **Κανένα metadata** δεν συμμετέχει (id, observed_at, created_at, source
+    record, εκδόσεις, baseline)· ίδια κατάσταση σε άλλη στιγμή ⇒ ίδιο hash.
+  - **Writer:** πρώτη κατάσταση → baseline· ίδια κατάσταση → **καμία** νέα γραμμή, μόνο το
+    `last_observed_at` προχωρά· διαφορετική → νέα μη-baseline γραμμή. Παρατήρηση παλαιότερη από το τρέχον
+    διάστημα **απορρίπτεται**. Το `observed_at` δίνεται πάντα ρητά (καμία κρυφή `now()`).
+  - **A → B → A δίνει 3 γραμμές**: δεν υπάρχει unique (company, state_hash), ώστε η επιστροφή σε
+    προηγούμενη κατάσταση να μένει ορατή.
+  - Καμία backfill από `raw_data` (θα ήταν πλαστό baseline), κανένα task, κανένα σήμα. Το B4 θα φέρνει
+    φρέσκες παρατηρήσεις και θα καλεί αυτόν τον writer.
+  - Αντίγραφο dev βάσης: **0 snapshots** μετά τη migration· η προσομοίωση fixture (A→A→B→B→A) έδωσε 3
+    γραμμές με ίδιο hash A1/A2 και εξαφανίστηκε με το reverse.
+  - **Δύο πεδία τύπου δραστηριότητας, σκόπιμα:** το `activity_type` είναι η canonical A7 τιμή (μέσω `normalize_kad_search`: χωρίς τόνους, κεφαλαία)· το `source_activity_type` είναι η A3 `normalize_text`, που κάνει NFC και
+    συμπτύσσει κενά αλλά **διατηρεί πεζά/κεφαλαία και τόνους**. Άρα διαφορά μόνο σε κενά/μορφή Unicode δεν αλλάζει την κατάσταση,
+    ενώ διαφορά μόνο σε πεζά/κεφαλαία ή τόνους **δίνει νέα γραμμή κατάστασης** με αμετάβλητο canonical type· το B3
+    καταγράφει το γεγονός, η κρίση ανήκει στο B5.
+  - 33 νέα tests· **1.081 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
 - **Gemi Leads 2.0 — B2: παραγωγός σημάτων NEW_COMPANY (2026-09-16).** Migration
   `0040_company_signal_discovery_evidence`, `gemiapp/new_company_signals.py`,
   `manage.py materialize_new_company_signals`:
@@ -512,8 +541,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — το Stage A (Data Foundation) ολοκληρώθηκε με το A10· επόμενο πακέτο: B3** κατά το
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του B2.
+- **Gemi Leads 2.0 — το Stage A (Data Foundation) ολοκληρώθηκε με το A10· επόμενο πακέτο: B4**
+  (συλλογή φρέσκων παρατηρήσεων για τις παρακολουθούμενες εταιρείες, που θα καλεί τον writer του B3) κατά
+  το `docs/GEMI_LEADS_2_BLUEPRINT.md`· αναμένει έγκριση του B3.
+- **Release gate για το B3 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0041` δημιουργεί μόνο
+  τον πίνακα snapshots, που μένει **άδειος**: κανένα baseline δεν φτιάχνεται από παλιά `raw_data`. Τα πρώτα
+  baselines θα προκύψουν από τις φρέσκες παρατηρήσεις του B4. Αλλαγή της κανονικής κατάστασης απαιτεί ρητή
+  αύξηση του `COMPANY_SNAPSHOT_SCHEMA_VERSION`.
 - **Release gate για το B2 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** τα σήματα NEW_COMPANY
   παράγονται **μόνο** από ευρήματα Discovery v2, που παραμένει shadow. Άρα: πρώτα το 14ήμερο shadow gate του
   A10 και η αξιολόγηση των διαφορών legacy/v2· μετά ξεχωριστή, ρητή απόφαση για LIVE σήματα. Καμία σύνδεση
@@ -588,7 +622,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
-- **2026-09-16 — Gemi Leads 2.0 B2 (παραγωγός σημάτων NEW_COMPANY).** Νέα: `CompanySignalDiscoveryEvidence`
+- **2026-09-16 — Gemi Leads 2.0 B3 (ελαχιστοποιημένα snapshots εταιρειών).** Νέα: `CompanySnapshot`
+  (`gemiapp/models.py`), migration `0041_company_snapshot.py`, `gemiapp/company_snapshots.py` (κανονική
+  κατάσταση, state hash, writer), `gemiapp/test_company_snapshots.py`. Αλλαγές: `admin.py` (read-only).
+  Επαλήθευση: 1.080 tests OK, `check` / `makemigrations --check` / build:css καθαρά, forward → 0 snapshots →
+  προσομοίωση A→A→B→B→A (3 γραμμές) → parity → reverse → reapply (ξανά 0) στο αντίγραφο της dev βάσης.
+  Importer, discovery, monitoring, signals, services, views, tasks, schedules και billing αμετάβλητα.
+- **2026-09-16 — Gemi Leads 2.0 B2 (παραγωγός σημάτων NEW_COMPANY).** Commit `6960414`. Νέα: `CompanySignalDiscoveryEvidence`
   (`gemiapp/models.py`), migration `0040_company_signal_discovery_evidence.py`,
   `gemiapp/new_company_signals.py`, `manage.py materialize_new_company_signals`,
   `gemiapp/test_new_company_signals.py`. Αλλαγές: `company_signals.py` (ο κανόνας `new_company:v1` έγινε

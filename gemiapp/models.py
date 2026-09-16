@@ -1056,6 +1056,73 @@ class CompanySignalDiscoveryEvidence(models.Model):
         return f"signal #{self.signal_id} · observation #{self.discovery_observation_id}"
 
 
+class CompanySnapshot(models.Model):
+    """The canonical, minimised business state of one company at one observation (B3).
+
+    Not the GEMI payload, not ``Company.raw_data`` and not a signal: only the approved business facts a
+    later detector needs, built from the A3 canonical representation by gemiapp.company_snapshots, which
+    documents the state, the hash and the writer.
+
+    One company has many snapshots over time. A new row is written only when the business state actually
+    changes; an identical consecutive observation extends ``last_observed_at`` instead. ``company`` and
+    ``source_record`` are PROTECTed because a snapshot is historical evidence and the record it cites must
+    not vanish underneath it.
+
+    No name, VAT number, address, contact details, persons, capital or raw payload is ever stored here.
+    """
+
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="snapshots")
+    # The canonical-state contract this row was built under, and the A3 version that produced it.
+    schema_version = models.PositiveSmallIntegerField()
+    normalizer_version = models.PositiveSmallIntegerField()
+    # SHA-256 over the canonical business state only: no timestamps, ids or versions take part.
+    state_hash = models.CharField(max_length=64)
+    # The observation span of this state: first and most recent consecutive observation of it.
+    observed_at = models.DateTimeField()
+    last_observed_at = models.DateTimeField()
+    # The first trustworthy state of a company. It never means "the company changed".
+    is_baseline = models.BooleanField()
+    # A4 provenance, when source recording is enabled; null is normal and never faked.
+    source_record = models.ForeignKey(
+        GemiSourceRecord, on_delete=models.PROTECT, null=True, blank=True, related_name="company_snapshots",
+    )
+
+    # --- canonical business state (all of it takes part in state_hash) ------------------------------
+    status_source_id = models.CharField(max_length=32, null=True, blank=True)
+    last_status_change = models.DateField(null=True, blank=True)
+    last_status_change_quality = models.CharField(max_length=16, choices=Company.INCORPORATION_DATE_QUALITIES)
+    legal_type_source_id = models.CharField(max_length=32, null=True, blank=True)
+    gemi_office_source_id = models.CharField(max_length=32, null=True, blank=True)
+    prefecture_source_id = models.CharField(max_length=32, null=True, blank=True)
+    municipality_source_id = models.CharField(max_length=32, null=True, blank=True)
+    city = models.CharField(max_length=160, null=True, blank=True)
+    postal_code = models.CharField(max_length=16, null=True, blank=True)
+    incorporation_date = models.DateField(null=True, blank=True)
+    incorporation_date_quality = models.CharField(max_length=16, choices=Company.INCORPORATION_DATE_QUALITIES)
+    # The verified-current activities, written only by the B3 canonical builder in its pinned shape.
+    activities_state = models.JSONField(default=list, blank=True)
+    # Activities whose currentness the source left indeterminate: never in the current set, but a change
+    # in how determinate the source is, is itself a change of canonical observation quality.
+    unknown_current_activity_count = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-observed_at", "-id"]
+        verbose_name = "Company snapshot"
+        # Deliberately no unique (company, state_hash): a company may return to an earlier state, and that
+        # recurrence must stay visible as its own row.
+        indexes = [models.Index(fields=["company", "-observed_at"], name="snapshot_company_observed_idx")]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(last_observed_at__gte=models.F("observed_at")),
+                name="snapshot_observation_span_ordered",
+            ),
+        ]
+
+    def __str__(self):
+        return f"company #{self.company_id} · {self.observed_at:%Y-%m-%d} · {self.state_hash[:12]}"
+
+
 class CompanyMonitoring(models.Model):
     """Monitoring state of one company, shared by every customer (A9).
 
