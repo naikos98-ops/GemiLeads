@@ -14,6 +14,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core import mail
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.core.signing import TimestampSigner
 from django.db import DatabaseError, models
 from django.db.migrations.loader import MigrationLoader
 from django.db.migrations.operations import AddField
@@ -356,9 +357,13 @@ class CurrentBehaviourTests(TestCase):
                 "digest": (sent, [(m.subject, m.body) for m in mail.outbox]),
             }
 
-        before = state()
-        backfill_company_metadata()
-        after = state()
+        # Digest links carry TimestampSigner tokens (unsubscribe, CSV export) that embed the signing second, so two
+        # renders straddling a second boundary differ although nothing changed. Pin only the signer's clock: the
+        # tokens are still produced and compared in full.
+        with patch("django.core.signing.TimestampSigner.timestamp", return_value=TimestampSigner().timestamp()):
+            before = state()
+            backfill_company_metadata()
+            after = state()
 
         self.assertEqual(before, after)
         deleted = Company.objects.get(gemi_number="118717204000")
