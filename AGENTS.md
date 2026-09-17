@@ -144,6 +144,25 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — C4: θεμέλιο industry templates (2026-09-17).** Migration `0047_industry_template`,
+  `gemiapp/industry_templates.py`:
+  - **Το production hotfix τηλεφώνου μεταφέρθηκε στο feature branch** (cherry-pick του `5f9ee19` ως `1710a7c`·
+    κώδικας/template/tests ίδια με production). Το C4 δεν αγγίζει τίποτα από αυτό.
+  - **Έλεγχος δυνατοτήτων:** το ΓΕΜΗ (`/metadata/activities`) δεν δίνει parent/level/group· το A5 δεν αποθηκεύει
+    κάτι τέτοιο· τα prefixes κωδικών **δεν** είναι αποδεδειγμένη ιεραρχία (μικτοί 4/7/8ψήφιοι, trailing zeros δεν
+    σημαίνουν γονέα)· δεν υπάρχει επαληθευμένη ταξινόμηση κλάδων. ⇒ **PATH B**.
+  - `IndustryTemplate` (slug σταθερή ταυτότητα, name/description παρουσίαση, active προεπιλογή False) →
+    `IndustryTemplateKad` = **ακριβές `GemiKad`** (κωδικός + έκδοση). ΚΑΔ 2008 και 2026 ξεχωριστά· κανένα prefix,
+    καμία ιεραρχία, κανένα crosswalk, καμία ταύτιση περιγραφών. **Δεν είναι industry groups.**
+  - Το industry-group κριτήριο του C2 ICP **παραμένει αναβληθέν** — δεν υπάρχει κανονική ταξινόμηση.
+  - **Κανένα seeded template:** τα παραδείγματα του §27 δεν είναι ελεγμένες αντιστοιχίσεις ΚΑΔ.
+  - Ενεργό template θέλει ≥1 ΚΑΔ· retired ΚΑΔ δεν προστίθεται (υπάρχουσα αντιστοίχιση μένει). Υπηρεσίες ατομικές.
+  - **Καμία δυναμική σχέση template → Radar/ICP:** μελλοντικό UI θα **αντιγράφει** ελεγμένα κριτήρια
+    (`template_kad_proposal`, μόνο ανάγνωση). Admin μόνο ανάγνωσης· κανένα UI/API/task/δίκτυο.
+  - Επίσης: διορθώθηκε test του A10 που εξαρτιόταν από την τρέχουσα ημερομηνία (`0bbbb05`).
+  - Αντίγραφο dev: GemiKad 0, templates 0, αντιστοιχίσεις 0. 41 νέα/σχετικά tests (C4 + τηλέφωνο)·
+    **1.378 tests OK**. **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
 - **Hotfix — τηλέφωνο ΓΕΜΗ στο Company Dossier (2026-09-16).** Το `templates/companies/detail.html` δείχνει
   πεδίο «ΤΗΛΕΦΩΝΟ ΓΕΜΗ» με `tel:` link, ή «Δεν υπάρχει διαθέσιμο τηλέφωνο στο ΓΕΜΗ», πίσω από την ίδια πύλη
   συνδρομής με το email. Read-through μέσω `Company.gemi_phones` → `gemiapp/company_contact.py`, που διαβάζει
@@ -679,9 +698,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: C4 — Industry templates** (Phase C, βήμα 23 στο §118 και §27 του
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C3. Να ακολουθηθεί η σειρά της Phase C· η μεταφορά
-  ιδιοκτησίας δεδομένων σε οργανισμούς, η σύνδεση matching με τα Organization Radars και το G5 παραμένουν ανοιχτά.
+- **Gemi Leads 2.0 — επόμενο πακέτο: C5 — Matching engine** (Phase C, βήμα 24 στο §118 και §28 του
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C4. Να ακολουθηθεί η σειρά της Phase C· η μεταφορά
+  ιδιοκτησίας δεδομένων σε οργανισμούς, το G5 και μια κανονική ταξινόμηση κλάδων/ιεραρχία ΚΑΔ παραμένουν ανοιχτά.
+- **Release gate για το C4 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0047` δημιουργεί δύο **άδειους**
+  πίνακες· κανένα seed. Τα templates χρειάζονται A5 reference data και ελεγμένες αντιστοιχίσεις ΚΑΔ.
 - **Release gate για το C3 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0046` δημιουργεί έξι **άδειους**
   πίνακες Radar· καμία data migration από `CustomerRadar`.
 - **Εκκρεμής απαίτηση — layer επαφών εταιρείας:** το Dossier δείχνει ήδη το τηλέφωνο ΓΕΜΗ μέσω του hotfix

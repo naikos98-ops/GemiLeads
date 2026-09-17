@@ -29,6 +29,8 @@ from .models import (
     GemiReferenceSyncRun,
     GemiSourceRecord,
     ImportRun,
+    IndustryTemplate,
+    IndustryTemplateKad,
     Organization,
     OrganizationICP,
     OrganizationICPKad,
@@ -570,3 +572,27 @@ class OrganizationRadarExclusionAdmin(OrganizationReadOnlyAdmin):
     list_display = ("radar", "subject", "kad", "prefecture", "municipality", "legal_type")
     list_filter = ("subject",)
     list_select_related = ("radar", "kad", "prefecture", "municipality", "legal_type")
+
+
+@admin.register(IndustryTemplate)
+class IndustryTemplateAdmin(OrganizationReadOnlyAdmin):
+    """Inspection only (C4). Platform presets change only through gemiapp.industry_templates."""
+
+    list_display = ("slug", "name", "active", "kad_count", "created_at", "updated_at")
+    list_filter = ("active",)
+    search_fields = ("slug", "name")
+
+    def get_queryset(self, request):
+        from django.db.models import Count
+
+        return super().get_queryset(request).annotate(_kad_count=Count("kads"))
+
+    @admin.display(description="KAD mappings", ordering="_kad_count")
+    def kad_count(self, obj):
+        return obj._kad_count
+
+
+@admin.register(IndustryTemplateKad)
+class IndustryTemplateKadAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("template", "kad")
+    list_select_related = ("template", "kad")

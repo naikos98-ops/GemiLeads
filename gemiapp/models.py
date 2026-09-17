@@ -1815,6 +1815,51 @@ class OrganizationRadarExclusion(models.Model):
         ]
 
 
+class IndustryTemplate(models.Model):
+    """A platform-owned industry preset (C4, blueprint §27): KAD targeting without knowing KAD codes.
+
+    A curated preset, not a canonical industry classification: GEMI publishes no KAD hierarchy, so a template
+    maps to exact KAD identities (IndustryTemplateKad) rather than to «ΚΑΔ groups». Owned by no organization,
+    user or subscription, and linked to no Radar or ICP -- a future interface copies a reviewed template's
+    criteria explicitly, so changing a template never changes a customer's configuration. Written only through
+    gemiapp.industry_templates. ``slug`` is the stable identity; ``name`` is presentation.
+    """
+
+    slug = models.SlugField(max_length=64, unique=True)
+    name = models.CharField(max_length=120)
+    description = models.CharField(max_length=500, blank=True)
+    # Whether a future interface may offer the preset. Nothing executes a template.
+    active = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["slug"]
+        verbose_name = "Industry template"
+        constraints = [
+            models.CheckConstraint(condition=~models.Q(slug=""), name="industry_template_slug_not_blank"),
+            models.CheckConstraint(condition=~models.Q(name=""), name="industry_template_name_not_blank"),
+        ]
+
+    def __str__(self):
+        return self.slug
+
+
+class IndustryTemplateKad(models.Model):
+    """One exact KAD (code and version, via GemiKad) of an industry template. No prefix or hierarchy."""
+
+    template = models.ForeignKey(IndustryTemplate, on_delete=models.CASCADE, related_name="kads")
+    kad = models.ForeignKey(GemiKad, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Industry template KAD"
+        constraints = [models.UniqueConstraint(fields=["template", "kad"], name="unique_industry_template_kad")]
+
+    def __str__(self):
+        return f"{self.template_id} · KAD #{self.kad_id}"
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
