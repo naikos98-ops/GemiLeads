@@ -144,6 +144,27 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — C5: matching engine για Organization Radars (2026-09-17).** `gemiapp/organization_radar_matching.py`,
+  εντολή μόνο-ανάγνωσης `show_organization_radar_matches` (`--signal-id` ή ρητό `--mode shadow|live`). **Χωρίς migration.**
+  - Το C4 (industry templates) ολοκληρώθηκε (`ca18b7c`)· το flaky A6 digest test σταθεροποιήθηκε (`96d3151`, μόνο test:
+    καρφωμένο ρολόι του `TimestampSigner`, καμία αλλαγή σε digests/unsubscribe).
+  - Τα `OrganizationRadar` έχουν πλέον **εσωτερικό, ντετερμινιστικό matcher**: `find_matching_organization_radars(signal)`
+    → immutable `MatchedOrganizationRadar`. Κανόνας `organization_radar_match:v1` (αλλαγή σημασιολογίας = `:v2`).
+  - Ροή: context από κανονικό ιστορικό → ένα SQL query υποψηφίων (συντηρητικό superset, ποτέ στενότερο) → batch φόρτωση
+    ορισμών (ένα query ανά πίνακα κριτηρίων) → καθαρός evaluator (MATCH / NO_MATCH / INSUFFICIENT_STATE).
+  - Κατάσταση εταιρείας: SNAPSHOT_DIFF → `current_snapshot` του B5 evidence· NEW_COMPANY → τελευταίο snapshot με
+    `observed_at <= detected_at`· άλλες πηγές → unsupported. Ποτέ `Company.is_active`, legacy περιγραφές,
+    `CompanyActivity`, `raw_data`, τηλέφωνο/επαφές.
+  - OR μέσα σε διάσταση, AND μεταξύ διαστάσεων, κενή διάσταση = χωρίς περιορισμό (κενά signal types = κάθε υλοποιημένος
+    τύπος), exclusion = veto. Άγνωστο γεγονός → INSUFFICIENT_STATE, ποτέ «δεν ταιριάζει». ΚΑΔ = ακριβές (κωδικός, έκδοση).
+  - `score_threshold`, ICP και industry templates **αγνοούνται**. **Καμία αποθήκευση matches**, κανένα scoring/opportunity,
+    κανένα UI/API/task/schedule/δίκτυο.
+  - **Το `CustomerRadar` μένει ο production matcher**· καμία ενσωμάτωση σε A9 monitoring ή B4 planner· RadarMatch,
+    digests, leads, billing αμετάβλητα. Το hotfix τηλεφώνου άθικτο. G0/G1/G5 αμετάβλητα.
+  - Αντίγραφο dev: CompanySignal 0, CompanySnapshot 0, OrganizationRadar 0 → 0 πραγματικά matches.
+    39 νέα tests· **1.417 tests OK** (δύο συνεχόμενες πλήρεις εκτελέσεις). **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — C4: θεμέλιο industry templates (2026-09-17).** Migration `0047_industry_template`,
   `gemiapp/industry_templates.py`:
   - **Το production hotfix τηλεφώνου μεταφέρθηκε στο feature branch** (cherry-pick του `5f9ee19` ως `1710a7c`·
@@ -698,9 +719,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: C5 — Matching engine** (Phase C, βήμα 24 στο §118 και §28 του
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C4. Να ακολουθηθεί η σειρά της Phase C· η μεταφορά
-  ιδιοκτησίας δεδομένων σε οργανισμούς, το G5 και μια κανονική ταξινόμηση κλάδων/ιεραρχία ΚΑΔ παραμένουν ανοιχτά.
+- **Gemi Leads 2.0 — επόμενο πακέτο: C6 — Opportunity scoring** (Phase C, βήμα 25 στο §118 και §30–§31 του
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C5. Να ακολουθηθεί η σειρά της Phase C (score breakdown,
+  opportunity model, feed)· η μεταφορά ιδιοκτησίας δεδομένων σε οργανισμούς, το G5 και μια κανονική ταξινόμηση
+  κλάδων/ιεραρχία ΚΑΔ παραμένουν ανοιχτά.
+- **Release gate για το C5:** καμία migration· ο matcher δεν καλείται από κανένα product path. Χρειάζεται A5 reference data
+  και B3/B5 snapshots στην παραγωγή πριν δώσει ουσιαστικά αποτελέσματα· NEW_COMPANY χωρίς σύγχρονο snapshot δίνει
+  INSUFFICIENT_STATE για Radars με κριτήρια κατάστασης.
 - **Release gate για το C4 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0047` δημιουργεί δύο **άδειους**
   πίνακες· κανένα seed. Τα templates χρειάζονται A5 reference data και ελεγμένες αντιστοιχίσεις ΚΑΔ.
 - **Release gate για το C3 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0046` δημιουργεί έξι **άδειους**
