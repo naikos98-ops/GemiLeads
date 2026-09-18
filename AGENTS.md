@@ -144,6 +144,32 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — C7: score breakdown (2026-09-18).** `gemiapp/opportunity_score_breakdown.py`· η υπάρχουσα εντολή
+  `show_organization_radar_score --breakdown` δείχνει την ανάλυση. **Χωρίς migration, χωρίς αποθήκευση.**
+  - Το C6 (scoring) ολοκληρώθηκε και δεσμεύτηκε (`c13bad2`). Το C7 **εξηγεί** ένα έγκυρο `OpportunityScore` — δεν
+    ξαναϋπολογίζει score και δεν ξανακρίνει matching. Μία μόνο πηγή αλήθειας για πόντους: το C6.
+  - **Το §32 είναι παράδειγμα του απορριφθέντος §30** (δείχνει «+7 Contactability», σύνολο 92/100). Το C7 εξηγεί το
+    **πραγματικό συμβόλαιο v1** (ΚΑΔ 30, σήμα 25, γεωγραφία 15, νομική μορφή 10, φρεσκάδα 20 = 100).
+  - **Ακριβώς πέντε συστατικά, σταθερή σειρά:** `industry_fit`, `signal_relevance`, `geographic_fit`,
+    `legal_form_fit`, `freshness`. Καμία γραμμή για contactability, χαρακτηριστικά/ηλικία εταιρείας ή template fit —
+    ούτε καν μηδενική.
+  - Κάθε γραμμή: `awarded_points/max_points`, status (`awarded`/`not_awarded`), **σταθερός `reason_code`** (π.χ.
+    `exact_kad_match`, `radar_accepts_any_signal_type`, `fresh_within_72h`, `stale_over_30d`) και **τυποποιημένα
+    κανονικά στοιχεία** (ΚΑΔ κωδικός+έκδοση, επίπεδο+source id περιοχής, source id νομικού τύπου, τύπος σήματος,
+    χρόνοι φρεσκάδας με ακέραια ηλικία σε δευτερόλεπτα). Οι ελληνικές ετικέτες είναι **μόνο παρουσίαση**, ποτέ ταυτότητα.
+  - **Αμετακίνητες σταθερές:** άθροισμα γραμμών == score, μέγιστα == 100, κλάση μέσω του ίδιου helper του C6, ίδιο
+    `as_of` με τον υπολογισμό, μόνο `opportunity_score:v1` + `organization_radar_match:v1`. Σε οποιαδήποτε διαφωνία
+    **σφάλμα**, ποτέ σιωπηλή «διόρθωση».
+  - Δύο προσθετικές αλλαγές χωρίς αλλαγή σημασιολογίας: το `OpportunityScore` μεταφέρει πλέον το `as_of`, και το C5
+    απέκτησε τον καθαρό βοηθό **μόνο ανάγνωσης** `confirmed_criteria` (χρησιμοποιεί τα ίδια predicates του C5, ώστε τα
+    στοιχεία να μην μπορούν να αποκλίνουν από το match). Τα βάρη, ο τύπος και το matching δεν άλλαξαν.
+  - Καθαρός builder **χωρίς κανένα query**· end-to-end helper = 15 queries ανεξαρτήτως πλήθους αποτελεσμάτων.
+  - Κανένα Opportunity/feed/UI/route/task/schedule/δίκτυο· το `score_threshold` και η επιλεξιμότητα παραμένουν για το
+    επόμενο πακέτο. `CustomerRadar`, RadarMatch, digests, A9, B4, billing αμετάβλητα· hotfix τηλεφώνου άθικτο.
+  - Αντίγραφο dev: CompanySignal 0, OrganizationRadar 0 → **0 πραγματικές αναλύσεις**. 30 νέα tests·
+    **1.477 tests OK** (δύο συνεχόμενες πλήρεις εκτελέσεις). **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — C6: opportunity scoring (2026-09-18).** `gemiapp/opportunity_scoring.py`, εντολή μόνο-ανάγνωσης
   `show_organization_radar_score --signal-id --as-of`. **Χωρίς migration, χωρίς αποθήκευση score.**
   - Το C5 (matching engine) ολοκληρώθηκε (`e498c88`). Το C6 βαθμολογεί **μόνο επιβεβαιωμένο C5 MATCH**·
@@ -756,10 +782,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: C7 — Score breakdown** (Phase C, βήμα 26 στο §118 και §32 του
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C6. Ακολουθούν opportunity model (§29) και feed (§35)·
-  η μεταφορά ιδιοκτησίας δεδομένων σε οργανισμούς, το G5 και μια κανονική ταξινόμηση κλάδων παραμένουν ανοιχτά.
-  Το C7 δείχνει τα πέντε συστατικά του v1 — όχι τα παραδείγματα του §32.
+- **Gemi Leads 2.0 — επόμενο πακέτο: C8 — Opportunity model** (Phase C, βήμα 27 στο §118 και §29/§34 του
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C7. Εκεί ανήκουν η αποθήκευση, το `score_threshold`, η
+  επιλεξιμότητα και η συνάθροιση διπλών ευκαιριών· ακολουθεί το feed (§35). Η μεταφορά ιδιοκτησίας δεδομένων σε
+  οργανισμούς, το G5 και μια κανονική ταξινόμηση κλάδων παραμένουν ανοιχτά.
+- **Release gate για το C7:** καμία migration· η ανάλυση **παράγεται κατ' απαίτηση** και δεν καταγράφεται ιστορικά —
+  εξαρτάται από το `as_of` και από την τρέχουσα διαμόρφωση του Radar, οπότε το C8 πρέπει να αποφασίσει τι «κλειδώνει».
 - **Release gate για το C6:** καμία migration· κανένα product path δεν καλεί το scoring. Το scoring εξαρτάται από
   `as_of`, οπότε το πότε «κλειδώνει» ένα score το αποφασίζει το μελλοντικό Opportunity.
 - **Release gate για το C5:** καμία migration· ο matcher δεν καλείται από κανένα product path. Χρειάζεται A5 reference data

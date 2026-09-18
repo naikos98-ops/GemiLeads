@@ -356,6 +356,24 @@ def evaluate_organization_radar(definition: RadarDefinition, context: MatchConte
     )
 
 
+def confirmed_criteria(definition: RadarDefinition, context: MatchContext) -> dict:
+    """Which of a Radar's own criteria the context **confirmed**, per dimension. Read-only and pure.
+
+    An explanation helper for C7: it decides nothing and changes no matching semantics. It reuses the very
+    predicates ``evaluate_organization_radar`` applies, so a named criterion is by construction one that rule v1
+    confirmed -- the two can never drift apart. Exclusions are not reported: a confirmed match has none.
+    """
+    if not isinstance(definition, RadarDefinition) or not isinstance(context, MatchContext):
+        raise MatchingError("confirmed_criteria takes a RadarDefinition and a MatchContext")
+    confirmed = {KAD: [], REGION: [], LEGAL_FORM: []}
+    for criteria in (definition.kads, definition.regions, definition.legal_forms):
+        for reference in criteria:
+            subject, result = _reference_criterion(reference, context)
+            if result is True:
+                confirmed[KAD if subject == KAD else (LEGAL_FORM if subject == LEGAL_FORM else REGION)].append(reference)
+    return {dimension: tuple(values) for dimension, values in confirmed.items()}
+
+
 # --- indexed candidate selection -----------------------------------------------------------------
 
 def _kad_identity_q(context: MatchContext, prefix: str) -> Q | None:

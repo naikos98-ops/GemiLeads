@@ -131,6 +131,8 @@ class OpportunityScore:
     organization_id: int
     radar_id: int
     match_rule_version: str
+    # The explicit instant the score was calculated at, so an explanation can never describe another moment.
+    as_of: datetime
     # The v1 components; they sum to ``score``.
     industry_fit_points: int = 0
     signal_relevance_points: int = 0
@@ -215,7 +217,7 @@ def calculate_opportunity_score(context: OpportunityScoringContext, *, as_of: da
     return OpportunityScore(
         score=score, score_class=score_class_for(score), scoring_rule_version=OPPORTUNITY_SCORE_RULE_VERSION,
         signal_id=context.signal_id, company_id=context.company_id, organization_id=context.organization_id,
-        radar_id=context.radar_id, match_rule_version=context.match_rule_version, **points,
+        radar_id=context.radar_id, match_rule_version=context.match_rule_version, as_of=as_of, **points,
     )
 
 
