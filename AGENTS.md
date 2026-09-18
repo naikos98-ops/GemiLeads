@@ -144,6 +144,36 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — C9: read model του feed ευκαιριών (2026-09-18).** `gemiapp/opportunity_feed.py`, εντολή μόνο-ανάγνωσης
+  `show_opportunity_feed --organization-id`. **Χωρίς model, migration ή εγγραφή.**
+  - Το C8 (αποθήκευση ευκαιριών) ολοκληρώθηκε και δεσμεύτηκε (`afebd70`)· το flaky login rate-limit test
+    σταθεροποιήθηκε ξεχωριστά (`799f0bc`, μόνο test: καρφωμένο ρολόι του limiter, ίδιο `5/m`).
+  - Το C9 διαβάζει **μόνο** τις αποθηκευμένες ευκαιρίες του C8 — δεν κάνει matching, scoring, live breakdown,
+    δημιουργία, rescoring ή αλλαγή status. Δείχνει το **παγωμένο** capture· **κανένα live decay**: το score αλλάζει
+    μόνο όταν το C8 δεχτεί νέο qualifying signal· εκτίθεται το `scored_as_of`.
+  - **Μία κάρτα ανά (organization, company)** (§34), χωρίς συγχώνευση γραμμών· κάθε υποκείμενη ευκαιρία μένει ως
+    immutable child (Radar, score, class, status, reason, τελευταίο signal).
+  - **Primary opportunity** (από όπου προέρχονται *όλα* τα πεδία της κάρτας): υψηλότερο παγωμένο score → πιο πρόσφατο
+    `latest_signal.detected_at` → μικρότερο id. **Freshness = `latest_signal.detected_at`** (ποτέ `updated_at`, ρολόι
+    ή επανυπολογισμός)· ξεχωριστά `primary_signal_detected_at` και `latest_company_signal_detected_at`.
+  - **Πλήθος σχετικών signals = distinct** contributing signals της κάρτας (ένα signal από δύο Radars μετράει μία φορά).
+  - **Φίλτρα §35** σε επίπεδο ευκαιρίας, **πριν** τη συνάθροιση (η κάρτα κρατά μόνο τις επιζώσες και διαλέγει primary
+    ανάμεσά τους): score class, min/max score (inclusive), status, Radar (μόνο του οργανισμού· ξένο id απορρίπτεται),
+    signal type (μόνο contributing signals), ΚΑΔ και περιοχή από το **παγωμένο scoring evidence** (ακριβές
+    code+version / level+source id), ημερομηνία στο `latest_signal.detected_at` (inclusive, timezone-aware). AND μεταξύ
+    διαστάσεων, OR μέσα σε διάσταση.
+  - **«Today's Opportunities» = τίτλος οθόνης**, όχι φίλτρο ημερομηνίας· καμία απόκρυψη παλαιότερων. Κανένα φίλτρο
+    λήξης (δεν υπάρχει κανόνας).
+  - **Ταξινόμηση** score DESC → `primary_signal_detected_at` DESC → primary id ASC. **Keyset pagination σε SQL**
+    (cursor = ordering tuple του primary)· default 50, μέγιστο 200· χωρίς διπλές/χαμένες κάρτες.
+  - Scoping ανά οργανισμό **στο SQL**, ρητό Organization, κανένα user/session. 3 queries ανά σελίδα ανεξαρτήτως μεγέθους
+    (+1 με φίλτρο Radar). Χωρίς όνομα εταιρείας, επαφές, πρόσωπα, διεύθυνση, ΑΦΜ ή payload στην κάρτα.
+  - **Το G5 εξακολουθεί να μπλοκάρει** πρόσβαση πελάτη με πολλά μέλη: κανένα route/view/UI/API, καμία εξουσιοδότηση ρόλων.
+    Legacy προϊόν, A9, B4, billing αμετάβλητα· το τηλέφωνο μένει μόνο στο Dossier.
+  - Αντίγραφο dev: Organization 0, Opportunity 0 → **0 κάρτες**. 33 νέα tests· **1.539 tests OK** (δύο συνεχόμενες
+    πλήρεις εκτελέσεις). **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — C8: μοντέλο Opportunity (2026-09-18).** Migration `0048_opportunity`, `gemiapp/opportunities.py`.
   **Το πρώτο persisted artifact πελάτη** της αρχιτεκτονικής 2.0.
   - Το C7 (score breakdown) ολοκληρώθηκε και δεσμεύτηκε (`2cf4bfb`). Αγωγός:
@@ -817,11 +847,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: C9 — Opportunity feed** (Phase C, βήμα 28 στο §118 και §35 του
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C8. Εκεί ανήκουν η οθόνη «Today's Opportunities», τα
-  φίλτρα, η ταξινόμηση «highest score + freshest» και η συνάθροιση σε **ένα card ανά εταιρεία** (§34) όταν μια
-  εταιρεία έχει ευκαιρίες από πολλά Radars. Η μεταφορά ιδιοκτησίας δεδομένων σε οργανισμούς, το G5 και μια κανονική
-  ταξινόμηση κλάδων παραμένουν ανοιχτά.
+- **Gemi Leads 2.0 — Phase C ολοκληρώθηκε (βήματα 20–28).** Επόμενο κατά τον χάρτη: **Phase D — Workflow**,
+  βήμα 29 **company opportunity page** (§36 του `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C9. Πριν από
+  οποιαδήποτε σελίδα πελάτη πρέπει να λυθεί το G5 (απομόνωση μελών/ρόλων). Η μεταφορά ιδιοκτησίας δεδομένων σε
+  οργανισμούς και μια κανονική ταξινόμηση κλάδων παραμένουν ανοιχτά.
+- **Release gate για το C9:** καμία migration· κανένα product path δεν καλεί το feed· δεν υπάρχει ακόμη καμία
+  αυτόματη παραγωγή ευκαιριών, οπότε το feed μένει κενό μέχρι ένα εγκεκριμένο πακέτο επεξεργασίας.
 - **Release gate για το C8 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0048` δημιουργεί **τέσσερις
   άδειους** πίνακες· κανένα backfill από `UserCompanyLead`/`RadarMatch`. Καμία αυτόματη επεξεργασία: το
   `materialize_opportunities_for_signal` καλείται μόνο εσωτερικά, χωρίς task/schedule/signal hook.
