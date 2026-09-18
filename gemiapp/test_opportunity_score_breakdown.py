@@ -54,6 +54,9 @@ from .test_organization_radar_matching import (
     ADDRESS_SENTINEL, PRIVATE, T0, diff_signal, make_company, new_company_signal, snapshot,
 )
 
+C8_PERSISTENCE = ("Opportunity", "OpportunitySignal", "OpportunityScoreComponent",
+                  "OpportunityScoreEvidence")  # C8 owns these; earlier packages must add none
+
 
 class BreakdownTestCase(ScoringTestCase):
     def breakdowns(self, signal, *, as_of=STALE):
@@ -101,14 +104,20 @@ class ContractTests(TestCase):
                           "stripe", "send_mail", "urllib", "requests", "request.user", "session"):
             self.assertNotIn(forbidden, code, forbidden)
 
-    def test_no_breakdown_model_and_no_migration(self):
+    def test_the_breakdown_layer_persists_nothing_of_its_own(self):
         from django.apps import apps
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
-        self.assertFalse([n for n in names if "Breakdown" in n or "Score" in n or "Opportunit" in n])
+        self.assertFalse([n for n in names if "Breakdown" in n])
+        # C8 froze the capture in its own tables; the live explainer defines and writes none of them.
+        self.assertEqual({n for n in names if "Score" in n or "Opportunit" in n}, set(C8_PERSISTENCE))
+        source = inspect.getsource(c7)
+        self.assertNotIn("models.Model", source)
+        self.assertNotIn("objects", source)
         loader = MigrationLoader(None, ignore_no_migrations=True)
-        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0047_industry_template")
+        for (app, name), migration in loader.disk_migrations.items():
+            if app == "gemiapp":
+                self.assertNotIn("score_breakdown", str(migration.operations), name)
 
     def test_results_are_immutable_and_carry_no_private_field(self):
         for cls in (OpportunityScoreBreakdown, ScoreBreakdownComponent, KadEvidence, RegionEvidence,

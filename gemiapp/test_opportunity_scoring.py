@@ -48,6 +48,8 @@ from .test_organization_radar_matching import (
 STALE = T0 + timedelta(days=40)  # beyond every freshness band
 FRESH = T0 + timedelta(hours=2)
 SECOND = timedelta(seconds=1)
+C8_PERSISTENCE = ("Opportunity", "OpportunitySignal", "OpportunityScoreComponent",
+                  "OpportunityScoreEvidence")  # C8 owns these; earlier packages must add none
 
 
 class ScoringTestCase(MatchingTestCase):
@@ -130,14 +132,19 @@ class ContractTests(TestCase):
                           "subscription", "tier", "threshold", "reason", "explanation", "age", "capital"):
             self.assertFalse([n for n in names if forbidden in n], forbidden)
 
-    def test_no_score_or_opportunity_table_and_no_migration(self):
+    def test_scoring_persists_nothing_of_its_own(self):
         from django.apps import apps
 
-        model_names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
-        self.assertFalse([n for n in model_names if "Score" in n or "Opportunit" in n])
+        names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
+        # Everything persisted about an opportunity is C8's; the scoring engine defines and writes none of it.
+        self.assertEqual({n for n in names if "Score" in n or "Opportunit" in n}, set(C8_PERSISTENCE))
+        source = inspect.getsource(c6)
+        self.assertNotIn("models.Model", source)
+        self.assertNotIn("objects", source)
         loader = MigrationLoader(None, ignore_no_migrations=True)
-        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0047_industry_template")
+        for (app, name), migration in loader.disk_migrations.items():
+            if app == "gemiapp":
+                self.assertNotIn("opportunity_scoring", str(migration.operations), name)
 
     def test_the_engine_writes_nothing_and_reads_no_forbidden_source(self):
         code = inspect.getsource(c6).split('"""', 2)[2]

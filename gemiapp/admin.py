@@ -31,6 +31,10 @@ from .models import (
     ImportRun,
     IndustryTemplate,
     IndustryTemplateKad,
+    Opportunity,
+    OpportunityScoreComponent,
+    OpportunityScoreEvidence,
+    OpportunitySignal,
     Organization,
     OrganizationICP,
     OrganizationICPKad,
@@ -596,3 +600,35 @@ class IndustryTemplateAdmin(OrganizationReadOnlyAdmin):
 class IndustryTemplateKadAdmin(OrganizationReadOnlyAdmin):
     list_display = ("template", "kad")
     list_select_related = ("template", "kad")
+
+
+@admin.register(Opportunity)
+class OpportunityAdmin(OrganizationReadOnlyAdmin):
+    """Inspection only (C8). Opportunities are written solely by gemiapp.opportunities."""
+
+    list_display = ("organization", "radar", "company", "score", "score_class", "status", "primary_reason_code",
+                    "created_at", "expires_at")
+    list_filter = ("score_class", "status")
+    list_select_related = ("organization", "radar", "company")
+    date_hierarchy = "created_at"
+
+
+@admin.register(OpportunitySignal)
+class OpportunitySignalAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("opportunity", "signal", "score", "scored_as_of")
+    list_select_related = ("opportunity", "signal")
+
+
+@admin.register(OpportunityScoreComponent)
+class OpportunityScoreComponentAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("opportunity", "code", "awarded_points", "max_points", "reason_code")
+    list_filter = ("code", "reason_code")
+    list_select_related = ("opportunity",)
+
+
+@admin.register(OpportunityScoreEvidence)
+class OpportunityScoreEvidenceAdmin(OrganizationReadOnlyAdmin):
+    list_display = ("component", "kind", "kad_code", "kad_version", "signal_type", "region_level",
+                    "region_source_id", "legal_type_source_id", "age_seconds")
+    list_filter = ("kind",)
+    list_select_related = ("component",)

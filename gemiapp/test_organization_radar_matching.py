@@ -53,6 +53,8 @@ T0 = datetime(2026, 9, 10, 9, tzinfo=dt_timezone.utc)
 ADDRESS_SENTINEL = "ΟΔΟΣ ΦΡΟΥΡΟΣ 4821"
 PRIVATE = (PHONE_SENTINEL, CONTACT_SENTINEL, PERSON_SENTINEL, ADDRESS_SENTINEL, "099994821")
 _keys = itertools.count(1)
+C8_PERSISTENCE = ("Opportunity", "OpportunitySignal", "OpportunityScoreComponent",
+                  "OpportunityScoreEvidence")  # C8 owns these; earlier packages must add none
 
 
 def make_company(gemi_number="400100"):
@@ -125,14 +127,21 @@ class MatchingTestCase(TestCase):
 # --- architecture ----------------------------------------------------------------------------------
 
 class ArchitectureTests(TestCase):
-    def test_no_match_table_and_no_migration(self):
+    def test_matching_persists_nothing_of_its_own(self):
         from django.apps import apps
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
+        # No match table was ever created: matching stays a read/evaluation engine.
         self.assertFalse({n for n in names if "Match" in n} - {"RadarMatch"})
-        self.assertFalse([n for n in names if "Opportunit" in n])
+        # Opportunity persistence belongs to C8 alone, and C5 neither defines nor writes it.
+        self.assertEqual({n for n in names if "Opportunit" in n}, set(C8_PERSISTENCE))
+        code = inspect.getsource(c5).split('"""', 2)[2]  # the docstring may discuss §29; the code may not touch it
+        self.assertNotIn("models.Model", code)
+        self.assertNotIn("Opportunit", code)
         loader = MigrationLoader(None, ignore_no_migrations=True)
-        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"), "0047_industry_template")
+        for (app, name), migration in loader.disk_migrations.items():
+            if app == "gemiapp":
+                self.assertNotIn("organization_radar_matching", str(migration.operations), name)
 
     def test_rule_version_is_pinned_and_results_are_immutable(self):
         self.assertEqual(ORGANIZATION_RADAR_MATCH_RULE_VERSION, "organization_radar_match:v1")

@@ -1860,6 +1860,197 @@ class IndustryTemplateKad(models.Model):
         return f"{self.template_id} · KAD #{self.kad_id}"
 
 
+class Opportunity(models.Model):
+    """A persisted commercial opportunity (C8, blueprint §29): one company, watched by one Radar, for one
+    organization, whose signals qualified under that Radar's score threshold.
+
+    «Signal ≠ Opportunity»: a C5 match is a transient evaluation, this is customer-specific state. One row per
+    (organization, radar, company); every qualifying signal is attached through OpportunitySignal instead of
+    creating another row, so §34's «one company card» is never fed duplicates.
+
+    The scoring capture is **frozen**: score, class, rule versions, the as_of it was calculated at and the five
+    OpportunityScoreComponent rows are written at capture time and never recomputed from the current Radar, so a
+    later Radar edit cannot rewrite history. Only the most recent qualifying capture is kept.
+
+    Written only through gemiapp.opportunities. No contact detail, person, address or GEMI payload is stored here,
+    and nothing about this row feeds billing, legacy leads, A9 monitoring or the B4 planner.
+    """
+
+    # §39's sales-action pipeline. C8 stores and validates the value; transition policy belongs to the later
+    # workflow package, so nothing here enforces an order.
+    NEW = "new"
+    STATUSES = [
+        (NEW, "New"), ("viewed", "Viewed"), ("saved", "Saved"), ("assigned", "Assigned"),
+        ("contacted", "Contacted"), ("interested", "Interested"), ("follow_up", "Follow up"), ("won", "Won"),
+        ("lost", "Lost"), ("not_relevant", "Not relevant"), ("do_not_contact", "Do not contact"),
+    ]
+    SCORE_CLASSES = [("priority", "Priority"), ("high", "High"), ("medium", "Medium"), ("low", "Low")]
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="opportunities")
+    # History outlives configuration: a Radar or company cited by an opportunity may not vanish under it.
+    radar = models.ForeignKey(OrganizationRadar, on_delete=models.PROTECT, related_name="opportunities")
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="opportunities")
+    # §29 names one signal_id; kept explicit instead: the event that opened the opportunity, and the most recent
+    # qualifying one, which is the event the frozen capture belongs to.
+    first_signal = models.ForeignKey(CompanySignal, on_delete=models.PROTECT, related_name="opened_opportunities")
+    latest_signal = models.ForeignKey(CompanySignal, on_delete=models.PROTECT, related_name="latest_opportunities")
+
+    # --- frozen scoring capture ---------------------------------------------------------------------
+    score = models.PositiveSmallIntegerField()
+    score_class = models.CharField(max_length=16, choices=SCORE_CLASSES)
+    score_rule_version = models.CharField(max_length=64)
+    match_rule_version = models.CharField(max_length=64)
+    # The explicit instant the frozen score was calculated at.
+    scored_as_of = models.DateTimeField()
+    # A stable machine-readable summary: the reason code of the strongest awarded component. Never prose, never
+    # AI. Blank when nothing was awarded.
+    primary_reason_code = models.CharField(max_length=40, blank=True)
+
+    status = models.CharField(max_length=16, choices=STATUSES, default=NEW)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    # §29 lists it; the blueprint defines no expiry rule anywhere, so C8 invents none and never sets it.
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Opportunity"
+        verbose_name_plural = "Opportunities"
+        ordering = ["-score", "-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["organization", "radar", "company"], name="unique_opportunity_identity"),
+            models.CheckConstraint(condition=models.Q(score__gte=0) & models.Q(score__lte=100),
+                                   name="opportunity_score_range"),
+        ]
+        indexes = [
+            models.Index(fields=["organization", "-score"], name="opportunity_org_score_idx"),
+            models.Index(fields=["organization", "status"], name="opportunity_org_status_idx"),
+            models.Index(fields=["company"], name="opportunity_company_idx"),
+        ]
+
+    def __str__(self):
+        return f"company #{self.company_id} · radar #{self.radar_id} · {self.score}"
+
+
+class OpportunitySignal(models.Model):
+    """One qualifying signal that contributed to an opportunity (§34: «Company X — 3 relevant signals»).
+
+    Contributing events are never replaced by a newer one and never deleted when the opportunity is rescored;
+    the signal itself stays the canonical immutable history, so nothing is copied out of it.
+    """
+
+    opportunity = models.ForeignKey(Opportunity, on_delete=models.CASCADE, related_name="signals")
+    signal = models.ForeignKey(CompanySignal, on_delete=models.PROTECT, related_name="opportunity_links")
+    # The score this signal's own capture produced, kept so a rescore is auditable per event.
+    score = models.PositiveSmallIntegerField()
+    scored_as_of = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Opportunity signal"
+        ordering = ["opportunity_id", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["opportunity", "signal"], name="unique_opportunity_signal"),
+            models.CheckConstraint(condition=models.Q(score__gte=0) & models.Q(score__lte=100),
+                                   name="opportunity_signal_score_range"),
+        ]
+
+    def __str__(self):
+        return f"opportunity #{self.opportunity_id} · signal #{self.signal_id}"
+
+
+class OpportunityScoreComponent(models.Model):
+    """One frozen line of the §32 breakdown behind an opportunity's score (C7's five v1 components).
+
+    Stored rather than derived: rebuilding the explanation from the current Radar would let a later edit rewrite
+    what the customer was told. Points and reason codes only -- the canonical evidence lives in
+    OpportunityScoreEvidence, never as a blob.
+    """
+
+    opportunity = models.ForeignKey(Opportunity, on_delete=models.CASCADE, related_name="score_components")
+    code = models.CharField(max_length=32)
+    awarded_points = models.PositiveSmallIntegerField()
+    max_points = models.PositiveSmallIntegerField()
+    reason_code = models.CharField(max_length=40)
+    # The component's place in the fixed v1 order, so a read never depends on insertion order.
+    position = models.PositiveSmallIntegerField()
+
+    class Meta:
+        verbose_name = "Opportunity score component"
+        ordering = ["opportunity_id", "position"]
+        constraints = [
+            models.UniqueConstraint(fields=["opportunity", "code"], name="unique_opportunity_score_component"),
+            models.CheckConstraint(condition=models.Q(awarded_points__lte=models.F("max_points")),
+                                   name="opportunity_component_points_within_max"),
+        ]
+
+    def __str__(self):
+        return f"{self.code} {self.awarded_points}/{self.max_points}"
+
+
+class OpportunityScoreEvidence(models.Model):
+    """One canonical fact behind a frozen score component: an exact KAD, a region, a legal type, the signal type
+    or the freshness times. Narrow typed columns, never free text, never contact data, names or payloads."""
+
+    KAD = "kad"
+    SIGNAL_TYPE = "signal_type"
+    REGION = "region"
+    LEGAL_FORM = "legal_form"
+    FRESHNESS = "freshness"
+    KINDS = [(KAD, "KAD"), (SIGNAL_TYPE, "Signal type"), (REGION, "Region"), (LEGAL_FORM, "Legal form"),
+             (FRESHNESS, "Freshness")]
+    PREFECTURE = "prefecture"
+    MUNICIPALITY = "municipality"
+    REGION_LEVELS = [(PREFECTURE, "Prefecture"), (MUNICIPALITY, "Municipality")]
+
+    component = models.ForeignKey(OpportunityScoreComponent, on_delete=models.CASCADE, related_name="evidence")
+    kind = models.CharField(max_length=16, choices=KINDS)
+    position = models.PositiveSmallIntegerField()
+    # kad
+    kad_code = models.CharField(max_length=32, null=True, blank=True)
+    kad_version = models.CharField(max_length=16, null=True, blank=True)
+    # signal_type
+    signal_type = models.CharField(max_length=32, null=True, blank=True)
+    # region
+    region_level = models.CharField(max_length=16, choices=REGION_LEVELS, null=True, blank=True)
+    region_source_id = models.CharField(max_length=32, null=True, blank=True)
+    # legal_form
+    legal_type_source_id = models.CharField(max_length=32, null=True, blank=True)
+    # freshness
+    detected_at = models.DateTimeField(null=True, blank=True)
+    scored_as_of = models.DateTimeField(null=True, blank=True)
+    age_seconds = models.BigIntegerField(null=True, blank=True)
+    band_points = models.PositiveSmallIntegerField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Opportunity score evidence"
+        verbose_name_plural = "Opportunity score evidence"
+        ordering = ["component_id", "position"]
+        constraints = [
+            models.UniqueConstraint(fields=["component", "position"], name="unique_opportunity_evidence_position"),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(kind="kad", kad_code__isnull=False, signal_type__isnull=True, region_level__isnull=True,
+                             legal_type_source_id__isnull=True, detected_at__isnull=True)
+                    | models.Q(kind="signal_type", signal_type__isnull=False, kad_code__isnull=True,
+                               region_level__isnull=True, legal_type_source_id__isnull=True, detected_at__isnull=True)
+                    | models.Q(kind="region", region_level__isnull=False, region_source_id__isnull=False,
+                               kad_code__isnull=True, signal_type__isnull=True, legal_type_source_id__isnull=True,
+                               detected_at__isnull=True)
+                    | models.Q(kind="legal_form", legal_type_source_id__isnull=False, kad_code__isnull=True,
+                               signal_type__isnull=True, region_level__isnull=True, detected_at__isnull=True)
+                    | models.Q(kind="freshness", detected_at__isnull=False, scored_as_of__isnull=False,
+                               age_seconds__isnull=False, band_points__isnull=False, kad_code__isnull=True,
+                               signal_type__isnull=True, region_level__isnull=True,
+                               legal_type_source_id__isnull=True)
+                ),
+                name="opportunity_evidence_kind_consistent",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.kind} · component #{self.component_id}"
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 

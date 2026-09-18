@@ -144,6 +144,41 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — C8: μοντέλο Opportunity (2026-09-18).** Migration `0048_opportunity`, `gemiapp/opportunities.py`.
+  **Το πρώτο persisted artifact πελάτη** της αρχιτεκτονικής 2.0.
+  - Το C7 (score breakdown) ολοκληρώθηκε και δεσμεύτηκε (`2cf4bfb`). Αγωγός:
+    `Signal → C5 match → C6 score → C7 breakdown → C8 opportunity`· μόνο το τελευταίο βήμα γράφει.
+  - **Ταυτότητα: ένα row ανά (organization, radar, company)** με unique constraint — ποτέ ανά signal (§34: «ένα
+    company card», όχι ένα ανά γεγονός). Κάθε qualifying signal προσαρτάται ως `OpportunitySignal`·
+    `first_signal` = το γεγονός που άνοιξε την ευκαιρία (δεν ξαναγράφεται), `latest_signal` = αυτό του τρέχοντος
+    capture. Το ενιαίο `signal_id` του §29 χωρίστηκε ρητά στα δύο.
+  - **Threshold — εδώ ενεργοποιείται για πρώτη φορά:** `score_threshold` null ⇒ κάθε επιβεβαιωμένο match περνά·
+    αλλιώς `score >= threshold`. **Καμία default τιμή δεν εφευρέθηκε** (το blueprint δεν ορίζει). Το threshold δεν
+    αλλάζει ποτέ το score. Μη επιλέξιμη αξιολόγηση **δεν γράφει τίποτα** και δεν πειράζει υπάρχουσα ευκαιρία.
+  - **Παγωμένο capture:** score, κλάση, `score_rule_version`, `match_rule_version`, `scored_as_of`,
+    `primary_reason_code` και **πέντε** `OpportunityScoreComponent` + `OpportunityScoreEvidence` γράφονται τη στιγμή
+    της σύλληψης. Το `get_opportunity_score_breakdown` **διαβάζει** μόνο — μεταγενέστερη επεξεργασία Radar δεν
+    αλλάζει ό,τι ειπώθηκε στον πελάτη (αποδεδειγμένο σε tests και στο αντίγραφο dev).
+  - **Συνάθροιση:** νέο qualifying signal ⇒ προσάρτηση + **νέο capture** (το πιο πρόσφατο κερδίζει, ακόμη κι αν
+    είναι χαμηλότερο — όχι «max ever»)· `created_at` και `first_signal` διατηρούνται· κανένα contributing signal δεν
+    διαγράφεται. Κρατείται **μόνο το τρέχον** capture (το blueprint ζητά τρέχον score)· ανά γεγονός μένει το score
+    του στο `OpportunitySignal`.
+  - **Idempotency/concurrency:** ίδιο signal+Radar ξανά ⇒ καμία εγγραφή (ούτε `updated_at`)· unique constraints σε
+    (organization, radar, company), (opportunity, signal), (opportunity, component code)· `transaction.atomic` με
+    `select_for_update` και fallback σε IntegrityError. Το SQLite δεν αποδεικνύει κλειδώματα PostgreSQL.
+  - **Status §39** (new, viewed, saved, assigned, contacted, interested, follow_up, won, lost, not_relevant,
+    do_not_contact): αποθηκεύεται και επικυρώνεται, **χωρίς πολιτική μεταβάσεων** (ανήκει στο workflow package).
+    `reason` = **σταθερός κωδικός** (`primary_reason_code`, το reason code του ισχυρότερου awarded component) —
+    ποτέ κείμενο, ποτέ AI. `expires_at`: υπάρχει γιατί το §29 το αναφέρει, **αλλά το blueprint δεν ορίζει κανόνα
+    λήξης**, οπότε δεν εφευρέθηκε κανένας και δεν συμπληρώνεται ποτέ· κανένα cleanup job.
+  - **Χωρίς feed/UI/route/task/schedule/δίκτυο** (το §35 είναι το C9). Καμία σχέση με `UserCompanyLead`,
+    `RadarMatch`, `CustomerRadar`, A9, B4, συνδρομές ή billing — καμία migration δεδομένων από αυτά. Admin μόνο
+    ανάγνωσης. Καμία επαφή/τηλέφωνο/πρόσωπο/διεύθυνση/ΑΦΜ/payload στα δεδομένα· hotfix τηλεφώνου άθικτο.
+  - Αντίγραφο dev: **και οι 4 νέοι πίνακες 0** μετά από forward/reverse/reapply· 4 content types, 16 permissions·
+    parity (behaviour/catalogue/monitoring) PASS. 29 νέα tests· **1.506 tests OK** (δύο συνεχόμενες πλήρεις
+    εκτελέσεις). **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — C7: score breakdown (2026-09-18).** `gemiapp/opportunity_score_breakdown.py`· η υπάρχουσα εντολή
   `show_organization_radar_score --breakdown` δείχνει την ανάλυση. **Χωρίς migration, χωρίς αποθήκευση.**
   - Το C6 (scoring) ολοκληρώθηκε και δεσμεύτηκε (`c13bad2`). Το C7 **εξηγεί** ένα έγκυρο `OpportunityScore` — δεν
@@ -782,10 +817,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: C8 — Opportunity model** (Phase C, βήμα 27 στο §118 και §29/§34 του
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C7. Εκεί ανήκουν η αποθήκευση, το `score_threshold`, η
-  επιλεξιμότητα και η συνάθροιση διπλών ευκαιριών· ακολουθεί το feed (§35). Η μεταφορά ιδιοκτησίας δεδομένων σε
-  οργανισμούς, το G5 και μια κανονική ταξινόμηση κλάδων παραμένουν ανοιχτά.
+- **Gemi Leads 2.0 — επόμενο πακέτο: C9 — Opportunity feed** (Phase C, βήμα 28 στο §118 και §35 του
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C8. Εκεί ανήκουν η οθόνη «Today's Opportunities», τα
+  φίλτρα, η ταξινόμηση «highest score + freshest» και η συνάθροιση σε **ένα card ανά εταιρεία** (§34) όταν μια
+  εταιρεία έχει ευκαιρίες από πολλά Radars. Η μεταφορά ιδιοκτησίας δεδομένων σε οργανισμούς, το G5 και μια κανονική
+  ταξινόμηση κλάδων παραμένουν ανοιχτά.
+- **Release gate για το C8 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0048` δημιουργεί **τέσσερις
+  άδειους** πίνακες· κανένα backfill από `UserCompanyLead`/`RadarMatch`. Καμία αυτόματη επεξεργασία: το
+  `materialize_opportunities_for_signal` καλείται μόνο εσωτερικά, χωρίς task/schedule/signal hook.
 - **Release gate για το C7:** καμία migration· η ανάλυση **παράγεται κατ' απαίτηση** και δεν καταγράφεται ιστορικά —
   εξαρτάται από το `as_of` και από την τρέχουσα διαμόρφωση του Radar, οπότε το C8 πρέπει να αποφασίσει τι «κλειδώνει».
 - **Release gate για το C6:** καμία migration· κανένα product path δεν καλεί το scoring. Το scoring εξαρτάται από
