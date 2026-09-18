@@ -1,0 +1,141 @@
+{% extends 'base.html' %}
+{% comment %}
+  D29 / blueprint §36 — company opportunity page. Renders only the immutable, already-authorized page value from
+  gemiapp.organization_access: no queryset, no request user, no contact data, no mutation. Everything is
+  auto-escaped. The frozen C8 explanation («Γιατί αυτή η ευκαιρία») is historical; «Τρέχοντα στοιχεία» is the
+  latest canonical snapshot — deliberately different things.
+{% endcomment %}
+{% block title %}{{ page.company.name }} · Ευκαιρία · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block content %}
+<div class="product-workspace">
+  <div class="product-dossier-head">
+    <a href="{% url 'dashboard' %}" class="product-back">← Πίσω</a>
+    <p class="product-record-no">{{ page.organization_name }} · ΕΥΚΑΙΡΙΑ</p>
+    <div class="product-dossier-title">
+      <div>
+        <h1>{{ page.company.name }}</h1>
+        <p>
+          ΓΕΜΗ {{ page.company.gemi_number }}
+          {% if page.company.trade_names %} · {{ page.company.trade_names }}{% endif %}
+          · Κατάσταση: {% if page.current.status %}{{ page.current.status }}{% else %}—{% endif %}
+          · Νομική μορφή: {% if page.current.legal_form %}{{ page.current.legal_form }}{% else %}—{% endif %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="product-dossier-grid">
+    <div class="product-public-record">
+      <!-- Opportunity hero: the primary opportunity's frozen capture -->
+      <h2><span>ΕΥΚΑΙΡΙΑ · RADAR «{{ page.primary.radar_name }}»</span></h2>
+      <dl class="product-record-fields">
+        <div>
+          <dt>SCORE</dt>
+          <dd data-score="{{ page.score }}">{{ page.score }}/100 · {{ page.score_class_label }}</dd>
+        </div>
+        <div>
+          <dt>ΥΠΟΛΟΓΙΣΜΟΣ SCORE</dt>
+          <dd>{{ page.scored_as_of|date:'d/m/Y H:i' }}</dd>
+        </div>
+        <div>
+          <dt>ΚΑΤΑΣΤΑΣΗ ΕΥΚΑΙΡΙΑΣ</dt>
+          <dd>{{ page.primary.status_label }}</dd>
+        </div>
+        <div>
+          <dt>ΤΕΛΕΥΤΑΙΟ ΓΕΓΟΝΟΣ</dt>
+          <dd>{{ page.primary.latest_signal_label }} · {{ page.primary.latest_signal_detected_at|date:'d/m/Y H:i' }}</dd>
+        </div>
+      </dl>
+
+      <!-- Current information: latest canonical snapshot, never legacy fields -->
+      <div class="product-record-section" id="current-information">
+        <h3>ΤΡΕΧΟΝΤΑ ΣΤΟΙΧΕΙΑ ΓΕΜΗ</h3>
+        {% if page.current.available %}
+        <dl class="product-record-fields">
+          <div><dt>ΚΑΤΑΣΤΑΣΗ</dt><dd>{% if page.current.status %}{{ page.current.status }}{% else %}—{% endif %}</dd></div>
+          <div><dt>ΝΟΜΙΚΗ ΜΟΡΦΗ</dt><dd>{% if page.current.legal_form %}{{ page.current.legal_form }}{% else %}—{% endif %}</dd></div>
+          <div><dt>ΠΕΡΙΦΕΡΕΙΑΚΗ ΕΝΟΤΗΤΑ</dt><dd>{% if page.current.prefecture %}{{ page.current.prefecture }}{% else %}—{% endif %}</dd></div>
+          <div><dt>ΔΗΜΟΣ</dt><dd>{% if page.current.municipality %}{{ page.current.municipality }}{% else %}—{% endif %}</dd></div>
+          <div><dt>ΣΥΣΤΑΣΗ</dt><dd>{{ page.current.incorporation_date|date:'d/m/Y'|default:'—' }}</dd></div>
+          <div><dt>ΤΕΛΕΥΤΑΙΑ ΕΠΙΒΕΒΑΙΩΣΗ</dt><dd>{{ page.current.last_observed_at|date:'d/m/Y H:i' }}</dd></div>
+        </dl>
+        <h3>ΤΡΕΧΟΥΣΕΣ ΔΡΑΣΤΗΡΙΟΤΗΤΕΣ ΚΑΔ</h3>
+        {% for activity in page.current.activities %}
+        <div class="product-activity">
+          <b>{{ activity.code }}</b>
+          <div><p style="font-size: var(--type-secondary);">{{ activity.description|default:'Χωρίς περιγραφή' }} · {{ activity.kad_version|default:'—' }}</p></div>
+          <span>{{ activity.activity_type }}</span>
+        </div>
+        {% empty %}
+        <p style="font-size: var(--type-secondary); color: var(--product-muted);">Καμία επιβεβαιωμένα τρέχουσα δραστηριότητα.</p>
+        {% endfor %}
+        {% if page.current.indeterminate_activity_count %}
+        <p style="font-size: var(--type-small); color: var(--product-muted);">Δραστηριότητες με αδιευκρίνιστη ισχύ στην πηγή: {{ page.current.indeterminate_activity_count }}</p>
+        {% endif %}
+        {% else %}
+        <p style="font-size: var(--type-secondary); color: var(--product-muted);" id="current-unavailable">Τα τρέχοντα κανονικοποιημένα στοιχεία ΓΕΜΗ δεν είναι ακόμη διαθέσιμα για αυτή την εταιρεία.</p>
+        {% endif %}
+      </div>
+
+      <!-- Timeline: LIVE signals only, newest first -->
+      <div class="product-record-section" id="timeline">
+        <h3>ΧΡΟΝΟΛΟΓΙΟ</h3>
+        {% for item in page.timeline %}
+        <div class="product-activity">
+          <b>{{ item.detected_at|date:'d/m/Y' }}</b>
+          <div>
+            <p style="font-size: var(--type-secondary);"><strong>{{ item.label }}</strong>{% if item.summary %} · {{ item.summary }}{% endif %}</p>
+            {% if item.effective_precision == 'date' %}<p style="font-size: var(--type-small); color: var(--product-muted);">Ισχύς κατά την πηγή: {{ item.effective_date|date:'d/m/Y' }}</p>
+            {% elif item.effective_precision == 'datetime' %}<p style="font-size: var(--type-small); color: var(--product-muted);">Ισχύς κατά την πηγή: {{ item.effective_at|date:'d/m/Y H:i' }}</p>{% endif %}
+          </div>
+        </div>
+        {% empty %}
+        <p style="font-size: var(--type-secondary); color: var(--product-muted);">Δεν υπάρχουν ακόμη γεγονότα.</p>
+        {% endfor %}
+        {% if page.timeline_truncated %}
+        <p style="font-size: var(--type-small); color: var(--product-muted);">Εμφανίζονται τα πιο πρόσφατα γεγονότα.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <aside class="product-lead-work">
+      <!-- Why this lead: the frozen C8 capture, five v1 components -->
+      <section class="product-match-proof" id="why-this-lead">
+        <p>ΓΙΑΤΙ ΑΥΤΗ Η ΕΥΚΑΙΡΙΑ</p>
+        <h2>{{ page.score }}/100 · {{ page.score_class_label }}</h2>
+        <div style="font-size: var(--type-small); color: var(--product-muted); margin-bottom: 8px;" id="score-age">Υπολογισμός score: {{ page.scored_as_of|date:'d/m/Y H:i' }} — δεν ενημερώνεται αυτόματα με τον χρόνο.</div>
+        {% for line in page.breakdown %}
+        <div class="product-proof-row {% if forloop.last %}final{% endif %}" data-component="{{ line.code }}">
+          <span>{% if line.awarded %}+{{ line.awarded_points }}{% else %}0{% endif %}</span>
+          <div>
+            <b>{{ line.label }} · {{ line.awarded_points }}/{{ line.max_points }}</b>
+            <p>{{ line.reason_label }}</p>
+            {% for evidence in line.evidence %}<p style="font-size: var(--type-small); color: var(--product-muted);">{{ evidence }}</p>{% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </section>
+
+      <!-- Every visible opportunity for this company (one per Radar); statuses are never merged -->
+      <section class="product-history" id="opportunities">
+        <p>ΕΥΚΑΙΡΙΕΣ ΑΝΑ RADAR ({{ page.opportunities|length }})</p>
+        <dl>
+          {% for opportunity in page.opportunities %}
+          <div data-opportunity="{{ opportunity.opportunity_id }}">
+            <dt style="font-family: ui-monospace, monospace; color: var(--product-muted);">{{ opportunity.radar_name }}{% if opportunity.is_primary %} · ΚΥΡΙΑ{% endif %}</dt>
+            <dd>
+              {{ opportunity.score }}/100 · {{ opportunity.score_class_label }} · {{ opportunity.status_label }}<br>
+              {{ opportunity.latest_signal_label }} · {{ opportunity.latest_signal_detected_at|date:'d/m/Y H:i' }}<br>
+              <span style="font-size: var(--type-small); color: var(--product-muted);">Υπολογισμός score: {{ opportunity.scored_as_of|date:'d/m/Y H:i' }} · Σχετικά γεγονότα: {{ opportunity.live_signal_count }}</span>
+            </dd>
+          </div>
+          {% endfor %}
+        </dl>
+      </section>
+      {# Phase D actions (save, assign, status, follow-up, dismiss) arrive with their own packages; none is rendered here. #}
+    </aside>
+  </div>
+</div>
+{% endblock %}

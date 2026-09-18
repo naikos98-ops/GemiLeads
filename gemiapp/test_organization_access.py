@@ -352,12 +352,16 @@ class SafetyTests(AccessTestCase):
                        "user.organization"):
             self.assertNotIn(engine, code, engine)
 
-    def test_no_route_middleware_model_or_migration(self):
+    def test_routes_use_the_layer_only_through_organization_views_and_no_middleware_model_or_migration(self):
         from django.apps import apps
         from django.conf import settings
 
+        # D29 added the first organization route; it lives in organization_views, the one view module that imports
+        # this layer. Legacy views, the URL conf itself, tasks and the project URLs never import it.
         for path in ("gemiapp/urls.py", "gemiapp/views.py", "config/urls.py", "gemiapp/tasks.py"):
-            self.assertNotIn("organization_access", open(path, encoding="utf-8").read(), path)
+            self.assertNotIn("from .organization_access", open(path, encoding="utf-8").read(), path)
+            self.assertNotIn("import organization_access", open(path, encoding="utf-8").read(), path)
+        self.assertIn("from .organization_access import", open("gemiapp/organization_views.py", encoding="utf-8").read())
         self.assertFalse([m for m in settings.MIDDLEWARE if "organization" in m.lower() or "tenant" in m.lower()])
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
         self.assertFalse([n for n in names if "Access" in n or "Permission" in n or "Assign" in n])

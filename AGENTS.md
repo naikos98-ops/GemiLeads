@@ -144,6 +144,34 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — D29: σελίδα ευκαιρίας εταιρείας (2026-09-18).** Η **πρώτη customer-facing επιφάνεια** της
+  αρχιτεκτονικής Organization. `gemiapp/organization_views.py`, `gemiapp/company_opportunity_page.py`,
+  `templates/organizations/company_opportunity.html`. **Χωρίς migration.**
+  - Το G5 δεσμεύτηκε (`ab3645a`): `G5_STATUS = PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`.
+  - **Route με ρητό οργανισμό:** `/organizations/<organization_id>/opportunities/company/<company_id>/`
+    (`organization_company_opportunity`), `@login_required` + GET μόνο. Καμία επίλυση οργανισμού από session ή
+    middleware. Μία σελίδα **ανά (οργανισμός, εταιρεία)** (§36 «Κάθε company page»), ίδια ταυτότητα με την κάρτα του C9.
+  - **Μόνη πόρτα: `organization_access.get_authorized_company_opportunity_page`.** Το `organization_views` είναι το
+    μόνο product module που εισάγει το `organization_access`· κάθε άρνηση (ανύπαρκτος οργανισμός, μη-μέλος, ξένη ή
+    ανύπαρκτη εταιρεία, SALES_USER χωρίς ανάθεση) → **ίδιο 404**, χωρίς διαρροή.
+  - **Μόνο LIVE προς πελάτη:** ευκαιρίες των οποίων το τρέχον capture στηρίζεται σε SHADOW signal αφαιρούνται κατά την
+    ανάγνωση (η γραμμή δεν αλλάζει)· το χρονολόγιο διαβάζει το B6 **μόνο σε LIVE**. Εταιρεία χωρίς ορατή LIVE
+    ευκαιρία → 404. **`G4_STATUS = NOT_PASSED`** — το φίλτρο LIVE δεν είναι πέρασμα του G4.
+  - «Γιατί αυτή η ευκαιρία» = **παγωμένο C8 capture** (5 συστατικά v1, reason codes, κανονικά στοιχεία) με ρητό
+    «Υπολογισμός score: …— δεν ενημερώνεται αυτόματα». «Τρέχοντα στοιχεία» = **τελευταίο κανονικό snapshot B3**
+    (κατάσταση, νομική μορφή, περιφέρεια/δήμος, ίδρυση μόνο αν VALID, επιβεβαιωμένα τρέχοντες ΚΑΔ με έκδοση) —
+    ποτέ `Company.is_active`, legacy περιγραφές ή `CompanyActivity`· χωρίς snapshot εμφανίζεται ρητά «μη διαθέσιμα».
+  - Primary ευκαιρία με την ίδια σειρά του C9 (`FEED_ORDER`)· όλες οι ορατές ευκαιρίες ανά Radar εμφανίζονται χωρίς
+    συγχώνευση status. Χρονολόγιο: 20 πιο πρόσφατα LIVE γεγονότα.
+  - **Καμία επαφή** (τηλέφωνο/email), πρόσωπα, διεύθυνση, ΑΦΜ ή payload· το τηλέφωνο μένει μόνο στο Dossier. Καμία
+    ενέργεια (Save/Assign/Call/Follow-up/Dismiss) — ούτε ψεύτικα κουμπιά· κανένα auto-«viewed»· GET = μόνο SELECT.
+  - Επανεξετάστηκαν σκόπιμα τρία guard tests (C1, G5, D29) που κωδικοποιούσαν «κανένα organization route ακόμη»:
+    τώρα επιβάλλουν ότι organization routes υπάρχουν **μόνο** μέσω του `organization_views`.
+  - Αντίγραφο dev: 0 οργανισμοί/ευκαιρίες → καμία πραγματική σελίδα· οπτικός έλεγχος με προσωρινό fixture που
+    αφαιρέθηκε πλήρως. 23 νέα tests· **1.588 tests OK** (δύο συνεχόμενες πλήρεις εκτελέσεις).
+    **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — G5: απομόνωση tenants / εξουσιοδότηση οργανισμού (2026-09-18).** `gemiapp/organization_access.py`.
   **Χωρίς migration, model, route, middleware ή UI.** `G5_STATUS = PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`.
   - **Η Phase C ολοκληρώθηκε** (βήματα 20–28)· το C9 feed δεσμεύτηκε (`70d7485`)· το signup rate-limit test
@@ -875,10 +903,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 29 — Company Opportunity Page** (§36 του
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του G5. Πρέπει να χρησιμοποιεί **μόνο** τις υπηρεσίες του
-  `gemiapp/organization_access.py` (ρητή επίλυση οργανισμού στο route, `OrganizationAccessDenied` → 404). Κάθε νέα
-  organization-owned επιφάνεια περνά από το ίδιο layer. Η ανάθεση (βήμα 31) θα δώσει στους SALES_USER ορατότητα.
+- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 30 — Save** (`docs/GEMI_LEADS_2_BLUEPRINT.md` §118)· αναμένει
+  έγκριση του D29. Κάθε μετάλλαξη πρέπει να περνά από capability του `organization_access` (ο πίνακας G5 δεν
+  αναθεωρείται) και να αποδεικνύει απομόνωση tenants με tests. Ακολουθούν assign (31), statuses (32), notes (33),
+  tasks (34), do-not-contact (35), audit log (36), notifications (37). Το G4 δεν έχει περάσει.
+- **Release gate για το D29:** καμία migration· το route είναι πίσω από login και G5, αλλά δεν υπάρχει ακόμη κανένας
+  σύνδεσμος πλοήγησης προς αυτό και καμία παραγωγή ευκαιριών/LIVE signals, οπότε στην πράξη δεν εμφανίζει τίποτα.
 - **Release gate G5 — `G5_STATUS = PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`:** ισχύει για τις υπάρχουσες
   organization-owned ρίζες (profile, ICP, Radars, opportunities, feed). Νέες επιφάνειες δεν «κληρονομούν» το πέρασμα
   αυτόματα: πρέπει να χρησιμοποιούν το ίδιο layer και να αποδεικνύουν την απομόνωσή τους με tests.

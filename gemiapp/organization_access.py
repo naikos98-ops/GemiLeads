@@ -70,9 +70,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from django.apps import apps
+from django.db.models import Count
 
 from .opportunities import get_opportunity_score_breakdown
-from .opportunity_feed import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, FeedFilters, OpportunityFeedPage, get_opportunity_feed
+from .company_signals import LIVE
+from .opportunity_feed import (
+    DEFAULT_PAGE_SIZE, FEED_ORDER, MAX_PAGE_SIZE, FeedFilters, OpportunityFeedPage, get_opportunity_feed,
+)
 
 
 class OrganizationAccessDenied(PermissionError):
@@ -262,3 +266,43 @@ def organization_members_for(context: OrganizationAccessContext):
         raise OrganizationAccessDenied()
     return (_model("OrganizationMember").objects.filter(organization_id=context.organization_id)
             .only("pk", "organization_id", "user_id", "role").order_by("pk"))
+
+
+# --- D29: the company opportunity page -------------------------------------------------------------
+
+_PAGE_FIELDS = (
+    "pk", "organization_id", "radar_id", "company_id", "score", "score_class", "status", "primary_reason_code",
+    "scored_as_of", "score_rule_version", "match_rule_version", "latest_signal_id", "radar__name",
+    "latest_signal__signal_type", "latest_signal__detected_at", "latest_signal__mode", "company__gemi_number",
+    "company__name", "company__trade_names",
+)
+
+
+def get_authorized_company_opportunity_page(user, organization_id, company_id):
+    """The §36 page of one company, as this membership may see it, or the single refusal.
+
+    Both ids come from the route and are resolved here, never trusted: a nonexistent organization, a non-member,
+    another tenant's company, a company with no visible opportunity and a sales user without assignments are all
+    the same ``OrganizationAccessDenied``. Only opportunities whose current capture rests on a **LIVE** signal
+    survive -- SHADOW validation data never reaches a customer -- and the primary is chosen in the C9 feed order
+    among the survivors. The company's other data are loaded only once access is established.
+    """
+    from .company_opportunity_page import build_company_opportunity_page
+
+    organization = _model("Organization").objects.filter(pk=_object_id(organization_id)).only("pk", "name").first()
+    if organization is None:
+        raise OrganizationAccessDenied()
+    context = get_organization_access_context(user, organization)
+    rows = list(
+        organization_opportunities_for(context)
+        .filter(company_id=_object_id(company_id), latest_signal__mode=LIVE)
+        .select_related("radar", "latest_signal", "company").only(*_PAGE_FIELDS)
+        .order_by(*FEED_ORDER)
+    )
+    if not rows:
+        raise OrganizationAccessDenied()
+    live_signal_counts = dict(
+        _model("OpportunitySignal").objects.filter(opportunity_id__in=[row.pk for row in rows], signal__mode=LIVE)
+        .values("opportunity_id").annotate(n=Count("signal_id", distinct=True)).values_list("opportunity_id", "n")
+    )
+    return build_company_opportunity_page(organization=organization, rows=rows, live_signal_counts=live_signal_counts)

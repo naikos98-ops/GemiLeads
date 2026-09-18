@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from . import billing
 from . import email_tracking
+from . import organization_views
 
 urlpatterns = [
     path("", views.home, name="home"),
@@ -22,6 +23,9 @@ urlpatterns = [
     path("leads/<int:pk>/favorite/", views.lead_favorite, name="lead_favorite"),
     path("leads/<int:pk>/notes/", views.lead_notes, name="lead_notes"),
     path("companies/<str:gemi_number>/", views.company_detail, name="company_detail"),
+    # Gemi Leads 2.0: organization-scoped, authorized only through gemiapp.organization_access.
+    path("organizations/<int:organization_id>/opportunities/company/<int:company_id>/",
+         organization_views.company_opportunity_page, name="organization_company_opportunity"),
     path("api/kads/", views.kad_search, name="kad_search"),
     path("export/", views.export_csv, name="export_csv"),
     path("verify/<uidb64>/<token>/", views.verify_email, name="verify_email"),

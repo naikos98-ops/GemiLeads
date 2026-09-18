@@ -182,7 +182,9 @@ class G5SafetyTests(TestCase):
     def test_no_url_view_middleware_template_or_task_uses_organizations(self):
         from django.conf import settings
 
-        for path in ("gemiapp/urls.py", "gemiapp/views.py", "config/urls.py", "gemiapp/tasks.py", "gemiapp/apps.py",
+        # The legacy product never reaches organizations. Since D29 the URL conf does route to organization pages,
+        # but only to gemiapp.organization_views, whose one door to tenant data is gemiapp.organization_access.
+        for path in ("gemiapp/views.py", "config/urls.py", "gemiapp/tasks.py", "gemiapp/apps.py",
                      "gemiapp/billing.py", "gemiapp/services.py", "gemiapp/context_processors.py"):
             try:
                 source = open(path, encoding="utf-8").read()
@@ -190,8 +192,9 @@ class G5SafetyTests(TestCase):
                 continue
             self.assertNotIn("organization", source.lower().replace("\"organization\"", ""), path)
         self.assertFalse([m for m in settings.MIDDLEWARE if "organization" in m.lower()])
-        for pattern in get_resolver().reverse_dict:
-            self.assertNotIn("organization", str(pattern).lower())
+        for key, entries in get_resolver().reverse_dict.lists():
+            if callable(key) and "organization" in " ".join(str(entry) for entry in entries).lower():
+                self.assertEqual(key.__module__, "gemiapp.organization_views", key)
 
     def test_the_member_primitive_is_wired_to_nothing(self):
         import pathlib
