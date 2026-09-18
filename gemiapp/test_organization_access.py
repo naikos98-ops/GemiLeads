@@ -366,7 +366,8 @@ class SafetyTests(AccessTestCase):
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
         self.assertFalse([n for n in names if "Access" in n or "Permission" in n or "Assign" in n])
         loader = MigrationLoader(None, ignore_no_migrations=True)
-        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"), "0048_opportunity")
+        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
+                         "0049_opportunity_assignment")  # D31 owns 0049 (assignment); any newer migration must update this pin deliberately
 
     def test_the_legacy_product_and_billing_are_untouched(self):
         legacy_user = entitled_user("legacy-g5@example.com")

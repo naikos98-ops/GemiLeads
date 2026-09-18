@@ -78,7 +78,8 @@ class SchemaTests(TestCase):
     def test_the_migration_is_additive_and_is_the_first_opportunity_migration(self):
         loader = MigrationLoader(None, ignore_no_migrations=True)
         names = sorted(name for app, name in loader.disk_migrations if app == "gemiapp")
-        self.assertEqual(names[-1], "0048_opportunity")
+        # 0048 created the opportunity tables; D31's 0049 only adds the assignment pair (pinned in its own tests).
+        self.assertEqual(names[-2:], ["0048_opportunity", "0049_opportunity_assignment"])
         migration = loader.disk_migrations[("gemiapp", "0048_opportunity")]
         allowed = {"CreateModel", "AddIndex", "AddConstraint", "AddField"}
         self.assertTrue({type(op).__name__ for op in migration.operations} <= allowed)
@@ -89,8 +90,12 @@ class SchemaTests(TestCase):
         for required in ("organization", "radar", "company", "score", "status", "created_at", "expires_at"):
             self.assertIn(required, names)
         for forbidden in ("user", "subscription", "phone", "email", "address", "vat_number", "raw_data", "persons",
-                          "name", "assigned_to", "note"):
+                          "name", "note"):
             self.assertNotIn(forbidden, names, forbidden)
+        # D31 (§40) added exactly the assignment pair, pointing at a membership -- never a bare user.
+        self.assertIn("assigned_to", names)
+        self.assertIn("assigned_at", names)
+        self.assertEqual(Opportunity._meta.get_field("assigned_to").related_model.__name__, "OrganizationMember")
         self.assertEqual([value for value, _ in Opportunity.STATUSES],
                          ["new", "viewed", "saved", "assigned", "contacted", "interested", "follow_up", "won",
                           "lost", "not_relevant", "do_not_contact"])

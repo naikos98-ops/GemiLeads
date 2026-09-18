@@ -134,6 +134,11 @@ class PageOpportunity:
     is_primary: bool
     # D30: "save" (this member may Save it now), "saved" (settled), or None (no control at all).
     save_action: str | None = None
+    # D31: the active assignment (a display name only, never a contact detail) and whether this member may assign it.
+    assigned_membership_id: int | None = None
+    assigned_display_name: str | None = None
+    assigned_at: datetime | None = None
+    can_assign: bool = False
 
 
 @dataclass(frozen=True)
@@ -175,6 +180,7 @@ class CompanyOpportunityPage:
     current: CurrentState
     timeline: tuple                 # TimelineItem, LIVE only, newest first
     timeline_truncated: bool
+    assignees: tuple = ()           # D31: (membership_id, display name) of assignable sales users, or empty
 
 
 def _model(name):
@@ -197,8 +203,9 @@ def _age(seconds: int) -> str:
     return f"{seconds // 86400} ημέρες"
 
 
-def build_company_opportunity_page(*, organization, rows, live_signal_counts: dict,
-                                  save_actions: dict | None = None) -> CompanyOpportunityPage:
+def build_company_opportunity_page(*, organization, rows, live_signal_counts: dict, save_actions: dict | None = None,
+                                  assign_actions: dict | None = None, assignees: tuple = (),
+                                  assignments: dict | None = None) -> CompanyOpportunityPage:
     """Assemble the page from already-authorized, LIVE-backed opportunities of one company, primary first."""
     primary_row = rows[0]
     company = primary_row.company
@@ -297,6 +304,10 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
         latest_signal_detected_at=row.latest_signal.detected_at, scored_as_of=row.scored_as_of,
         live_signal_count=live_signal_counts.get(row.pk, 0), is_primary=index == 0,
         save_action=(save_actions or {}).get(row.pk),
+        assigned_membership_id=row.assigned_to_id if (assignments or {}).get(row.pk) else None,
+        assigned_display_name=((assignments or {}).get(row.pk) or (None, None))[0],
+        assigned_at=((assignments or {}).get(row.pk) or (None, None))[1],
+        can_assign=bool((assign_actions or {}).get(row.pk)),
     ) for index, row in enumerate(rows))
 
     timeline = tuple(TimelineItem(
@@ -315,6 +326,7 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
         score_class_label=SCORE_CLASS_LABELS.get(frozen.score_class, frozen.score_class),
         scored_as_of=frozen.as_of, breakdown=breakdown, current=current, timeline=timeline,
         timeline_truncated=timeline_page.next_cursor is not None,
+        assignees=tuple((assignee.membership_id, assignee.display_name) for assignee in assignees),
     )
 
 

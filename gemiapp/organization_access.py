@@ -40,11 +40,10 @@ that exists today; nothing else in the code may compare role strings.
 * SALES_MANAGER -- team and leads: every opportunity, their workflow and their assignment, and read access to the
   configuration that produces them. «Team» is read as directing the sales team's leads (§40: «Sales Manager ->
   assign lead -> salesperson»), not administering membership.
-* SALES_USER -- only assigned/visible opportunities. **Assignment does not exist yet**, so the only safe reading
-  is that a sales user currently sees *no* opportunity: ``VIEW_ASSIGNED_OPPORTUNITIES`` is an
-  assignment-dependent capability that is not yet satisfiable. A sales user's feed is a correctly shaped empty
-  page and any opportunity id is denied -- never the organization's whole pipeline. The assignment package widens
-  this through the same helpers.
+* SALES_USER -- only assigned/visible opportunities. Since D31 that is exactly the opportunities whose
+  ``assigned_to`` is **this membership** (never "this user": a user's memberships in other organizations, or an
+  earlier membership, grant nothing). The scope is applied in SQL before anything is aggregated, so a sales user
+  never sees a sibling opportunity of the same company that is assigned to someone else or to nobody.
 * VIEWER -- read only: everything the organization can read, nothing it can change.
 
 Platform data is not tenant data
@@ -72,6 +71,7 @@ from dataclasses import dataclass, field
 from django.apps import apps
 from django.db import transaction
 from django.db.models import Count
+from django.utils import timezone
 
 from .opportunities import get_opportunity_score_breakdown
 from .company_signals import LIVE
@@ -97,7 +97,7 @@ class Capability:
     VIEW_RADARS = "view_radars"
     MANAGE_RADARS = "manage_radars"
     VIEW_ALL_OPPORTUNITIES = "view_all_opportunities"
-    # Assignment-dependent: not yet satisfiable, because no assignment model exists.
+    # Scoped by assignment: only opportunities assigned to this very membership (D31).
     VIEW_ASSIGNED_OPPORTUNITIES = "view_assigned_opportunities"
     MANAGE_OPPORTUNITY_WORKFLOW = "manage_opportunity_workflow"
     ASSIGN_OPPORTUNITIES = "assign_opportunities"
@@ -121,7 +121,7 @@ ROLE_CAPABILITIES = {
     SALES_USER: frozenset({Capability.VIEW_ORGANIZATION, Capability.VIEW_ASSIGNED_OPPORTUNITIES}),
     VIEWER: _READ_ORGANIZATION,
 }
-# Capabilities whose scope depends on an assignment model that does not exist yet.
+# Capabilities whose scope is the membership's own assignments (satisfiable since D31).
 ASSIGNMENT_DEPENDENT = frozenset({Capability.VIEW_ASSIGNED_OPPORTUNITIES})
 
 _ISSUER = object()
@@ -181,13 +181,14 @@ def organization_radars_for(context: OrganizationAccessContext):
 
 
 def organization_opportunities_for(context: OrganizationAccessContext):
-    """The opportunities this membership may see, scoped in SQL. A sales user sees none until assignment exists."""
+    """The opportunities this membership may see, scoped in SQL: the whole organization's, or -- for a sales user --
+    only those assigned to this membership."""
     Opportunity = _model("Opportunity")
     scoped = Opportunity.objects.filter(organization_id=context.organization_id)
     if can(context, Capability.VIEW_ALL_OPPORTUNITIES):
         return scoped
     if can(context, Capability.VIEW_ASSIGNED_OPPORTUNITIES):
-        return scoped.none()  # assignment-dependent: not yet satisfiable
+        return scoped.filter(assigned_to_id=context.membership_id)
     raise OrganizationAccessDenied()
 
 
@@ -239,10 +240,9 @@ def get_authorized_opportunity_feed(user, organization, filters: FeedFilters | N
     if can(context, Capability.VIEW_ALL_OPPORTUNITIES):
         return get_opportunity_feed(organization, filters, limit=limit, cursor=cursor)
     if can(context, Capability.VIEW_ASSIGNED_OPPORTUNITIES):
-        # Assignment-dependent visibility: a correctly shaped empty page, never the organization's pipeline.
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_PAGE_SIZE:
-            raise OrganizationAccessDenied()
-        return OpportunityFeedPage(organization_id=context.organization_id, cards=(), limit=limit, next_cursor=None)
+        # Only this membership's assignments, restricted inside C9's SQL before cards are aggregated.
+        return get_opportunity_feed(organization, filters, limit=limit, cursor=cursor,
+                                    assigned_to_membership_id=context.membership_id)
     raise OrganizationAccessDenied()
 
 
@@ -275,7 +275,8 @@ _PAGE_FIELDS = (
     "pk", "organization_id", "radar_id", "company_id", "score", "score_class", "status", "primary_reason_code",
     "scored_as_of", "score_rule_version", "match_rule_version", "latest_signal_id", "radar__name",
     "latest_signal__signal_type", "latest_signal__detected_at", "latest_signal__mode", "company__gemi_number",
-    "company__name", "company__trade_names",
+    "company__name", "company__trade_names", "assigned_to_id", "assigned_at", "assigned_to__user__first_name",
+    "assigned_to__user__last_name",
 )
 
 
@@ -295,7 +296,7 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
     rows = list(
         organization_opportunities_for(context)
         .filter(company_id=_object_id(company_id), latest_signal__mode=LIVE)
-        .select_related("radar", "latest_signal", "company").only(*_PAGE_FIELDS)
+        .select_related("radar", "latest_signal", "company", "assigned_to__user").only(*_PAGE_FIELDS)
         .order_by(*FEED_ORDER)
     )
     if not rows:
@@ -306,8 +307,17 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
     )
     workflow = can(context, Capability.MANAGE_OPPORTUNITY_WORKFLOW)
     save_actions = {row.pk: _save_action(row.status) if workflow else None for row in rows}
+    assigning = can(context, Capability.ASSIGN_OPPORTUNITIES)
+    assignees = tuple(assignable_members_for(context)) if assigning else ()
+    assign_actions = {row.pk: bool(assignees) and row.status in ASSIGN_ALLOWED_FROM | {ASSIGNED} for row in rows}
+    assignments = {
+        row.pk: (member_display_name(row.assigned_to.user.first_name, row.assigned_to.user.last_name,
+                                     row.assigned_to_id), row.assigned_at)
+        for row in rows if row.assigned_to_id is not None
+    }
     return build_company_opportunity_page(organization=organization, rows=rows, live_signal_counts=live_signal_counts,
-                                          save_actions=save_actions)
+                                          save_actions=save_actions, assign_actions=assign_actions,
+                                          assignees=assignees, assignments=assignments)
 
 
 def _organization_by_id(organization_id):
@@ -381,3 +391,127 @@ def save_authorized_opportunity(user, organization_id, opportunity_id) -> SaveOp
         row.save(update_fields=["status", "updated_at"])
     return SaveOpportunityResult(organization_id=row.organization_id, company_id=row.company_id,
                                  opportunity_id=row.pk, status=SAVED, changed=True)
+
+
+# --- D31: Assign ------------------------------------------------------------------------------------
+#
+# §40: «Sales Manager -> assign lead -> salesperson», with assigned_to and assigned_at. One explicit opportunity is
+# assigned to one SALES_USER membership of the same organization. From NEW, VIEWED or SAVED the first assignment
+# moves the opportunity to ASSIGNED; while ASSIGNED it may be reassigned to another sales user, and the same one is
+# a no-op without any write. Every later §39 state is refused and left untouched. There is no unassign. §40's
+# activity line («Nikos assigned Company X to Maria») belongs to the audit log (item 36): nothing here writes
+# history, and nothing notifies anyone (item 37).
+
+ASSIGNED = "assigned"
+ASSIGN_ALLOWED_FROM = frozenset({"new", "viewed", "saved"})
+ASSIGNEE_ROLE = SALES_USER
+
+
+@dataclass(frozen=True)
+class Assignee:
+    """A sales user who may receive an assignment: the membership id and a display name -- never an email."""
+
+    membership_id: int
+    display_name: str
+
+
+def member_display_name(first_name: str, last_name: str, membership_id: int) -> str:
+    """The name shown for a member. Usernames are email addresses in this product, so they are never used."""
+    name = f"{first_name or ''} {last_name or ''}".strip()
+    return name or f"Πωλητής #{membership_id}"
+
+
+def assignable_members_for(context: OrganizationAccessContext):
+    """The active SALES_USER members of this organization, for a membership that may assign. Scoped in SQL."""
+    require(context, Capability.ASSIGN_OPPORTUNITIES)
+    rows = (_model("OrganizationMember").objects
+            .filter(organization_id=context.organization_id, role=ASSIGNEE_ROLE, user__is_active=True)
+            .order_by("pk").values_list("pk", "user__first_name", "user__last_name"))
+    return [Assignee(membership_id=pk, display_name=member_display_name(first, last, pk)) for pk, first, last in rows]
+
+
+@dataclass(frozen=True)
+class AssignmentResult:
+    organization_id: int
+    company_id: int
+    opportunity_id: int
+    status: str
+    assigned_membership_id: int | None
+    assigned_user_id: int | None
+    previous_assigned_membership_id: int | None
+    changed: bool  # False for the same-assignee no-op, which writes nothing
+
+
+class AssignmentRefused(Exception):
+    """The opportunity is visible to this member but cannot be assigned as asked. Nothing changed.
+
+    ``reason`` is ``state`` (a later §39 state) or ``assignee`` (not an active sales user of this organization --
+    one message for every such case, so a posted id reveals nothing about other organizations' members).
+    """
+
+    MESSAGES = {
+        "state": "Η ευκαιρία δεν μπορεί να ανατεθεί από την τρέχουσα κατάστασή της.",
+        "assignee": "Ο πωλητής που επιλέχθηκε δεν είναι διαθέσιμος για ανάθεση.",
+    }
+
+    def __init__(self, reason: str, result: AssignmentResult):
+        super().__init__(self.MESSAGES[reason])
+        self.reason = reason
+        self.result = result
+
+
+def _membership_id(value):
+    """A posted membership id as a positive integer, or None -- never an exception that says why."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str) and value.isdigit() and not value.startswith("0"):
+        return int(value)
+    return None
+
+
+def assign_authorized_opportunity(user, organization_id, opportunity_id, assignee_membership_id) -> AssignmentResult:
+    """D31: assign one customer-visible opportunity to one sales user of the same organization.
+
+    Access is decided exactly like Save: a nonexistent or foreign organization, a non-member, a role without
+    ``assign_opportunities``, another tenant's, a nonexistent or a SHADOW-backed opportunity are all the same
+    ``OrganizationAccessDenied``. Only then is the request itself judged (state, assignee), which may be refused
+    with ``AssignmentRefused``. The opportunity is re-read under a lock and the assignee is validated inside the
+    same transaction; PostgreSQL provides the row lock, SQLite only proves the behaviour.
+    """
+    organization = _organization_by_id(organization_id)
+    context = require(get_organization_access_context(user, organization), Capability.ASSIGN_OPPORTUNITIES)
+    with transaction.atomic():
+        row = (organization_opportunities_for(context)
+               .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
+               .select_for_update(of=("self",))
+               .only("pk", "organization_id", "company_id", "status", "assigned_to_id", "assigned_at").first())
+        if row is None:
+            raise OrganizationAccessDenied()
+        previous = row.assigned_to_id
+
+        def result(changed, membership_id, user_id, status):
+            return AssignmentResult(organization_id=row.organization_id, company_id=row.company_id,
+                                    opportunity_id=row.pk, status=status, assigned_membership_id=membership_id,
+                                    assigned_user_id=user_id, previous_assigned_membership_id=previous,
+                                    changed=changed)
+
+        if row.status not in ASSIGN_ALLOWED_FROM and row.status != ASSIGNED:
+            raise AssignmentRefused("state", result(False, previous, None, row.status))
+        wanted = _membership_id(assignee_membership_id)
+        assignee = None
+        if wanted is not None:
+            assignee = (_model("OrganizationMember").objects
+                        .filter(pk=wanted, organization_id=row.organization_id, role=ASSIGNEE_ROLE,
+                                user__is_active=True)
+                        .only("pk", "user_id").first())
+        if assignee is None:
+            raise AssignmentRefused("assignee", result(False, previous, None, row.status))
+        if row.status == ASSIGNED and previous == assignee.pk:
+            return result(False, assignee.pk, assignee.user_id, ASSIGNED)  # the same assignment: no write at all
+        row.status = ASSIGNED
+        row.assigned_to_id = assignee.pk
+        row.assigned_at = timezone.now()
+        row.save(update_fields=["status", "assigned_to", "assigned_at", "updated_at"])
+    return result(True, assignee.pk, assignee.user_id, ASSIGNED)

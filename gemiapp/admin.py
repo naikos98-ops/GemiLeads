@@ -607,7 +607,7 @@ class OpportunityAdmin(OrganizationReadOnlyAdmin):
     """Inspection only (C8). Opportunities are written solely by gemiapp.opportunities."""
 
     list_display = ("organization", "radar", "company", "score", "score_class", "status", "primary_reason_code",
-                    "created_at", "expires_at")
+                    "assigned_to", "assigned_at", "created_at", "expires_at")
     list_filter = ("score_class", "status")
     list_select_related = ("organization", "radar", "company")
     date_hierarchy = "created_at"

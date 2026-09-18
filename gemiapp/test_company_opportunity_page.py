@@ -341,8 +341,9 @@ class SafetyTests(PageTestCase):
                          ["from .organization_access import ("])
         imported = source.split("from .organization_access import (", 1)[1].split(")", 1)[0]
         self.assertEqual({name.strip() for name in imported.split(",") if name.strip()},
-                         {"OpportunityTransitionRefused", "OrganizationAccessDenied",
-                          "get_authorized_company_opportunity_page", "save_authorized_opportunity"})
+                         {"AssignmentRefused", "OpportunityTransitionRefused", "OrganizationAccessDenied",
+                          "assign_authorized_opportunity", "get_authorized_company_opportunity_page",
+                          "save_authorized_opportunity"})
         for forbidden in (".objects", ".save(", ".create(", ".update(", ".delete(", "organization_radar_matching",
                           "opportunity_scoring", "opportunity_score_breakdown", "opportunity_feed",
                           "get_opportunity_score_breakdown", "set_opportunity_status", "request.organization",
@@ -372,7 +373,8 @@ class SafetyTests(PageTestCase):
                                    "django.contrib.admin") and not route.startswith("admin/")]
         self.assertEqual([route for route, _ in organization_routes],
                          ["organizations/<int:organization_id>/opportunities/company/<int:company_id>/",
-                          "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/save/"])
+                          "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/save/",
+                          "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/assign/"])
         for _, callback in organization_routes:
             self.assertEqual(callback.__module__, "gemiapp.organization_views")
         product_modules = [path for path in pathlib.Path("gemiapp").glob("*.py")
@@ -383,16 +385,17 @@ class SafetyTests(PageTestCase):
     def test_no_mutation_endpoint_model_or_migration(self):
         from django.apps import apps
 
-        # Since D30 the page has exactly one kind of form: the per-opportunity Save POST.
+        # Since D31 the page has exactly two kinds of form, both per opportunity: Save (D30) and Assign (D31).
         html_template = pathlib.Path("templates/organizations/company_opportunity.html").read_text(encoding="utf-8")
-        self.assertEqual(html_template.count("<form"), 1)
-        self.assertEqual(html_template.count("<button"), 1)
-        self.assertIn("{% url 'organization_save_opportunity' page.organization_id opportunity.opportunity_id %}",
-                      html_template)
+        self.assertEqual(html_template.count("<form"), 2)
+        self.assertEqual(html_template.count("<button"), 2)
+        for route in ("organization_save_opportunity", "organization_assign_opportunity"):
+            self.assertIn("{% url '" + route + "' page.organization_id opportunity.opportunity_id %}", html_template)
         self.assertFalse([m for m in apps.get_app_config("gemiapp").get_models() if "Assign" in m.__name__
                           or "Note" in m.__name__ or "Task" in m.__name__])
         loader = MigrationLoader(None, ignore_no_migrations=True)
-        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"), "0048_opportunity")
+        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
+                         "0049_opportunity_assignment")  # D31 owns 0049 (assignment); any newer migration must update this pin deliberately
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):
         legacy_user = entitled_user("legacy-d29@example.com")

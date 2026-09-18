@@ -1907,6 +1907,15 @@ class Opportunity(models.Model):
     primary_reason_code = models.CharField(max_length=40, blank=True)
 
     status = models.CharField(max_length=16, choices=STATUSES, default=NEW)
+    # D31, §40: the salesperson this opportunity is assigned to -- a *membership*, so the assignment belongs to one
+    # organization and dies with that membership. SET_NULL: removing a member never blocks on, or deletes, an
+    # opportunity, and a user re-added as a new membership does not inherit the old assignment. The assignment is
+    # active only while assigned_to is set; assigned_at is the time of the last assignment and may outlive it.
+    # Written only through gemiapp.organization_access, which also enforces that the member belongs to the same
+    # organization -- a cross-table rule the database cannot express.
+    assigned_to = models.ForeignKey(OrganizationMember, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name="assigned_opportunities")
+    assigned_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # §29 lists it; the blueprint defines no expiry rule anywhere, so C8 invents none and never sets it.

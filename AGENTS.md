@@ -144,6 +144,38 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — D31: Assign (2026-09-18).** Ανάθεση **μίας συγκεκριμένης ευκαιρίας C8** σε πωλητή.
+  Migration `0049_opportunity_assignment` (μόνο δύο `AddField`, κανένα backfill),
+  `organization_access.assign_authorized_opportunity`, view `organization_views.assign_opportunity`.
+  - Το D30 δεσμεύτηκε (`c5c54cc`).
+  - **Σχήμα:** `Opportunity.assigned_to → OrganizationMember` (`SET_NULL`, nullable, `related_name=
+    "assigned_opportunities"`) και `Opportunity.assigned_at`. Η ταυτότητα ανάθεσης είναι η **membership**, ποτέ ο
+    `User`: διαγραφή της membership → `assigned_to = NULL`, η κατάσταση μένει `assigned`, το `assigned_at` μένει·
+    επανένταξη του ίδιου χρήστη = νέα membership που **δεν** ξαναβλέπει την ευκαιρία.
+  - **Assignee:** μόνο ενεργός (`user.is_active`) **SALES_USER** του **ίδιου** οργανισμού· αλλιώς άρνηση χωρίς
+    εγγραφή. **Actors:** OWNER, SALES_MANAGER (`assign_opportunities`)· ADMIN/VIEWER/SALES_USER → ίδιο 404.
+    Μόνο LIVE `latest_signal`· SHADOW/ξένη/ανύπαρκτη → ίδιο 404.
+  - **Μεταβάσεις:** πρώτη ανάθεση από `new`/`viewed`/`saved` → `assigned`· ίδιος assignee ενώ `assigned` = **no-op
+    χωρίς καμία εγγραφή**· άλλος SALES_USER = επανανάθεση (μένει `assigned`, αλλάζει `assigned_at`)· contacted,
+    interested, follow_up, won, lost, not_relevant, do_not_contact → άρνηση, ανέγγιχτη. **Κανένα unassign.**
+  - **Ορατότητα SALES_USER:** `assigned_to_id == context.membership_id`, εφαρμόζεται στο SQL **πριν** τη
+    συσσώρευση του C9 (`get_opportunity_feed(..., assigned_to_membership_id=...)`). Σε εταιρεία με πολλά Radars ο
+    πωλητής βλέπει μόνο τη δική του ευκαιρία.
+  - `POST /organizations/<organization_id>/opportunities/<opportunity_id>/assign/`
+    (`organization_assign_opportunity`) με `assignee_membership_id`: login, POST, CSRF, `transaction.atomic` +
+    `select_for_update(of=("self",))`, redirect στη σελίδα D29 (το `next=` αγνοείται).
+  - Σελίδα D29: ανάθεση ανά γραμμή με **όνομα** (ποτέ email· χωρίς όνομα → «Πωλητής #id») και ημερομηνία· φόρμα
+    Ανάθεση/Επανανάθεση (select με τους SALES_USER του οργανισμού) μόνο για OWNER/SALES_MANAGER και μόνο σε
+    NEW/VIEWED/SAVED/ASSIGNED.
+  - Score, class, breakdown, evidence, signals, primary: αμετάβλητα. Η δραστηριότητα του §40 («Assigned by …»)
+    ανήκει στο audit log του **βήματος 36**· καμία ειδοποίηση (**βήμα 37**).
+  - Κύκλος migration στο αντίγραφο της dev βάσης: forward → 0 αναθέσεις → fixture (ανάθεση, επανανάθεση, no-op,
+    ορατότητα, διαγραφή membership, καθαρισμός) → parity → reverse → reapply, όλα PASS.
+  - 22 νέα tests· **1.629 tests OK** (δύο συνεχόμενες πλήρεις εκτελέσεις). `G5_STATUS =
+    PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`· `G4_STATUS = NOT_PASSED`· **`PRODUCTION_MIGRATION_STATUS =
+    BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — D30: Save (2026-09-18).** Η **πρώτη μετάλλαξη πελάτη** της αρχιτεκτονικής Organization.
   `organization_access.save_authorized_opportunity`, view `organization_views.save_opportunity`. **Χωρίς migration.**
   - Το D29 δεσμεύτηκε (`94299cc`). Απόφαση προϊόντος: **PATH A** — το blueprint δεν ορίζει το Save· αποφασίστηκε
@@ -928,10 +960,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 31 — Assign** (§40 του `docs/GEMI_LEADS_2_BLUEPRINT.md`:
-  «Sales Manager → assign lead → salesperson», πεδία `assigned_to`, `assigned_at`)· αναμένει έγκριση του D30. Είναι το
-  πακέτο που θα δώσει στους SALES_USER ορατότητα (`view_assigned_opportunities`). Το Save σημαίνει προς το παρόν
-  **κατάσταση κύκλου ζωής**, όχι προσωπικό bookmark.
+- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 32 — Statuses** (§39 του `docs/GEMI_LEADS_2_BLUEPRINT.md`)·
+  αναμένει έγκριση του D31. Κατέχει τις γενικές μεταβάσεις κατάστασης (contacted, interested, follow_up, won, lost,
+  not_relevant, do_not_contact) και την ορατότητα/δράση του SALES_USER στις ανατεθειμένες ευκαιρίες του. Το D31 δεν
+  έχει unassign ούτε ιστορικό ανάθεσης (βήμα 36).
+- **Release gate για το D31:** η `0049_opportunity_assignment` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D29:** καμία migration· το route είναι πίσω από login και G5, αλλά δεν υπάρχει ακόμη κανένας
   σύνδεσμος πλοήγησης προς αυτό και καμία παραγωγή ευκαιριών/LIVE signals, οπότε στην πράξη δεν εμφανίζει τίποτα.
 - **Release gate G5 — `G5_STATUS = PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`:** ισχύει για τις υπάρχουσες

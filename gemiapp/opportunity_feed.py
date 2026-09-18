@@ -72,6 +72,9 @@ opportunity that no other surviving opportunity of the same company outranks, an
 No offset, no duplicated or skipped card between pages, and the organization's history is never loaded whole.
 Default page size 50, maximum 200.
 
+``assigned_to_membership_id`` (D31) restricts the opportunities to one membership's assignments in the same
+SQL, before aggregation. Only ``organization_access`` passes it, for a sales user's feed.
+
 Tenancy
 -------
 Every query is scoped by the explicit organization in SQL first: no user, session or current-organization context,
@@ -235,12 +238,16 @@ def _validated_filters(organization, filters: FeedFilters) -> FeedFilters:
     return filters
 
 
-def _filtered(organization, filters: FeedFilters):
+def _filtered(organization, filters: FeedFilters, assigned_to_membership_id=None):
     """This organization's opportunities that survive every filter. One SQL expression, reused for the
     primary-selection subquery so a card's primary is always chosen among the survivors."""
     Opportunity, OpportunitySignal = _model("Opportunity"), _model("OpportunitySignal")
     Evidence = _model("OpportunityScoreEvidence")
     queryset = Opportunity.objects.filter(organization=organization)
+    if assigned_to_membership_id is not None:
+        # D31: a sales user's scope. Applied here, before aggregation, so a hidden sibling opportunity can never
+        # enter a card, be chosen as its primary or be counted in its signals.
+        queryset = queryset.filter(assigned_to_id=assigned_to_membership_id)
     if filters.score_classes:
         queryset = queryset.filter(score_class__in=filters.score_classes)
     if filters.statuses:
@@ -291,7 +298,7 @@ FEED_ORDER = ("-score", "-latest_signal__detected_at", "pk")
 
 
 def get_opportunity_feed(organization, filters: FeedFilters | None = None, *, limit: int = DEFAULT_PAGE_SIZE,
-                         cursor: str | None = None) -> OpportunityFeedPage:
+                         cursor: str | None = None, assigned_to_membership_id: int | None = None) -> OpportunityFeedPage:
     """One page of this organization's feed: one card per company, frozen captures only. Read-only."""
     Organization = _model("Organization")
     if not isinstance(organization, Organization) or organization.pk is None:
@@ -301,9 +308,12 @@ def get_opportunity_feed(organization, filters: FeedFilters | None = None, *, li
     filters = _validated_filters(organization, filters or FeedFilters())
     after = FeedCursor.decode(cursor) if cursor is not None else None
 
-    survivors = _filtered(organization, filters)
+    if assigned_to_membership_id is not None and (
+            isinstance(assigned_to_membership_id, bool) or not isinstance(assigned_to_membership_id, int)):
+        raise FeedError("assigned_to_membership_id must be a membership id")
+    survivors = _filtered(organization, filters, assigned_to_membership_id)
     # A primary is a survivor no other survivor of the same company outranks.
-    primaries = survivors.filter(~Exists(_filtered(organization, filters).filter(
+    primaries = survivors.filter(~Exists(_filtered(organization, filters, assigned_to_membership_id).filter(
         company_id=OuterRef("company_id")).filter(_outranked_by())))
     if after is not None:
         primaries = primaries.filter(_after(after))
