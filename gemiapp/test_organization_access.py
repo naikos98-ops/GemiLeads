@@ -54,6 +54,8 @@ EXPECTED = {
     C.VIEW_ASSIGNED_OPPORTUNITIES:(1,    1,     1,     1,     1),
     C.MANAGE_OPPORTUNITY_WORKFLOW:(1,    0,     1,     0,     0),
     C.ASSIGN_OPPORTUNITIES:       (1,    0,     1,     0,     0),
+    # D32: sales users too, but only ever within their assignment scope.
+    C.UPDATE_OPPORTUNITY_STATUS:  (1,    0,     1,     1,     0),
 }
 
 
@@ -154,7 +156,7 @@ class CapabilityMatrixTests(AccessTestCase):
     def test_viewer_is_read_only(self):
         viewer = get_organization_access_context(self.members["viewer"], self.org)
         writes = {C.MANAGE_ORGANIZATION, C.MANAGE_MEMBERS, C.MANAGE_RADARS, C.MANAGE_OPPORTUNITY_WORKFLOW,
-                  C.ASSIGN_OPPORTUNITIES}
+                  C.ASSIGN_OPPORTUNITIES, C.UPDATE_OPPORTUNITY_STATUS}
         self.assertFalse([c for c in writes if can(viewer, c)])
         for capability in writes:
             self.denied(require, viewer, capability)

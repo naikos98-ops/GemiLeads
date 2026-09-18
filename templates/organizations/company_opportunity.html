@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
 {% comment %}
   D29 / blueprint §36 — company opportunity page. Renders only the immutable, already-authorized page value from
-  gemiapp.organization_access: no queryset, no request user, no contact data. The mutations are D30 Save and D31
-  Assign, POST forms per opportunity row, rendered only when the membership may perform them on that row. Everything is
+  gemiapp.organization_access: no queryset, no request user, no contact data. The mutations are D30 Save, D31
+  Assign and D32 status, POST forms per opportunity row, rendered only when the membership may perform them on that
+  row. Everything is
   auto-escaped. The frozen C8 explanation («Γιατί αυτή η ευκαιρία») is historical; «Τρέχοντα στοιχεία» is the
   latest canonical snapshot — deliberately different things.
 {% endcomment %}
@@ -152,13 +153,24 @@
                 <button type="submit" class="product-text-button">{% if opportunity.assigned_membership_id %}Επανανάθεση{% else %}Ανάθεση{% endif %}</button>
               </form>
               {% endif %}
+              {% if opportunity.status_targets %}
+              <form method="post" action="{% url 'organization_opportunity_status' page.organization_id opportunity.opportunity_id %}" data-status-for="{{ opportunity.opportunity_id }}" style="margin-top: 6px;">
+                {% csrf_token %}
+                <select name="status" aria-label="Νέα κατάσταση">
+                  {% for value, label in opportunity.status_targets %}
+                  <option value="{{ value }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+                <button type="submit" class="product-text-button">Ενημέρωση κατάστασης</button>
+              </form>
+              {% endif %}
             </dd>
           </div>
           {% endfor %}
         </dl>
       </section>
-      {% comment %}D30 Save and D31 Assign are the only actions, per opportunity row above. Statuses, follow-up and
-      dismiss arrive with their own Phase D packages; none is rendered here.{% endcomment %}
+      {% comment %}D30 Save, D31 Assign and D32 status are the only actions, per opportunity row above. Notes, tasks
+      and Do Not Contact arrive with their own Phase D packages; none is rendered here.{% endcomment %}
     </aside>
   </div>
 </div>

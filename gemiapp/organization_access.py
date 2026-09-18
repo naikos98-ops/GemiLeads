@@ -101,10 +101,13 @@ class Capability:
     VIEW_ASSIGNED_OPPORTUNITIES = "view_assigned_opportunities"
     MANAGE_OPPORTUNITY_WORKFLOW = "manage_opportunity_workflow"
     ASSIGN_OPPORTUNITIES = "assign_opportunities"
+    # D32: the general sales statuses. Granted to sales users too, but always applied through the same visibility
+    # scope, so a sales user can only ever reach the opportunities assigned to their own membership.
+    UPDATE_OPPORTUNITY_STATUS = "update_opportunity_status"
 
     ALL = (VIEW_ORGANIZATION, VIEW_ORGANIZATION_SETTINGS, MANAGE_ORGANIZATION, MANAGE_MEMBERS, VIEW_RADARS,
            MANAGE_RADARS, VIEW_ALL_OPPORTUNITIES, VIEW_ASSIGNED_OPPORTUNITIES, MANAGE_OPPORTUNITY_WORKFLOW,
-           ASSIGN_OPPORTUNITIES)
+           ASSIGN_OPPORTUNITIES, UPDATE_OPPORTUNITY_STATUS)
 
 
 OWNER, ADMIN, SALES_MANAGER, SALES_USER, VIEWER = "owner", "admin", "sales_manager", "sales_user", "viewer"
@@ -117,8 +120,10 @@ ROLE_CAPABILITIES = {
     OWNER: frozenset(Capability.ALL),
     ADMIN: _READ_ORGANIZATION | {Capability.MANAGE_ORGANIZATION, Capability.MANAGE_MEMBERS,
                                  Capability.MANAGE_RADARS},
-    SALES_MANAGER: _READ_ORGANIZATION | {Capability.MANAGE_OPPORTUNITY_WORKFLOW, Capability.ASSIGN_OPPORTUNITIES},
-    SALES_USER: frozenset({Capability.VIEW_ORGANIZATION, Capability.VIEW_ASSIGNED_OPPORTUNITIES}),
+    SALES_MANAGER: _READ_ORGANIZATION | {Capability.MANAGE_OPPORTUNITY_WORKFLOW, Capability.ASSIGN_OPPORTUNITIES,
+                                         Capability.UPDATE_OPPORTUNITY_STATUS},
+    SALES_USER: frozenset({Capability.VIEW_ORGANIZATION, Capability.VIEW_ASSIGNED_OPPORTUNITIES,
+                           Capability.UPDATE_OPPORTUNITY_STATUS}),
     VIEWER: _READ_ORGANIZATION,
 }
 # Capabilities whose scope is the membership's own assignments (satisfiable since D31).
@@ -315,9 +320,12 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
                                      row.assigned_to_id), row.assigned_at)
         for row in rows if row.assigned_to_id is not None
     }
+    # D32: every row here is already inside this membership's visibility scope (a sales user's are all their own).
+    updating = can(context, Capability.UPDATE_OPPORTUNITY_STATUS)
+    status_actions = {row.pk: status_targets_for(row.status) if updating else () for row in rows}
     return build_company_opportunity_page(organization=organization, rows=rows, live_signal_counts=live_signal_counts,
                                           save_actions=save_actions, assign_actions=assign_actions,
-                                          assignees=assignees, assignments=assignments)
+                                          assignees=assignees, assignments=assignments, status_actions=status_actions)
 
 
 def _organization_by_id(organization_id):
@@ -515,3 +523,88 @@ def assign_authorized_opportunity(user, organization_id, opportunity_id, assigne
         row.assigned_at = timezone.now()
         row.save(update_fields=["status", "assigned_to", "assigned_at", "updated_at"])
     return result(True, assignee.pk, assignee.user_id, ASSIGNED)
+
+
+# --- D32: Statuses ----------------------------------------------------------------------------------
+#
+# §39 lists the pipeline and nothing more: no transition graph, no terminal states, no order. D32 therefore
+# imposes no funnel. It owns only the general sales statuses below; SAVED stays D30's action, ASSIGNED D31's,
+# and DO_NOT_CONTACT is reserved for item 35, which brings suppression with it. NEW and VIEWED are never
+# targets and nothing sets VIEWED on a read. Any non-terminal opportunity may move to any D32 target; a terminal
+# one is final here (no reopen). Assignment is a separate field and survives every status change. Provenance
+# is only the current status and updated_at until the audit log (item 36); nothing notifies anyone (item 37).
+
+STATUS_TARGETS = ("contacted", "interested", "follow_up", "won", "lost", "not_relevant")  # also the UI order
+STATUS_SOURCES = frozenset({"new", "viewed", SAVED, ASSIGNED, "contacted", "interested", "follow_up"})
+TERMINAL_STATUSES = frozenset({"won", "lost", "not_relevant", "do_not_contact"})
+
+
+def status_targets_for(status: str) -> tuple:
+    """The D32 targets a row in ``status`` may move to: every target except the current one, none if terminal."""
+    if status not in STATUS_SOURCES:
+        return ()
+    return tuple(target for target in STATUS_TARGETS if target != status)
+
+
+@dataclass(frozen=True)
+class StatusChangeResult:
+    organization_id: int
+    company_id: int
+    opportunity_id: int
+    previous_status: str
+    current_status: str
+    changed: bool  # False for the same-status no-op, which writes nothing
+
+
+class StatusChangeRefused(Exception):
+    """The opportunity is visible to this member but the requested status change is not allowed. Nothing changed.
+
+    ``reason`` is ``target`` (not one of the D32 targets) or ``terminal`` (the opportunity is already final).
+    """
+
+    MESSAGES = {
+        "target": "Η κατάσταση που επιλέχθηκε δεν είναι διαθέσιμη.",
+        "terminal": "Η ευκαιρία βρίσκεται σε τελική κατάσταση και δεν αλλάζει.",
+    }
+
+    def __init__(self, reason: str, result: StatusChangeResult):
+        super().__init__(self.MESSAGES[reason])
+        self.reason = reason
+        self.result = result
+
+
+def set_authorized_opportunity_status(user, organization_id, opportunity_id, target_status) -> StatusChangeResult:
+    """D32: move one customer-visible opportunity to one general sales status.
+
+    Access is decided first and exactly like Save and Assign: a nonexistent or foreign organization, a non-member,
+    a role without ``update_opportunity_status``, another tenant's, a nonexistent, a SHADOW-backed opportunity and
+    -- for a sales user -- any opportunity not assigned to this membership are all the same
+    ``OrganizationAccessDenied``. Only then is the request judged: an unknown or specialised target, or a terminal
+    opportunity, is ``StatusChangeRefused``; the same status again is a no-op without any write. The row is
+    re-read under a lock, so concurrent changes serialise on PostgreSQL (SQLite proves behaviour, not locking).
+    """
+    organization = _organization_by_id(organization_id)
+    context = require(get_organization_access_context(user, organization), Capability.UPDATE_OPPORTUNITY_STATUS)
+    with transaction.atomic():
+        row = (organization_opportunities_for(context)
+               .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
+               .select_for_update(of=("self",)).only("pk", "organization_id", "company_id", "status").first())
+        if row is None:
+            raise OrganizationAccessDenied()
+        previous = row.status
+
+        def result(current, changed):
+            return StatusChangeResult(organization_id=row.organization_id, company_id=row.company_id,
+                                      opportunity_id=row.pk, previous_status=previous, current_status=current,
+                                      changed=changed)
+
+        target = target_status if isinstance(target_status, str) and target_status in STATUS_TARGETS else None
+        if target is None:
+            raise StatusChangeRefused("target", result(previous, False))
+        if previous in TERMINAL_STATUSES:
+            raise StatusChangeRefused("terminal", result(previous, False))
+        if previous == target:
+            return result(previous, False)  # the same status again: no write at all
+        row.status = target
+        row.save(update_fields=["status", "updated_at"])
+    return result(target, True)

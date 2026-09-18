@@ -139,6 +139,8 @@ class PageOpportunity:
     assigned_display_name: str | None = None
     assigned_at: datetime | None = None
     can_assign: bool = False
+    # D32: the (status, label) targets this member may move the row to; empty means no status control at all.
+    status_targets: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -205,7 +207,8 @@ def _age(seconds: int) -> str:
 
 def build_company_opportunity_page(*, organization, rows, live_signal_counts: dict, save_actions: dict | None = None,
                                   assign_actions: dict | None = None, assignees: tuple = (),
-                                  assignments: dict | None = None) -> CompanyOpportunityPage:
+                                  assignments: dict | None = None,
+                                  status_actions: dict | None = None) -> CompanyOpportunityPage:
     """Assemble the page from already-authorized, LIVE-backed opportunities of one company, primary first."""
     primary_row = rows[0]
     company = primary_row.company
@@ -308,6 +311,7 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
         assigned_display_name=((assignments or {}).get(row.pk) or (None, None))[0],
         assigned_at=((assignments or {}).get(row.pk) or (None, None))[1],
         can_assign=bool((assign_actions or {}).get(row.pk)),
+        status_targets=tuple((target, STATUS_LABELS[target]) for target in (status_actions or {}).get(row.pk, ())),
     ) for index, row in enumerate(rows))
 
     timeline = tuple(TimelineItem(

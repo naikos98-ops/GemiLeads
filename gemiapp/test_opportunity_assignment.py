@@ -315,7 +315,9 @@ class PageAndSafetyTests(AssignTestCase):
             self.assertIn(reverse("organization_assign_opportunity", args=[self.org.pk, self.row.pk]), html)
             self.assertIn(f'<option value="{self.maria.pk}"', html)
             self.assertIn(f'<option value="{self.nikos.pk}"', html)
-            self.assertEqual(html.count("<option value="), 2, role)  # no owner/admin/manager/viewer, no tenant B
+            assign_form = html.split(f'data-assign-for="{self.row.pk}"', 1)[1].split("</form>", 1)[0]
+            # no owner/admin/manager/viewer, no tenant B (D32's status select is a separate form)
+            self.assertEqual(assign_form.count("<option value="), 2, role)
             self.assertNotIn("Ξένος", html)
         for role in ("admin", "viewer"):
             self.assertNotIn("data-assign-for", self.get(self.members[role]).content.decode(), role)

@@ -129,10 +129,14 @@ class TransitionTests(SaveTestCase):
         from django.urls import get_resolver
 
         names = [name for name in get_resolver().reverse_dict.keys() if isinstance(name, str)]
-        self.assertFalse([n for n in names if "unsave" in n or "status" in n and "organization" in n])
+        self.assertFalse([n for n in names if "unsave" in n])
+        # D32 owns the one status endpoint, which never targets SAVED (pinned in test_opportunity_status).
+        self.assertEqual([n for n in names if "status" in n and "organization" in n], ["organization_opportunity_status"])
         code = inspect.getsource(g5)
-        self.assertNotIn("set_opportunity_status", code)
-        for definition in ("def set_", "def unsave", "def restore", "def toggle", "def change_status"):
+        self.assertNotIn("set_opportunity_status", code)  # the unscoped C8 setter never reaches customer code
+        self.assertEqual(code.count("def set_"), 1)
+        self.assertIn("def set_authorized_opportunity_status(", code)
+        for definition in ("def unsave", "def restore", "def toggle", "def change_status"):
             self.assertNotIn(definition, code, definition)
 
 

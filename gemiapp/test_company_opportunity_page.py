@@ -342,8 +342,9 @@ class SafetyTests(PageTestCase):
         imported = source.split("from .organization_access import (", 1)[1].split(")", 1)[0]
         self.assertEqual({name.strip() for name in imported.split(",") if name.strip()},
                          {"AssignmentRefused", "OpportunityTransitionRefused", "OrganizationAccessDenied",
-                          "assign_authorized_opportunity", "get_authorized_company_opportunity_page",
-                          "save_authorized_opportunity"})
+                          "StatusChangeRefused", "assign_authorized_opportunity",
+                          "get_authorized_company_opportunity_page", "save_authorized_opportunity",
+                          "set_authorized_opportunity_status"})
         for forbidden in (".objects", ".save(", ".create(", ".update(", ".delete(", "organization_radar_matching",
                           "opportunity_scoring", "opportunity_score_breakdown", "opportunity_feed",
                           "get_opportunity_score_breakdown", "set_opportunity_status", "request.organization",
@@ -374,7 +375,8 @@ class SafetyTests(PageTestCase):
         self.assertEqual([route for route, _ in organization_routes],
                          ["organizations/<int:organization_id>/opportunities/company/<int:company_id>/",
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/save/",
-                          "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/assign/"])
+                          "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/assign/",
+                          "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/status/"])
         for _, callback in organization_routes:
             self.assertEqual(callback.__module__, "gemiapp.organization_views")
         product_modules = [path for path in pathlib.Path("gemiapp").glob("*.py")
@@ -385,11 +387,11 @@ class SafetyTests(PageTestCase):
     def test_no_mutation_endpoint_model_or_migration(self):
         from django.apps import apps
 
-        # Since D31 the page has exactly two kinds of form, both per opportunity: Save (D30) and Assign (D31).
+        # Since D32 the page has exactly three kinds of form, all per opportunity: Save (D30), Assign (D31), status (D32).
         html_template = pathlib.Path("templates/organizations/company_opportunity.html").read_text(encoding="utf-8")
-        self.assertEqual(html_template.count("<form"), 2)
-        self.assertEqual(html_template.count("<button"), 2)
-        for route in ("organization_save_opportunity", "organization_assign_opportunity"):
+        self.assertEqual(html_template.count("<form"), 3)
+        self.assertEqual(html_template.count("<button"), 3)
+        for route in ("organization_save_opportunity", "organization_assign_opportunity", "organization_opportunity_status"):
             self.assertIn("{% url '" + route + "' page.organization_id opportunity.opportunity_id %}", html_template)
         self.assertFalse([m for m in apps.get_app_config("gemiapp").get_models() if "Assign" in m.__name__
                           or "Note" in m.__name__ or "Task" in m.__name__])

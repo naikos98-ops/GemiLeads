@@ -144,6 +144,38 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — D32: Statuses (2026-09-18).** Οι γενικές καταστάσεις πωλήσεων του §39 ανά ευκαιρία C8.
+  `organization_access.set_authorized_opportunity_status`, view `organization_views.change_opportunity_status`.
+  **Χωρίς migration** (τελευταία παραμένει η `0049_opportunity_assignment`).
+  - Το D31 δεσμεύτηκε (`6e36f4c`).
+  - **Στόχοι D32, ακριβώς:** CONTACTED, INTERESTED, FOLLOW_UP, WON, LOST, NOT_RELEVANT. Το SAVED παραμένει του D30,
+    το ASSIGNED του D31, το DO_NOT_CONTACT **αναβάλλεται στο βήμα 35** (μαζί με suppression)· NEW/VIEWED ποτέ
+    στόχοι. **Κανένα αυτόματο VIEWED** — το GET της σελίδας D29 κάνει μόνο SELECT.
+  - Το §39 δεν ορίζει γράφο, οπότε **κανένα γραμμικό funnel**: κάθε μη τελική ευκαιρία (new, viewed, saved,
+    assigned, contacted, interested, follow_up) μπορεί να πάει σε κάθε στόχο D32. **Τελικές:** WON, LOST,
+    NOT_RELEVANT, DO_NOT_CONTACT — κάθε αίτημα D32 (και ο ίδιος στόχος) απορρίπτεται· **κανένα reopen**.
+    Ίδια κατάσταση σε μη τελική = **no-op χωρίς καμία εγγραφή** (ούτε `updated_at`). Άγνωστος/ειδικός στόχος →
+    άρνηση χωρίς εγγραφή.
+  - **Δικαίωμα `update_opportunity_status`** στο `ROLE_CAPABILITIES`: OWNER, SALES_MANAGER, SALES_USER· ADMIN/VIEWER
+    όχι. Ο SALES_USER αλλάζει **μόνο** ευκαιρίες με `assigned_to_id == context.membership_id` (ίδιο scope ορατότητας
+    του D31)· μη ανατεθειμένη, άλλου πωλητή, αδελφή Radar, SHADOW, ξένη, ανύπαρκτη → ίδιο 404. OWNER/SALES_MANAGER
+    αλλάζουν κάθε ορατή LIVE ευκαιρία, **χωρίς** απαίτηση ανάθεσης.
+  - `POST /organizations/<organization_id>/opportunities/<opportunity_id>/status/`
+    (`organization_opportunity_status`) με πεδίο `status`: login, POST, CSRF, `transaction.atomic` +
+    `select_for_update(of=("self",))`, redirect στη σελίδα D29 (το `next=` αγνοείται).
+  - Η ανάθεση (`assigned_to`, `assigned_at`) **επιβιώνει** κάθε αλλαγής κατάστασης. Μετά από CONTACTED κ.λπ. το
+    D31 (επανανάθεση) και το D30 (Save) εξακολουθούν να αρνούνται. Score, class, breakdown, evidence, signals,
+    κατάταξη feed: αμετάβλητα· το υπάρχον φίλτρο status του C9 βλέπει τη νέα τιμή.
+  - Σελίδα D29: φόρμα κατάστασης ανά γραμμή (select μόνο με στόχους D32 εκτός της τρέχουσας, ελληνικές
+    ετικέτες) για OWNER/SALES_MANAGER και για τον ανατεθειμένο SALES_USER· τελικές γραμμές δείχνουν μόνο την
+    κατάσταση. Ο SALES_USER δεν αποκτά Save/Assign.
+  - **Προέλευση κατάστασης μέχρι το βήμα 36 (audit log): μόνο η τρέχουσα τιμή και το `updated_at`.** Κανένα
+    ιστορικό, καμία ειδοποίηση (βήμα 37).
+  - 27 νέα tests· **1.656 tests OK** (δύο συνεχόμενες πλήρεις εκτελέσεις). `G5_STATUS =
+    PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`· `G4_STATUS = NOT_PASSED`· **`PRODUCTION_MIGRATION_STATUS =
+    BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — D31: Assign (2026-09-18).** Ανάθεση **μίας συγκεκριμένης ευκαιρίας C8** σε πωλητή.
   Migration `0049_opportunity_assignment` (μόνο δύο `AddField`, κανένα backfill),
   `organization_access.assign_authorized_opportunity`, view `organization_views.assign_opportunity`.
@@ -960,10 +992,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 32 — Statuses** (§39 του `docs/GEMI_LEADS_2_BLUEPRINT.md`)·
-  αναμένει έγκριση του D31. Κατέχει τις γενικές μεταβάσεις κατάστασης (contacted, interested, follow_up, won, lost,
-  not_relevant, do_not_contact) και την ορατότητα/δράση του SALES_USER στις ανατεθειμένες ευκαιρίες του. Το D31 δεν
-  έχει unassign ούτε ιστορικό ανάθεσης (βήμα 36).
+- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 33 — Notes** (§41 του `docs/GEMI_LEADS_2_BLUEPRINT.md`:
+  `opportunity_notes`, προσωπικές/team σημειώσεις, πάντα tenant-isolated)· αναμένει έγκριση του D32. Το reopen
+  τελικών καταστάσεων και το DO_NOT_CONTACT (βήμα 35) μένουν ανοιχτές αποφάσεις προϊόντος.
 - **Release gate για το D31:** η `0049_opportunity_assignment` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D29:** καμία migration· το route είναι πίσω από login και G5, αλλά δεν υπάρχει ακόμη κανένας
   σύνδεσμος πλοήγησης προς αυτό και καμία παραγωγή ευκαιριών/LIVE signals, οπότε στην πράξη δεν εμφανίζει τίποτα.
