@@ -196,10 +196,12 @@ class G5SafetyTests(TestCase):
     def test_the_member_primitive_is_wired_to_nothing(self):
         import pathlib
 
+        # Product code only: G5's isolation tests legitimately build multi-member fixtures with the primitive, but no
+        # view, service, command or task may add a member -- there is still no invitation or membership workflow.
         callers = [
             str(path) for path in pathlib.Path("gemiapp").rglob("*.py")
             if "add_organization_member" in path.read_text(encoding="utf-8")
-            and path.name not in ("organizations.py", "test_organizations.py")
+            and path.name != "organizations.py" and not path.name.startswith("test")
         ]
         self.assertEqual(callers, [])
         self.assertIn("INTERNAL ONLY", inspect.getdoc(add_organization_member))

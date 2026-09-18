@@ -144,6 +144,34 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — G5: απομόνωση tenants / εξουσιοδότηση οργανισμού (2026-09-18).** `gemiapp/organization_access.py`.
+  **Χωρίς migration, model, route, middleware ή UI.** `G5_STATUS = PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`.
+  - **Η Phase C ολοκληρώθηκε** (βήματα 20–28)· το C9 feed δεσμεύτηκε (`70d7485`)· το signup rate-limit test
+    σταθεροποιήθηκε ξεχωριστά (`17de789`, μόνο test).
+  - Κάθε απόφαση ξεκινά από το ρητό ζεύγος **(user, organization)** και το `OrganizationMember` που τα ενώνει — ποτέ
+    `user.organization`, πρώτη/νεότερη membership, συνδρομή, Radar ή URL. Χωρίς membership, καμία πρόσβαση. Η
+    membership ξαναδιαβάζεται σε κάθε κλήση (διαγραφή ή αλλαγή ρόλου ισχύει αμέσως)· κανένα cache.
+  - `get_organization_access_context(user, organization)` → immutable `OrganizationAccessContext` (organization,
+    user, membership, role), με ιδιωτικό σήμα έκδοσης: context φτιαγμένο με το χέρι απορρίπτεται. **Staff/superuser
+    δεν έχουν παράκαμψη** στο προϊόν πελάτη· το admin site είναι ξεχωριστό.
+  - **Ένα σφάλμα, `OrganizationAccessDenied`**, ίδιο μήνυμα για μη-μέλος, έλλειψη δικαιώματος, ξένο ή ανύπαρκτο
+    αντικείμενο — καμία διαρροή ύπαρξης, καμία απαρίθμηση ids (§82: «Organization A requests opportunity B»).
+  - **Κεντρικός πίνακας §64** (`ROLE_CAPABILITIES`, μόνο εκεί συγκρίνονται ρόλοι): OWNER όλα· ADMIN διαχείριση
+    οργανισμού (ρυθμίσεις, μέλη, Radars) + ανάγνωση· SALES_MANAGER leads (workflow, ανάθεση) + ανάγνωση· VIEWER μόνο
+    ανάγνωση· **SALES_USER μόνο ανατεθειμένες ευκαιρίες — η ανάθεση δεν υπάρχει ακόμη, άρα βλέπει καμία** (κενό feed,
+    άρνηση σε κάθε id). Η εξάρτηση αυτή είναι ρητή (`ASSIGNMENT_DEPENDENT`) και θα διευρυνθεί από το πακέτο ανάθεσης.
+  - Βοηθοί με scoping **στο SQL**: `organization_radars_for`, `organization_opportunities_for`, `get_authorized_radar`,
+    `get_authorized_opportunity` (βάση της σελίδας D29), `get_authorized_opportunity_score_breakdown` (παγωμένο C8
+    «Why this lead»), `get_authorized_opportunity_feed` (τυλίγει το C9 χωρίς να το αλλάζει· ξένο Radar id → ίδια άρνηση),
+    `get_authorized_organization_profile`, `get_authorized_icp_criteria`, `organization_members_for` (ids/ρόλοι μόνο).
+  - Τα C5–C7 (matching/scoring/live breakdown) αξιολογούν Radars **όλων** των οργανισμών by design: δεν πρέπει ποτέ
+    να εξυπηρετούν αίτημα πελάτη. Ο κώδικας πελάτη διαβάζει μόνο μέσω του `organization_access`.
+  - Πλατφόρμα ≠ tenant: IndustryTemplate και δεδομένα αναφοράς ΓΕΜΗ δεν γίνονται ποτέ organization-scoped.
+    Legacy user-owned προϊόν (CustomerRadar, UserCompanyLead, UserSubscription, billing) αμετάβλητο.
+  - 26 νέα tests· **1.565 tests OK** (δύο συνεχόμενες πλήρεις εκτελέσεις).
+    **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`** — το G5 αφορά ασφάλεια tenants, όχι ετοιμότητα deploy.
+
+
 - **Gemi Leads 2.0 — C9: read model του feed ευκαιριών (2026-09-18).** `gemiapp/opportunity_feed.py`, εντολή μόνο-ανάγνωσης
   `show_opportunity_feed --organization-id`. **Χωρίς model, migration ή εγγραφή.**
   - Το C8 (αποθήκευση ευκαιριών) ολοκληρώθηκε και δεσμεύτηκε (`afebd70`)· το flaky login rate-limit test
@@ -847,10 +875,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — Phase C ολοκληρώθηκε (βήματα 20–28).** Επόμενο κατά τον χάρτη: **Phase D — Workflow**,
-  βήμα 29 **company opportunity page** (§36 του `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του C9. Πριν από
-  οποιαδήποτε σελίδα πελάτη πρέπει να λυθεί το G5 (απομόνωση μελών/ρόλων). Η μεταφορά ιδιοκτησίας δεδομένων σε
-  οργανισμούς και μια κανονική ταξινόμηση κλάδων παραμένουν ανοιχτά.
+- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 29 — Company Opportunity Page** (§36 του
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`)· αναμένει έγκριση του G5. Πρέπει να χρησιμοποιεί **μόνο** τις υπηρεσίες του
+  `gemiapp/organization_access.py` (ρητή επίλυση οργανισμού στο route, `OrganizationAccessDenied` → 404). Κάθε νέα
+  organization-owned επιφάνεια περνά από το ίδιο layer. Η ανάθεση (βήμα 31) θα δώσει στους SALES_USER ορατότητα.
+- **Release gate G5 — `G5_STATUS = PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`:** ισχύει για τις υπάρχουσες
+  organization-owned ρίζες (profile, ICP, Radars, opportunities, feed). Νέες επιφάνειες δεν «κληρονομούν» το πέρασμα
+  αυτόματα: πρέπει να χρησιμοποιούν το ίδιο layer και να αποδεικνύουν την απομόνωσή τους με tests.
 - **Release gate για το C9:** καμία migration· κανένα product path δεν καλεί το feed· δεν υπάρχει ακόμη καμία
   αυτόματη παραγωγή ευκαιριών, οπότε το feed μένει κενό μέχρι ένα εγκεκριμένο πακέτο επεξεργασίας.
 - **Release gate για το C8 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0048` δημιουργεί **τέσσερις
