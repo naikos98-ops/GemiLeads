@@ -4416,10 +4416,20 @@ class RateLimitTests(TestCase):
         self.assertIn(403, codes)
 
     def test_signup_is_rate_limited(self):
-        codes = self._post(reverse("signup"), {
-            "first_name": "X", "email": "a@b.com",
-            "password1": "StrongPass123!", "password2": "StrongPass123!",
-        }, 7)
+        # Same fixed wall-clock 5/m window as login: seven slow POSTs could straddle a minute boundary. Pin only the
+        # limiter's own clock; the real rate, window arithmetic and shared-cache counting still run.
+        import time as real_time
+        import types
+
+        frozen = real_time.time()
+        limiter_clock = types.SimpleNamespace(**{name: getattr(real_time, name) for name in dir(real_time)
+                                                 if not name.startswith("_")})
+        limiter_clock.time = lambda: frozen
+        with patch("django_ratelimit.core.time", limiter_clock):
+            codes = self._post(reverse("signup"), {
+                "first_name": "X", "email": "a@b.com",
+                "password1": "StrongPass123!", "password2": "StrongPass123!",
+            }, 7)
         self.assertIn(403, codes)
 
     def test_a_normal_visitor_is_not_blocked(self):
