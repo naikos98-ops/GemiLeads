@@ -336,9 +336,13 @@ class SafetyTests(PageTestCase):
 
     def test_the_route_reaches_tenant_data_only_through_the_authorization_layer(self):
         source = inspect.getsource(organization_views).split('"""', 2)[2]
-        imports = [line for line in source.splitlines() if line.startswith(("from .", "import ."))]
-        self.assertEqual(imports, ["from .organization_access import OrganizationAccessDenied, "
-                                   "get_authorized_company_opportunity_page"])
+        # The only project import is the authorization layer (D30 added its Save entry point to the same import).
+        self.assertEqual([line for line in source.splitlines() if line.startswith(("from .", "import ."))],
+                         ["from .organization_access import ("])
+        imported = source.split("from .organization_access import (", 1)[1].split(")", 1)[0]
+        self.assertEqual({name.strip() for name in imported.split(",") if name.strip()},
+                         {"OpportunityTransitionRefused", "OrganizationAccessDenied",
+                          "get_authorized_company_opportunity_page", "save_authorized_opportunity"})
         for forbidden in (".objects", ".save(", ".create(", ".update(", ".delete(", "organization_radar_matching",
                           "opportunity_scoring", "opportunity_score_breakdown", "opportunity_feed",
                           "get_opportunity_score_breakdown", "set_opportunity_status", "request.organization",
@@ -367,7 +371,8 @@ class SafetyTests(PageTestCase):
                                if "organization" in route and not getattr(callback, "__module__", "").startswith(
                                    "django.contrib.admin") and not route.startswith("admin/")]
         self.assertEqual([route for route, _ in organization_routes],
-                         ["organizations/<int:organization_id>/opportunities/company/<int:company_id>/"])
+                         ["organizations/<int:organization_id>/opportunities/company/<int:company_id>/",
+                          "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/save/"])
         for _, callback in organization_routes:
             self.assertEqual(callback.__module__, "gemiapp.organization_views")
         product_modules = [path for path in pathlib.Path("gemiapp").glob("*.py")
@@ -378,9 +383,12 @@ class SafetyTests(PageTestCase):
     def test_no_mutation_endpoint_model_or_migration(self):
         from django.apps import apps
 
+        # Since D30 the page has exactly one kind of form: the per-opportunity Save POST.
         html_template = pathlib.Path("templates/organizations/company_opportunity.html").read_text(encoding="utf-8")
-        for control in ("<form", "<button", "method=\"post\"", "csrf_token"):
-            self.assertNotIn(control, html_template, control)
+        self.assertEqual(html_template.count("<form"), 1)
+        self.assertEqual(html_template.count("<button"), 1)
+        self.assertIn("{% url 'organization_save_opportunity' page.organization_id opportunity.opportunity_id %}",
+                      html_template)
         self.assertFalse([m for m in apps.get_app_config("gemiapp").get_models() if "Assign" in m.__name__
                           or "Note" in m.__name__ or "Task" in m.__name__])
         loader = MigrationLoader(None, ignore_no_migrations=True)

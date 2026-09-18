@@ -132,6 +132,8 @@ class PageOpportunity:
     scored_as_of: datetime
     live_signal_count: int
     is_primary: bool
+    # D30: "save" (this member may Save it now), "saved" (settled), or None (no control at all).
+    save_action: str | None = None
 
 
 @dataclass(frozen=True)
@@ -195,7 +197,8 @@ def _age(seconds: int) -> str:
     return f"{seconds // 86400} ημέρες"
 
 
-def build_company_opportunity_page(*, organization, rows, live_signal_counts: dict) -> CompanyOpportunityPage:
+def build_company_opportunity_page(*, organization, rows, live_signal_counts: dict,
+                                  save_actions: dict | None = None) -> CompanyOpportunityPage:
     """Assemble the page from already-authorized, LIVE-backed opportunities of one company, primary first."""
     primary_row = rows[0]
     company = primary_row.company
@@ -293,6 +296,7 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
         latest_signal_label=SIGNAL_LABELS.get(row.latest_signal.signal_type, row.latest_signal.signal_type),
         latest_signal_detected_at=row.latest_signal.detected_at, scored_as_of=row.scored_as_of,
         live_signal_count=live_signal_counts.get(row.pk, 0), is_primary=index == 0,
+        save_action=(save_actions or {}).get(row.pk),
     ) for index, row in enumerate(rows))
 
     timeline = tuple(TimelineItem(

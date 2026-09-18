@@ -144,6 +144,31 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — D30: Save (2026-09-18).** Η **πρώτη μετάλλαξη πελάτη** της αρχιτεκτονικής Organization.
+  `organization_access.save_authorized_opportunity`, view `organization_views.save_opportunity`. **Χωρίς migration.**
+  - Το D29 δεσμεύτηκε (`94299cc`). Απόφαση προϊόντος: **PATH A** — το blueprint δεν ορίζει το Save· αποφασίστηκε
+    ρητά ότι Save = στενή ενέργεια κύκλου ζωής μίας συγκεκριμένης ευκαιρίας C8, **όχι** bookmark/shortlist.
+  - **Στόχος: μία ρητή ευκαιρία C8** (ένα κουμπί ανά γραμμή Radar στη σελίδα D29)· ποτέ όλες οι ευκαιρίες μιας
+    εταιρείας· το primary δεν έχει ειδική μεταχείριση.
+  - **Μεταβάσεις:** `new → saved`, `viewed → saved`· `saved → saved` = **idempotent χωρίς καμία εγγραφή** (ούτε
+    `updated_at`)· κάθε μεταγενέστερη κατάσταση §39 (assigned, contacted, interested, follow_up, won, lost,
+    not_relevant, do_not_contact) **απορρίπτεται και μένει ανέγγιχτη** — ποτέ πισωγύρισμα. **Κανένα unsave**,
+    κανένα γενικό endpoint κατάστασης: το βήμα 32 κατέχει τις γενικές μεταβάσεις. Κανένα auto-«viewed».
+  - **Δικαίωμα: `manage_opportunity_workflow`** (OWNER, SALES_MANAGER)· ADMIN/VIEWER/SALES_USER → ίδιο 404. Ο
+    πίνακας G5 δεν άλλαξε. Μόνο ευκαιρίες με LIVE `latest_signal`· SHADOW → 404 χωρίς διαρροή ύπαρξης.
+  - `POST /organizations/<organization_id>/opportunities/<opportunity_id>/save/` (`organization_save_opportunity`):
+    login, POST μόνο, CSRF, `transaction.atomic` + `select_for_update(of=("self",))` (το κλείδωμα αποδεικνύεται
+    μόνο σε PostgreSQL). Redirect στη σελίδα D29 της εταιρείας της ευκαιρίας — ποτέ caller-supplied URL.
+  - Αλλάζει **μόνο** το `Opportunity.status` (+ `updated_at` σε πραγματική μετάβαση). Score, class, breakdown,
+    evidence, signals, snapshots, timeline, primary: αμετάβλητα. Κανένα `saved_at`/`saved_by`, κανένα audit log
+    (βήμα 36). Το υπάρχον φίλτρο status του C9 βρίσκει φυσικά τις SAVED ευκαιρίες· καμία αλλαγή στο C9.
+  - Σελίδα D29: `Αποθήκευση` (φόρμα POST) μόνο για NEW/VIEWED και μόνο σε ρόλους workflow· `✓ Αποθηκευμένο`
+    (μη κλικαρίσιμο) για SAVED· τίποτα για μεταγενέστερες καταστάσεις.
+  - 19 νέα tests· **1.607 tests OK** (δύο συνεχόμενες πλήρεις εκτελέσεις). `G5_STATUS =
+    PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`· `G4_STATUS = NOT_PASSED`· **`PRODUCTION_MIGRATION_STATUS =
+    BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — D29: σελίδα ευκαιρίας εταιρείας (2026-09-18).** Η **πρώτη customer-facing επιφάνεια** της
   αρχιτεκτονικής Organization. `gemiapp/organization_views.py`, `gemiapp/company_opportunity_page.py`,
   `templates/organizations/company_opportunity.html`. **Χωρίς migration.**
@@ -903,10 +928,10 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 30 — Save** (`docs/GEMI_LEADS_2_BLUEPRINT.md` §118)· αναμένει
-  έγκριση του D29. Κάθε μετάλλαξη πρέπει να περνά από capability του `organization_access` (ο πίνακας G5 δεν
-  αναθεωρείται) και να αποδεικνύει απομόνωση tenants με tests. Ακολουθούν assign (31), statuses (32), notes (33),
-  tasks (34), do-not-contact (35), audit log (36), notifications (37). Το G4 δεν έχει περάσει.
+- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 31 — Assign** (§40 του `docs/GEMI_LEADS_2_BLUEPRINT.md`:
+  «Sales Manager → assign lead → salesperson», πεδία `assigned_to`, `assigned_at`)· αναμένει έγκριση του D30. Είναι το
+  πακέτο που θα δώσει στους SALES_USER ορατότητα (`view_assigned_opportunities`). Το Save σημαίνει προς το παρόν
+  **κατάσταση κύκλου ζωής**, όχι προσωπικό bookmark.
 - **Release gate για το D29:** καμία migration· το route είναι πίσω από login και G5, αλλά δεν υπάρχει ακόμη κανένας
   σύνδεσμος πλοήγησης προς αυτό και καμία παραγωγή ευκαιριών/LIVE signals, οπότε στην πράξη δεν εμφανίζει τίποτα.
 - **Release gate G5 — `G5_STATUS = PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`:** ισχύει για τις υπάρχουσες

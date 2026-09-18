@@ -26,6 +26,8 @@ urlpatterns = [
     # Gemi Leads 2.0: organization-scoped, authorized only through gemiapp.organization_access.
     path("organizations/<int:organization_id>/opportunities/company/<int:company_id>/",
          organization_views.company_opportunity_page, name="organization_company_opportunity"),
+    path("organizations/<int:organization_id>/opportunities/<int:opportunity_id>/save/",
+         organization_views.save_opportunity, name="organization_save_opportunity"),
     path("api/kads/", views.kad_search, name="kad_search"),
     path("export/", views.export_csv, name="export_csv"),
     path("verify/<uidb64>/<token>/", views.verify_email, name="verify_email"),

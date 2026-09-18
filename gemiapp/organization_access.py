@@ -70,6 +70,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from django.apps import apps
+from django.db import transaction
 from django.db.models import Count
 
 from .opportunities import get_opportunity_score_breakdown
@@ -289,9 +290,7 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
     """
     from .company_opportunity_page import build_company_opportunity_page
 
-    organization = _model("Organization").objects.filter(pk=_object_id(organization_id)).only("pk", "name").first()
-    if organization is None:
-        raise OrganizationAccessDenied()
+    organization = _organization_by_id(organization_id)
     context = get_organization_access_context(user, organization)
     rows = list(
         organization_opportunities_for(context)
@@ -305,4 +304,80 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
         _model("OpportunitySignal").objects.filter(opportunity_id__in=[row.pk for row in rows], signal__mode=LIVE)
         .values("opportunity_id").annotate(n=Count("signal_id", distinct=True)).values_list("opportunity_id", "n")
     )
-    return build_company_opportunity_page(organization=organization, rows=rows, live_signal_counts=live_signal_counts)
+    workflow = can(context, Capability.MANAGE_OPPORTUNITY_WORKFLOW)
+    save_actions = {row.pk: _save_action(row.status) if workflow else None for row in rows}
+    return build_company_opportunity_page(organization=organization, rows=rows, live_signal_counts=live_signal_counts,
+                                          save_actions=save_actions)
+
+
+def _organization_by_id(organization_id):
+    """An organization named by a route id, or the single refusal -- never a hint that it exists."""
+    organization = _model("Organization").objects.filter(pk=_object_id(organization_id)).only("pk", "name").first()
+    if organization is None:
+        raise OrganizationAccessDenied()
+    return organization
+
+
+# --- D30: Save --------------------------------------------------------------------------------------
+#
+# Save is one narrow lifecycle action on one explicit opportunity: NEW or VIEWED -> SAVED, and SAVED stays SAVED
+# without a write. Every later §39 state is refused and left untouched, so Save never moves an opportunity
+# backwards. There is no unsave and no general transition graph: item 32 (statuses) owns lifecycle policy.
+
+SAVED = "saved"
+SAVE_ALLOWED_FROM = frozenset({"new", "viewed"})
+
+
+def _save_action(status: str):
+    """What the page may offer for Save on a row: an active action, the settled saved state, or nothing."""
+    if status == SAVED:
+        return "saved"
+    return "save" if status in SAVE_ALLOWED_FROM else None
+
+
+@dataclass(frozen=True)
+class SaveOpportunityResult:
+    organization_id: int
+    company_id: int
+    opportunity_id: int
+    status: str
+    changed: bool  # False for the idempotent SAVED -> SAVED path, which writes nothing
+
+
+class OpportunityTransitionRefused(Exception):
+    """The opportunity is visible to this member, but its current state does not allow Save. Nothing changed."""
+
+    MESSAGE = "Η ευκαιρία δεν μπορεί να αποθηκευτεί από την τρέχουσα κατάστασή της."
+
+    def __init__(self, result: SaveOpportunityResult):
+        super().__init__(self.MESSAGE)
+        self.result = result
+
+
+def save_authorized_opportunity(user, organization_id, opportunity_id) -> SaveOpportunityResult:
+    """D30: move one customer-visible opportunity to SAVED, if this membership may and its state allows.
+
+    The organization and the opportunity both come from the route and are resolved here: a nonexistent or foreign
+    organization, a non-member, a role without ``manage_opportunity_workflow``, another tenant's or a nonexistent
+    opportunity, and a SHADOW-backed one are all the same ``OrganizationAccessDenied``. The row is re-read under a
+    lock inside the transaction, so a concurrent Save sees SAVED and takes the no-write path. PostgreSQL provides
+    the row lock; SQLite serialises writes differently, so its tests prove the behaviour, not the locking.
+    """
+    organization = _organization_by_id(organization_id)
+    context = require(get_organization_access_context(user, organization), Capability.MANAGE_OPPORTUNITY_WORKFLOW)
+    with transaction.atomic():
+        row = (organization_opportunities_for(context)
+               .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
+               .select_for_update(of=("self",)).only("pk", "organization_id", "company_id", "status").first())
+        if row is None:
+            raise OrganizationAccessDenied()
+        result = SaveOpportunityResult(organization_id=row.organization_id, company_id=row.company_id,
+                                       opportunity_id=row.pk, status=row.status, changed=False)
+        if row.status == SAVED:
+            return result  # idempotent: no write at all
+        if row.status not in SAVE_ALLOWED_FROM:
+            raise OpportunityTransitionRefused(result)
+        row.status = SAVED
+        row.save(update_fields=["status", "updated_at"])
+    return SaveOpportunityResult(organization_id=row.organization_id, company_id=row.company_id,
+                                 opportunity_id=row.pk, status=SAVED, changed=True)
