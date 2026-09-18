@@ -4401,7 +4401,18 @@ class RateLimitTests(TestCase):
         self.assertLessEqual(len(mail.outbox), 5)
 
     def test_login_is_rate_limited(self):
-        codes = self._post(reverse("login"), {"username": "a@b.com", "password": "wrong"}, 7)
+        # The login limiter is 5/m on fixed wall-clock minute windows, so seven slow POSTs could straddle a minute
+        # boundary and never exceed 5 in one window. Pin only the limiter's own clock: the real rate, window
+        # arithmetic and shared-cache counting still run, and the rest of Django keeps the real time.
+        import time as real_time
+        import types
+
+        frozen = real_time.time()
+        limiter_clock = types.SimpleNamespace(**{name: getattr(real_time, name) for name in dir(real_time)
+                                                 if not name.startswith("_")})
+        limiter_clock.time = lambda: frozen
+        with patch("django_ratelimit.core.time", limiter_clock):
+            codes = self._post(reverse("login"), {"username": "a@b.com", "password": "wrong"}, 7)
         self.assertIn(403, codes)
 
     def test_signup_is_rate_limited(self):
