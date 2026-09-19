@@ -298,13 +298,14 @@ class BoundaryTests(StatusTestCase):
         # the two legacy platform suppressions, plus D35's organization-scoped one (never written by D32)
         self.assertEqual({n for n in names if "Suppression" in n},
                          {"OutreachSuppression", "PersonSuppression", "OrganizationContactSuppression"})
-        self.assertFalse([n for n in names if "History" in n or "Notification" in n or "StatusChange" in n])
+        self.assertFalse([n for n in names if "History" in n or "StatusChange" in n])
+        self.assertEqual({n for n in names if "Notification" in n}, {"OrganizationNotification"})  # D37
         # only the pre-existing KAD catalogue / company-activity models: no activity log (item 36)
         self.assertEqual({n for n in names if "Activity" in n}, {"ActivityCode", "ActivityCodeKadLink", "CompanyActivity"})
         self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0053_organization_audit_event")  # D32 has no migration; 0050-0053: D33-D36
+                         "0054_organization_notification")  # D32 has no migration; 0050-0054: D33-D37
 
     def test_the_frozen_capture_signals_snapshots_timeline_and_ranking_are_untouched(self):
         self.put_assigned(self.maria)

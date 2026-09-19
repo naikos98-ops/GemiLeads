@@ -159,6 +159,46 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — Phase D ΟΛΟΚΛΗΡΩΘΗΚΕ (`PHASE_D_STATUS = COMPLETE`, 2026-09-19).** Τα βήματα 29–37 είναι
+  δεσμευμένα/επαληθευμένα. Αυτό **δεν** σημαίνει production-ready: `G0`/`G1` μπλοκάρουν τις production migrations
+  (0048–0054), `G4_STATUS = NOT_PASSED`, `G5_STATUS = PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`. **Η επόμενη δουλειά
+  είναι release readiness (πύλες), όχι νέο feature πακέτο.**
+- **Gemi Leads 2.0 — D37: In-app Notifications (2026-09-19).** §48 «notifications», «Unread counter». Migration
+  `0054_organization_notification` (ένα `CreateModel`, **κανένα backfill**), μοντέλο `OrganizationNotification`,
+  generator `gemiapp/notifications.py`, G5 read/mark services, σελίδα `organizations/notifications.html`.
+  - Το D36 δεσμεύτηκε (`e344f0d`).
+  - **Τύποι:** και οι πέντε του §48 είναι έγκυρες τιμές (NEW_OPPORTUNITY, PRIORITY_SIGNAL, RADAR_MATCH, TASK_DUE,
+    ASSIGNMENT)· **emitters μόνο για ASSIGNMENT και TASK_DUE.** Οι τρεις τύποι pipeline είναι **reserved** — emitters
+    αναβάλλονται μέχρι να περάσουν οι σχετικές πύλες (C8/Signals rollout, G0/G1, G4) και να εγκριθούν παραλήπτες.
+  - **Σχήμα (typed, όχι JSON/κείμενο):** `organization` (CASCADE), `recipient` → `OrganizationMember` (**CASCADE**:
+    διαγραφή μέλους → διαγράφονται οι ειδοποιήσεις του· επανένταξη = καθαρή αρχή), `notification_type`, `opportunity`
+    (CASCADE), `task` (CASCADE), `source_audit_event` (SET_NULL), `due_on`, `created_at`, `read_at`. DB CHECKs για
+    τύπο και σχήμα (TASK_DUE χωρίς task/due_on/opportunity, ASSIGNMENT χωρίς opportunity: αδύνατα)· partial unique:
+    ένα TASK_DUE ανά (recipient, task, due_on), ένα ASSIGNMENT ανά (recipient, audit event).
+  - **ASSIGNMENT:** μόνο σε πραγματική ανάθεση/επανανάθεση του D31, **μόνο στον νέο** `Opportunity.assigned_to`, ποτέ
+    στον προηγούμενο, σε διευθυντές ή στον οργανισμό· καμία αν ο δρων αναθέτει στον εαυτό του. Στην ίδια συναλλαγή με
+    την ανάθεση και το D36 event (αποτυχία → rollback όλων)· ο assignee κλειδώνεται μαζί με τον δρώντα.
+  - **TASK_DUE:** django-q job `gemiapp.tasks.generate_task_due_notifications_task`, **καθημερινά 08:00
+    Europe/Athens** (`cron 0 8 * * *` στο `gemiapp/apps.py` — η **μόνη** εγκεκριμένη εξαίρεση στο πάγωμα των
+    schedules· Render άθικτο· **όχι ενεργό σε production** πριν τα G0/G1). Επιλέγει ανοιχτές εργασίες με assignee και
+    `due_on <= timezone.localdate()` (due today και overdue ίδια ειδοποίηση, catch-up σε χαμένη μέρα), μόνο αν ο
+    assignee βλέπει ακόμη την ευκαιρία κατά G5 (ενεργός, ίδιος οργανισμός, LIVE, ρόλος με πλήρη ορατότητα ή ο
+    ανατεθειμένος πωλητής). Καμία εφεδρεία παραλήπτη. Set-based (batch 500, `ignore_conflicts`)· rerun → 0 νέες.
+    Ολοκληρωμένη εργασία: καμία· μετά την ολοκλήρωση η υπάρχουσα μένει. Τελικές ευκαιρίες: ναι, αν η εργασία είναι
+    ανοιχτή. **Καμία δημιουργία σε GET.**
+  - **Ανάγνωση:** μόνο `(user, organization) → ακριβής membership → δικές της`, στο SQL. `GET
+    /organizations/<id>/notifications/` (νεότερες πρώτα, έως 50), `POST .../notifications/<id>/read/`, `POST
+    .../notifications/read-all/`· `read_at`, idempotent χωρίς εγγραφή όταν ήδη αναγνωσμένα· **κανένα delete,
+    archive, retention** και κανένα audit event για ανάγνωση. Ευκαιρία που δεν είναι πλέον ορατή → η ειδοποίηση
+    εμφανίζεται χωρίς στοιχεία/σύνδεσμο. Σύνδεσμος + unread count μόνο στη σελίδα D29 (όχι στο legacy nav).
+  - **Κανένα email, digest (§46), real-time alert (§47), SMS, push, webhook.** Το `send_digests` άθικτο. Καμία
+    ειδοποίηση για Save, status, σημείωση, εργασία, DNC.
+  - Κύκλος migration στο αντίγραφο της dev βάσης: forward → 0 → fixture → parity → reverse → reapply, όλα PASS· το
+    `migrate` καταχωρίζει (όπως κάθε `SCHEDULES` entry) τη γραμμή του D37 στο τοπικό `django_q_schedule`.
+  - 29 νέα tests· **1.811 tests OK** με μία κανονική εκτέλεση (`--parallel 4`). **`PRODUCTION_MIGRATION_STATUS =
+    BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — D36: Audit Log (2026-09-19).** Αμετάβλητο ιστορικό CRM ενεργειών (§52: actor, organization,
   action, entity, timestamp, metadata). Migration `0053_organization_audit_event` (ένα `CreateModel`, **κανένα
   backfill**), μοντέλο `OrganizationAuditEvent`, writer `organization_access._audit`, read model
@@ -1177,11 +1217,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 37 — Notifications** (§48 του
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`: `notifications`, τύποι NEW_OPPORTUNITY, PRIORITY_SIGNAL, RADAR_MATCH, TASK_DUE,
-  ASSIGNMENT, unread counter)· αναμένει έγκριση του D36. Ανοιχτές αποφάσεις προϊόντος: reopen τελικών καταστάσεων,
-  επεξεργασία/διαγραφή σημειώσεων και εργασιών, αναίρεση suppression, email/phone suppression (Phase G), UI για το
-  audit log.
+- **Gemi Leads 2.0 — επόμενη δουλειά: RELEASE READINESS** (όχι feature πακέτο). Η Phase D ολοκληρώθηκε· πρώτα οι
+  πύλες G0/G1 που μπλοκάρουν τις production migrations 0048–0054 και την ενεργοποίηση του D37 schedule σε
+  production, έπειτα το G4. Ανοιχτές αποφάσεις προϊόντος: emitters/παραλήπτες για NEW_OPPORTUNITY, PRIORITY_SIGNAL,
+  RADAR_MATCH· reopen τελικών καταστάσεων· επεξεργασία/διαγραφή σημειώσεων και εργασιών· αναίρεση suppression·
+  email/phone suppression (Phase G)· UI για το audit log.
+- **Release gate για το D37:** η `0054_organization_notification` και το D37 schedule **δεν** ενεργοποιούνται σε
+  production πριν τα G0/G1.
 - **Release gate για το D36:** η `0053_organization_audit_event` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D35:** η `0052_organization_contact_suppression` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D34:** η `0051_opportunity_task` **δεν** εφαρμόζεται σε production πριν τα G0/G1.

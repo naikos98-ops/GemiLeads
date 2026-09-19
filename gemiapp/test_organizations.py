@@ -46,7 +46,7 @@ class SchemaTests(TestCase):
         # (D36) audit events.
         from .models import (
             Opportunity, OpportunityNote, OpportunityTask, OrganizationAuditEvent, OrganizationContactSuppression,
-            OrganizationICP, OrganizationRadar,
+            OrganizationICP, OrganizationNotification, OrganizationRadar,
         )
 
         for field in Organization._meta.get_fields():
@@ -54,7 +54,7 @@ class SchemaTests(TestCase):
                 self.assertIn(field.related_model,
                               (OrganizationMember, OrganizationProfile, OrganizationICP, OrganizationRadar,
                                Opportunity, OpportunityNote, OpportunityTask, OrganizationContactSuppression,
-                               OrganizationAuditEvent))
+                               OrganizationAuditEvent, OrganizationNotification))
         self.assertFalse([f for f in Organization._meta.get_fields() if f.is_relation and f.related_model is Company])
 
     def test_membership_roles_constraints_and_deletion(self):

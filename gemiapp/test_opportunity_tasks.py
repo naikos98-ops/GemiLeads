@@ -529,7 +529,7 @@ class PageTests(TaskTestCase):
             page = self.page()
         self.assertEqual(len(full), len(empty))  # the task count never changes the query count
         # 3 opportunities, notes, 60 tasks, 4 member states: measured on SQLite; D35 added one suppression read
-        self.assertEqual(len(full), 18)
+        self.assertEqual(len(full), 19)  # D37 added the constant unread notification count
         task_queries = [q["sql"] for q in full.captured_queries if "opportunitytask" in q["sql"]]
         self.assertEqual(len(task_queries), 1)
         self.assertIn("LIMIT 51", task_queries[0])
@@ -641,7 +641,8 @@ class InvarianceTests(TaskTestCase):
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
         self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36
-        self.assertFalse([n for n in names if "Notification" in n or "Reminder" in n or "History" in n])
+        self.assertFalse([n for n in names if "Reminder" in n or "History" in n])
+        self.assertEqual({n for n in names if "Notification" in n}, {"OrganizationNotification"})  # D37
         for path in ("gemiapp/tasks.py", "gemiapp/apps.py"):
             self.assertNotIn("OpportunityTask", open(path, encoding="utf-8").read(), path)
 

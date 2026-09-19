@@ -628,7 +628,7 @@ class PageTests(DncTestCase):
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
         self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36
-        self.assertFalse([n for n in names if "Notification" in n])
+        self.assertEqual({n for n in names if "Notification" in n}, {"OrganizationNotification"})  # D37
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):
         legacy_user = entitled_user("legacy-d35@example.com")

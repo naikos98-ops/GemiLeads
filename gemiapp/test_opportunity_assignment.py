@@ -89,7 +89,8 @@ class SchemaTests(AssignTestCase):
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
         # No assignment, activity-history, audit or notification model: those belong to D36/D37.
-        self.assertFalse([n for n in names if "Assign" in n or "Notification" in n])
+        self.assertFalse([n for n in names if "Assign" in n])
+        self.assertEqual({n for n in names if "Notification" in n}, {"OrganizationNotification"})  # D37
         self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36  # pre-existing staff audit only
         self.assertEqual((self.row.assigned_to_id, self.row.assigned_at), (None, None))
 
@@ -362,7 +363,7 @@ class PageAndSafetyTests(AssignTestCase):
         self.assertEqual([c.count("SELECT") for c in counts.values()], [5, 5, 4])
         with CaptureQueriesContext(connection) as page:
             self.page()
-        self.assertLessEqual(len(page), 18)  # D33 notes, D34 tasks and D35 suppression add constant reads
+        self.assertLessEqual(len(page), 19)  # D33 notes, D34 tasks, D35 suppression, D37 unread count
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):
         legacy_user = entitled_user("legacy-d31@example.com")

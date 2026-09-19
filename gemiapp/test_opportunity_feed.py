@@ -100,7 +100,7 @@ class ContractTests(TestCase):
         self.assertFalse([n for n in names if "Feed" in n])
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0053_organization_audit_event")  # D36 owns 0053 (audit log); any newer migration must update this pin deliberately
+                         "0054_organization_notification")  # D37 owns 0054 (notifications); any newer migration must update this pin deliberately
         for cls in (FeedFilters, FeedCursor, FeedRadarOpportunity, OpportunityFeedCard, OpportunityFeedPage):
             self.assertTrue(dataclasses.is_dataclass(cls) and cls.__dataclass_params__.frozen, cls)
         self.assertEqual((DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE), (50, 200))

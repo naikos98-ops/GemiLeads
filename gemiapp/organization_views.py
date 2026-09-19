@@ -5,7 +5,8 @@ organization comes from the route and is authorized there against the logged-in 
 session, middleware or the user. Every refusal becomes the same 404, whatever its reason, so a route never tells a
 caller whether an organization, company or opportunity exists. The page is a GET-only read; the only mutations are
 D30 Save, D31 Assign, D32 status changes, D33 notes, D34 tasks and the company-level D35 Do Not Contact,
-CSRF-protected POSTs that redirect back to the page.
+CSRF-protected POSTs that redirect back to the page. D37 adds the member's own notifications page (GET, read-only)
+and its two self-scoped mark-read POSTs.
 """
 
 from django.contrib import messages
@@ -18,7 +19,9 @@ from .organization_access import (
     AssignmentRefused, DoNotContactRefused, NoteRefused, OpportunityTransitionRefused, OrganizationAccessDenied,
     StatusChangeRefused, TaskRefused, add_authorized_opportunity_note, apply_authorized_company_do_not_contact,
     assign_authorized_opportunity, complete_authorized_opportunity_task, create_authorized_opportunity_task,
-    get_authorized_company_opportunity_page, save_authorized_opportunity, set_authorized_opportunity_status,
+    get_authorized_company_opportunity_page, get_authorized_notifications, get_authorized_unread_notification_count,
+    mark_all_authorized_notifications_read, mark_authorized_notification_read, save_authorized_opportunity,
+    set_authorized_opportunity_status,
 )
 
 
@@ -182,3 +185,38 @@ def company_do_not_contact(request, organization_id, company_id):
             messages.success(request, "Η εταιρεία καταχωρίστηκε ως «Χωρίς επικοινωνία» για τον οργανισμό.")
     return redirect("organization_company_opportunity", organization_id=result.organization_id,
                     company_id=result.company_id)
+
+
+@login_required
+@require_GET
+def notifications_page(request, organization_id):
+    """D37: this membership's own in-app notifications in this organization. Read-only: nothing is generated here."""
+    try:
+        entries = get_authorized_notifications(request.user, organization_id)
+        unread = get_authorized_unread_notification_count(request.user, organization_id)
+    except OrganizationAccessDenied:
+        raise Http404()
+    return render(request, "organizations/notifications.html",
+                  {"organization_id": organization_id, "entries": entries, "unread": unread})
+
+
+@login_required
+@require_POST
+def mark_notification_read(request, organization_id, notification_id):
+    """D37: mark one own notification read (already read: no change), then back to the notifications page."""
+    try:
+        result = mark_authorized_notification_read(request.user, organization_id, notification_id)
+    except OrganizationAccessDenied:
+        raise Http404()
+    return redirect("organization_notifications", organization_id=result.organization_id)
+
+
+@login_required
+@require_POST
+def mark_all_notifications_read(request, organization_id):
+    """D37: mark every own unread notification in this organization read, then back to the notifications page."""
+    try:
+        result = mark_all_authorized_notifications_read(request.user, organization_id)
+    except OrganizationAccessDenied:
+        raise Http404()
+    return redirect("organization_notifications", organization_id=result.organization_id)

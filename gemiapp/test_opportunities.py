@@ -83,7 +83,7 @@ class SchemaTests(TestCase):
         self.assertEqual(names[names.index("0048_opportunity"):],
                          ["0048_opportunity", "0049_opportunity_assignment", "0050_opportunity_note",
                           "0051_opportunity_task", "0052_organization_contact_suppression",
-                          "0053_organization_audit_event"])
+                          "0053_organization_audit_event", "0054_organization_notification"])
         migration = loader.disk_migrations[("gemiapp", "0048_opportunity")]
         allowed = {"CreateModel", "AddIndex", "AddConstraint", "AddField"}
         self.assertTrue({type(op).__name__ for op in migration.operations} <= allowed)

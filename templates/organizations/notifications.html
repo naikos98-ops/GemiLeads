@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% comment %}
+  D37 / blueprint §48 -- this membership's own in-app notifications in one organization. Renders only the
+  recipient-scoped entries from gemiapp.organization_access: no queryset, no contact data, everything auto-escaped.
+  An entry whose opportunity is no longer visible to this member is shown without details or link. The only
+  mutations are the self-scoped mark-read POSTs.
+{% endcomment %}
+{% block title %}Ειδοποιήσεις · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block content %}
+<div class="product-workspace">
+  <section class="product-history" id="notifications">
+    <p>ΕΙΔΟΠΟΙΗΣΕΙΣ{% if unread %} ({{ unread }} μη αναγνωσμένες){% endif %}</p>
+    {% if unread %}
+    <form method="post" action="{% url 'organization_notifications_read_all' organization_id %}" data-read-all>
+      {% csrf_token %}
+      <button type="submit" class="product-text-button">Σήμανση όλων ως αναγνωσμένων</button>
+    </form>
+    {% endif %}
+    <dl>
+      {% for entry in entries %}
+      <div data-notification="{{ entry.notification_id }}" data-notification-state="{% if entry.read_at %}read{% else %}unread{% endif %}">
+        <dt style="font-family: ui-monospace, monospace; color: var(--product-muted);">{{ entry.type_label }} · {{ entry.created_at|date:'d/m/Y H:i' }}</dt>
+        <dd>
+          {% if not entry.available %}
+          <span style="color: var(--product-muted);">Η σχετική ευκαιρία δεν είναι πλέον διαθέσιμη.</span>
+          {% elif entry.notification_type == 'assignment' %}
+          Σου ανατέθηκε μια ευκαιρία: <a href="{% url 'organization_company_opportunity' organization_id entry.company_id %}">{{ entry.company_name }}</a> · {{ entry.radar_name }}
+          {% elif entry.notification_type == 'task_due' %}
+          Προθεσμία εργασίας {{ entry.due_on|date:'d/m/Y' }}: <span style="overflow-wrap: anywhere;">{{ entry.task_title }}</span> · <a href="{% url 'organization_company_opportunity' organization_id entry.company_id %}">{{ entry.company_name }}</a> · {{ entry.radar_name }}
+          {% else %}
+          <a href="{% url 'organization_company_opportunity' organization_id entry.company_id %}">{{ entry.company_name }}</a>
+          {% endif %}
+          {% if not entry.read_at %}
+          <form method="post" action="{% url 'organization_notification_read' organization_id entry.notification_id %}" data-read-for="{{ entry.notification_id }}" style="display: inline;">
+            {% csrf_token %}
+            <button type="submit" class="product-text-button">Αναγνώστηκε</button>
+          </form>
+          {% endif %}
+        </dd>
+      </div>
+      {% empty %}
+      <p data-no-notifications style="font-size: var(--type-small); color: var(--product-muted);">Δεν υπάρχουν ειδοποιήσεις.</p>
+      {% endfor %}
+    </dl>
+  </section>
+</div>
+{% endblock %}

@@ -314,7 +314,8 @@ class SafetyTests(PageTestCase):
             page = self.page()
         self.assertEqual((len(page.opportunities), len(page.timeline)), (3, 20))
         self.assertEqual(len(three), len(one))
-        self.assertLessEqual(len(three), 18)  # D33: bounded notes; D34: tasks + assignee options; D35: suppression
+        # D33: bounded notes; D34: tasks + assignee options; D35: suppression; D37: the unread notification count
+        self.assertLessEqual(len(three), 19)
         self.assertTrue(all(q["sql"].lstrip().upper().startswith("SELECT") for q in three.captured_queries))
 
     def test_opening_the_page_writes_nothing(self):
@@ -344,7 +345,9 @@ class SafetyTests(PageTestCase):
                          {"AssignmentRefused", "DoNotContactRefused", "NoteRefused", "OpportunityTransitionRefused",
                           "OrganizationAccessDenied", "StatusChangeRefused", "TaskRefused",
                           "add_authorized_opportunity_note", "apply_authorized_company_do_not_contact",
-                          "assign_authorized_opportunity",
+                          "assign_authorized_opportunity", "get_authorized_notifications",
+                          "get_authorized_unread_notification_count", "mark_all_authorized_notifications_read",
+                          "mark_authorized_notification_read",
                           "complete_authorized_opportunity_task", "create_authorized_opportunity_task",
                           "get_authorized_company_opportunity_page", "save_authorized_opportunity",
                           "set_authorized_opportunity_status"})
@@ -384,13 +387,17 @@ class SafetyTests(PageTestCase):
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/notes/",
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/tasks/",
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/tasks/"
-                          "<int:task_id>/complete/"])
+                          "<int:task_id>/complete/",
+                          "organizations/<int:organization_id>/notifications/",
+                          "organizations/<int:organization_id>/notifications/read-all/",
+                          "organizations/<int:organization_id>/notifications/<int:notification_id>/read/"])
         for _, callback in organization_routes:
             self.assertEqual(callback.__module__, "gemiapp.organization_views")
         product_modules = [path for path in pathlib.Path("gemiapp").glob("*.py")
                            if not path.name.startswith("test")
                            and "from .organization_access import" in path.read_text(encoding="utf-8")]
-        self.assertEqual(sorted(p.name for p in product_modules), ["organization_views.py"])
+        # D37: the scheduled TASK_DUE generator reuses G5's own role/visibility table rather than duplicating it.
+        self.assertEqual(sorted(p.name for p in product_modules), ["notifications.py", "organization_views.py"])
 
     def test_no_mutation_endpoint_model_or_migration(self):
         from django.apps import apps
@@ -408,7 +415,7 @@ class SafetyTests(PageTestCase):
                           or "Task" in m.__name__ and m.__name__ != "OpportunityTask"])
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0053_organization_audit_event")  # D36 owns 0053 (audit log); any newer migration must update this pin deliberately
+                         "0054_organization_notification")  # D37 owns 0054 (notifications); any newer migration must update this pin deliberately
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):
         legacy_user = entitled_user("legacy-d29@example.com")

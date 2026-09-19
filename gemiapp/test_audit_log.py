@@ -76,8 +76,9 @@ class SchemaTests(AuditTestCase):
 
     def test_the_migration_is_one_additive_create_model_without_backfill(self):
         loader = MigrationLoader(None, ignore_no_migrations=True)
-        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0053_organization_audit_event")
+        # D36 owns 0053; D37's 0054 (notifications) follows it.
+        self.assertEqual(loader.disk_migrations[("gemiapp", "0054_organization_notification")].dependencies,
+                         [("gemiapp", "0053_organization_audit_event")])
         migration = loader.disk_migrations[("gemiapp", "0053_organization_audit_event")]
         self.assertEqual(migration.dependencies, [("gemiapp", "0052_organization_contact_suppression")])
         self.assertEqual([(type(op).__name__, op.name) for op in migration.operations],

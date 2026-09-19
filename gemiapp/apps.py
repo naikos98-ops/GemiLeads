@@ -32,6 +32,13 @@ SCHEDULES = [
         "name": "Drain Pending Outreach",
         "cron": "37 7 * * *",
     },
+    # D37 (the one approved exception to the scheduling freeze): in-app TASK_DUE notifications, every day at 08:00
+    # in the configured time zone (Europe/Athens). Only creates notification rows; sends nothing.
+    {
+        "func": "gemiapp.tasks.generate_task_due_notifications_task",
+        "name": "Task Due Notifications",
+        "cron": "0 8 * * *",
+    },
 ]
 
 

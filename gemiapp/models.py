@@ -2297,6 +2297,71 @@ class OrganizationAuditEvent(models.Model):
         return f"{self.action} · organization #{self.organization_id} · {self.created_at:%Y-%m-%d %H:%M}"
 
 
+class OrganizationNotification(models.Model):
+    """D37 (§48 «IN-APP NOTIFICATIONS: notifications», its five types, «Unread counter»): one in-app notification for
+    one exact membership of one organization.
+
+    In-app only: no email, SMS, push or webhook, and nothing to do with the legacy digest. All five §48 types are valid
+    values, but only ASSIGNMENT (from D31) and TASK_DUE (from the daily 08:00 Europe/Athens generator) have emitters;
+    NEW_OPPORTUNITY, PRIORITY_SIGNAL and RADAR_MATCH are reserved until their recipients are decided.
+
+    Recipient-specific: the recipient is a membership (CASCADE -- a notification nobody can receive has no meaning,
+    and a user re-added later starts clean). Unread means ``read_at IS NULL``; there is no delete, archive or expiry.
+    Typed references only: nothing is copied (no task title, company name, contact or payload) -- display text is
+    derived at read time from the authorized, still-visible entity. Not the audit log: an assignment notification
+    points at the D36 event it was born from, but each is its own record.
+    """
+
+    NEW_OPPORTUNITY = "new_opportunity"
+    PRIORITY_SIGNAL = "priority_signal"
+    RADAR_MATCH = "radar_match"
+    TASK_DUE = "task_due"
+    ASSIGNMENT = "assignment"
+    TYPES = [(NEW_OPPORTUNITY, "New opportunity"), (PRIORITY_SIGNAL, "Priority signal"), (RADAR_MATCH, "Radar match"),
+             (TASK_DUE, "Task due"), (ASSIGNMENT, "Assignment")]
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="notifications")
+    recipient = models.ForeignKey(OrganizationMember, on_delete=models.CASCADE, related_name="notifications")
+    notification_type = models.CharField(max_length=24, choices=TYPES)
+    opportunity = models.ForeignKey(Opportunity, on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    task = models.ForeignKey(OpportunityTask, on_delete=models.CASCADE, null=True, blank=True, related_name="+")
+    source_audit_event = models.ForeignKey(OrganizationAuditEvent, on_delete=models.SET_NULL, null=True, blank=True,
+                                           related_name="+")
+    due_on = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Organization notification"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(notification_type__in=["new_opportunity", "priority_signal", "radar_match",
+                                                          "task_due", "assignment"]),
+                name="organization_notification_known_type"),
+            models.CheckConstraint(
+                condition=~models.Q(notification_type="task_due")
+                | (models.Q(task__isnull=False) & models.Q(due_on__isnull=False) & models.Q(opportunity__isnull=False)),
+                name="organization_notification_task_due_shape"),
+            models.CheckConstraint(
+                condition=~models.Q(notification_type="assignment") | models.Q(opportunity__isnull=False),
+                name="organization_notification_assignment_shape"),
+            # One TASK_DUE per recipient, task and due date: the daily generator may run any number of times.
+            models.UniqueConstraint(fields=["recipient", "task", "due_on"], condition=models.Q(notification_type="task_due"),
+                                    name="unique_task_due_notification"),
+            # One ASSIGNMENT per assignment event: a later real reassignment is a new event and a new notification.
+            models.UniqueConstraint(fields=["recipient", "source_audit_event"],
+                                    condition=models.Q(notification_type="assignment"),
+                                    name="unique_assignment_notification"),
+        ]
+        indexes = [
+            models.Index(fields=["organization", "recipient", "-created_at"], name="org_notification_inbox_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.notification_type} · member #{self.recipient_id} · {self.created_at:%Y-%m-%d %H:%M}"
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 

@@ -121,6 +121,9 @@
         {% endfor %}
       </section>
 
+      <!-- D37: this membership's own notifications in this organization -->
+      <p style="font-size: var(--type-small);"><a href="{% url 'organization_notifications' page.organization_id %}" data-notifications-link>Ειδοποιήσεις{% if page.unread_notifications %} <strong data-unread-notifications>{{ page.unread_notifications }}</strong>{% endif %}</a></p>
+
       <!-- D35: company-level Do Not Contact for the whole organization -- not a per-Radar status -->
       {% if page.do_not_contact_state %}
       <section class="product-history" id="do-not-contact" data-do-not-contact="{{ page.do_not_contact_state }}">

@@ -227,6 +227,7 @@ class CompanyOpportunityPage:
     do_not_contact_reason_label: str = ""
     do_not_contact_created_at: datetime | None = None
     do_not_contact_reasons: tuple = ()
+    unread_notifications: int = 0   # D37: this membership's own unread count (the organization's notifications link)
 
 
 def _model(name):
@@ -256,7 +257,8 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
                                   note_actions: dict | None = None, tasks: dict | None = None,
                                   tasks_truncated: bool = False, task_actions: dict | None = None,
                                   today: date | None = None,
-                                  do_not_contact: tuple | None = None) -> CompanyOpportunityPage:
+                                  do_not_contact: tuple | None = None,
+                                  unread_notifications: int = 0) -> CompanyOpportunityPage:
     """Assemble the page from already-authorized, LIVE-backed opportunities of one company, primary first."""
     primary_row = rows[0]
     company = primary_row.company
@@ -398,6 +400,7 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
         do_not_contact_reason_label=(do_not_contact or (None, "", None, ()))[1],
         do_not_contact_created_at=(do_not_contact or (None, "", None, ()))[2],
         do_not_contact_reasons=(do_not_contact or (None, "", None, ()))[3],
+        unread_notifications=unread_notifications,
     )
 
 

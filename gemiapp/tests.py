@@ -1294,6 +1294,7 @@ class ScheduleRegistrationTests(TestCase):
                 "gemiapp.tasks.run_daily_pipeline_task",
                 "gemiapp.tasks.run_intraday_pipeline_task",
                 "gemiapp.tasks.drain_pending_outreach_task",
+                "gemiapp.tasks.generate_task_due_notifications_task",  # D37, the one approved addition
             },
         )
         for schedule in schedules.values():
@@ -1321,7 +1322,7 @@ class ScheduleRegistrationTests(TestCase):
         scheduler(broker=broker)
 
         queued = OrmQ.objects.count()
-        self.assertEqual(queued, 3, "the scheduler produced no task - check the cron dependency")
+        self.assertEqual(queued, 4, "the scheduler produced no task - check the cron dependency")
 
         funcs = {entry.task["func"] for entry in OrmQ.objects.all()}
         self.assertEqual(
@@ -1330,6 +1331,7 @@ class ScheduleRegistrationTests(TestCase):
                 "gemiapp.tasks.run_daily_pipeline_task",
                 "gemiapp.tasks.run_intraday_pipeline_task",
                 "gemiapp.tasks.drain_pending_outreach_task",
+                "gemiapp.tasks.generate_task_due_notifications_task",  # D37, the one approved addition
             },
         )
 

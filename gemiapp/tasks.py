@@ -275,3 +275,12 @@ def run_gemi_company_refresh_task():
     from gemiapp.ingestion.refresh import run_company_refresh
 
     return run_company_refresh().summary()
+
+
+def generate_task_due_notifications_task():
+    """D37: create the missing in-app TASK_DUE notifications (scheduled every day at 08:00 Europe/Athens)."""
+    from .notifications import generate_due_task_notifications
+
+    run = generate_due_task_notifications()
+    logger.info("Task-due notifications for %s: %s candidates, %s created", run.today, run.candidates, run.created)
+    return {"today": str(run.today), "candidates": run.candidates, "created": run.created}

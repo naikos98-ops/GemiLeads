@@ -37,6 +37,7 @@ from .models import (
     OpportunityNote,
     OpportunityTask,
     OrganizationAuditEvent,
+    OrganizationNotification,
     OrganizationContactSuppression,
     OpportunitySignal,
     Organization,
@@ -661,6 +662,18 @@ class OrganizationAuditEventAdmin(OrganizationReadOnlyAdmin):
     list_display = ("organization", "action", "actor", "company", "opportunity", "created_at")
     list_filter = ("action",)
     list_select_related = ("organization", "actor", "company", "opportunity")
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(OrganizationNotification)
+class OrganizationNotificationAdmin(OrganizationReadOnlyAdmin):
+    """Inspection only (D37). Notifications are created by D31 and the daily TASK_DUE generator, read by recipients."""
+
+    list_display = ("organization", "recipient", "notification_type", "created_at", "read_at")
+    list_filter = ("notification_type",)
+    list_select_related = ("organization", "recipient")
 
     def has_delete_permission(self, request, obj=None):
         return False

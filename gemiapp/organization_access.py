@@ -348,12 +348,14 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
     task_actions = _page_task_actions(context, rows)
     # D35: the company's Do Not Contact state in this organization, and whether this member may apply it.
     do_not_contact = _page_do_not_contact(context, rows[0].company.gemi_number)
+    unread = _unread_notification_count(context)  # D37: this membership's own unread count, read-only
     return build_company_opportunity_page(organization=organization, rows=rows, live_signal_counts=live_signal_counts,
                                           save_actions=save_actions, assign_actions=assign_actions,
                                           assignees=assignees, assignments=assignments, status_actions=status_actions,
                                           notes=notes, notes_truncated=notes_truncated, note_actions=note_actions,
                                           tasks=tasks, tasks_truncated=tasks_truncated, task_actions=task_actions,
-                                          today=timezone.localdate(), do_not_contact=do_not_contact)
+                                          today=timezone.localdate(), do_not_contact=do_not_contact,
+                                          unread_notifications=unread)
 
 
 def _organization_by_id(organization_id):
@@ -550,15 +552,21 @@ def assign_authorized_opportunity(user, organization_id, opportunity_id, assigne
             raise AssignmentRefused("assignee", result(False, previous, None, row.status))
         if row.status == ASSIGNED and previous == assignee.pk:
             return result(False, assignee.pk, assignee.user_id, ASSIGNED)  # the same assignment: no write at all
-        _lock_memberships(context, (context.membership_id,))  # the audit actor must still be this membership
+        # The audit actor must still be this membership, and the assignee (who will be notified) must still exist.
+        if assignee.pk not in _lock_memberships(context, (context.membership_id, assignee.pk)):
+            raise AssignmentRefused("assignee", result(False, previous, None, row.status))
         previous_status = row.status
         row.status = ASSIGNED
         row.assigned_to_id = assignee.pk
         row.assigned_at = timezone.now()
         row.save(update_fields=["status", "assigned_to", "assigned_at", "updated_at"])
-        _audit(context, AUDIT.OPPORTUNITY_REASSIGNED if previous_status == ASSIGNED else AUDIT.OPPORTUNITY_ASSIGNED,
-               company_id=row.company_id, opportunity_id=row.pk, previous_status=previous_status, new_status=ASSIGNED,
-               previous_assignee_id=previous, new_assignee_id=assignee.pk)
+        event = _audit(context, AUDIT.OPPORTUNITY_REASSIGNED if previous_status == ASSIGNED else AUDIT.OPPORTUNITY_ASSIGNED,
+                       company_id=row.company_id, opportunity_id=row.pk, previous_status=previous_status,
+                       new_status=ASSIGNED, previous_assignee_id=previous, new_assignee_id=assignee.pk)
+        if assignee.pk != context.membership_id:  # nobody is told about their own action
+            _model("OrganizationNotification").objects.create(
+                organization_id=row.organization_id, recipient_id=assignee.pk, notification_type=NOTIFY.ASSIGNMENT,
+                opportunity_id=row.pk, source_audit_event_id=event.pk)
     return result(True, assignee.pk, assignee.user_id, ASSIGNED)
 
 
@@ -1250,9 +1258,9 @@ def _mutation():
 def _audit(context: OrganizationAccessContext, action: str, *, company_id, **details):
     """Write one audit event for a change that has just happened in the caller's transaction. Only typed references
     and what changed; the actor is the context's membership, already re-validated under lock by the caller."""
-    _model("OrganizationAuditEvent").objects.create(organization_id=context.organization_id,
-                                                    actor_id=context.membership_id, action=action,
-                                                    company_id=company_id, **details)
+    return _model("OrganizationAuditEvent").objects.create(organization_id=context.organization_id,
+                                                           actor_id=context.membership_id, action=action,
+                                                           company_id=company_id, **details)
 
 
 @dataclass(frozen=True)
@@ -1308,3 +1316,122 @@ def get_authorized_company_audit_events(user, organization_id, company_id, *, li
         new_assignee_display_name=name(new, n_first, n_last), note_id=note_id, task_id=task_id, reason=reason,
     ) for (pk, action, created_at, opportunity_id, radar_name, previous_status, new_status, note_id, task_id, reason,
            actor, a_first, a_last, prev, p_first, p_last, new, n_first, n_last) in rows)
+
+
+# --- D37: In-app notifications ----------------------------------------------------------------------
+#
+# §48: «notifications», types NEW_OPPORTUNITY, PRIORITY_SIGNAL, RADAR_MATCH, TASK_DUE, ASSIGNMENT, «Unread counter».
+# Only ASSIGNMENT (above, in D31's transaction) and TASK_DUE (``gemiapp.notifications``, daily 08:00 Europe/Athens)
+# are emitted; the three pipeline types are reserved. Everything here is recipient-scoped: (user, organization) ->
+# the exact membership -> its own notifications, in SQL, never a global lookup. Reads never write; marking read is
+# idempotent and writes no audit event. A notification whose opportunity this membership can no longer see is shown
+# without its details or link, so a notification is never a way around G5.
+
+
+class _NotificationTypes:
+    NEW_OPPORTUNITY = "new_opportunity"
+    PRIORITY_SIGNAL = "priority_signal"
+    RADAR_MATCH = "radar_match"
+    TASK_DUE = "task_due"
+    ASSIGNMENT = "assignment"
+
+
+NOTIFY = _NotificationTypes
+NOTIFICATIONS_PAGE_LIMIT = 50
+NOTIFICATION_TYPE_LABELS = {
+    NOTIFY.NEW_OPPORTUNITY: "Νέα ευκαιρία",
+    NOTIFY.PRIORITY_SIGNAL: "Σήμα προτεραιότητας",
+    NOTIFY.RADAR_MATCH: "Ταίριασμα Radar",
+    NOTIFY.TASK_DUE: "Προθεσμία εργασίας",
+    NOTIFY.ASSIGNMENT: "Ανάθεση ευκαιρίας",
+}
+
+
+@dataclass(frozen=True)
+class NotificationEntry:
+    notification_id: int
+    notification_type: str
+    type_label: str
+    created_at: object
+    read_at: object | None
+    available: bool              # the related opportunity is still visible to this membership
+    company_id: int | None       # only when available
+    company_name: str
+    radar_name: str
+    task_title: str              # TASK_DUE, only when available; the members' own text, escaped when rendered
+    due_on: object | None
+
+
+@dataclass(frozen=True)
+class NotificationReadResult:
+    organization_id: int
+    changed: int                 # rows marked read by this call (0 for an idempotent repeat)
+
+
+def _member_context(user, organization_id) -> OrganizationAccessContext:
+    organization = _organization_by_id(organization_id)
+    return require(get_organization_access_context(user, organization), Capability.VIEW_ORGANIZATION)
+
+
+def _own_notifications(context: OrganizationAccessContext):
+    return _model("OrganizationNotification").objects.filter(organization_id=context.organization_id,
+                                                              recipient_id=context.membership_id)
+
+
+def _unread_notification_count(context: OrganizationAccessContext) -> int:
+    return _own_notifications(context).filter(read_at__isnull=True).count()
+
+
+def get_authorized_unread_notification_count(user, organization_id) -> int:
+    """This membership's unread notifications in this organization. One read-only COUNT; generates nothing."""
+    return _unread_notification_count(_member_context(user, organization_id))
+
+
+def get_authorized_notifications(user, organization_id, *, limit: int = NOTIFICATIONS_PAGE_LIMIT) -> tuple:
+    """This membership's newest notifications (``-created_at, -id``, at most 50). Two bounded read-only queries: the
+    notifications with their typed references, and which of their opportunities are still visible (LIVE, G5 scope)."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= NOTIFICATIONS_PAGE_LIMIT:
+        raise OrganizationAccessDenied()
+    context = _member_context(user, organization_id)
+    rows = list(_own_notifications(context).order_by("-created_at", "-pk")
+                .values_list("pk", "notification_type", "created_at", "read_at", "due_on", "opportunity_id",
+                             "opportunity__company_id", "opportunity__company__name", "opportunity__radar__name",
+                             "task__title")[:limit])
+    opportunity_ids = {row[5] for row in rows if row[5] is not None}
+    visible = set()
+    if opportunity_ids:
+        visible = set(organization_opportunities_for(context)
+                      .filter(pk__in=opportunity_ids, latest_signal__mode=LIVE).values_list("pk", flat=True))
+    entries = []
+    for pk, kind, created_at, read_at, due_on, opportunity_id, company_id, company_name, radar_name, title in rows:
+        available = opportunity_id in visible
+        entries.append(NotificationEntry(
+            notification_id=pk, notification_type=kind, type_label=NOTIFICATION_TYPE_LABELS.get(kind, kind),
+            created_at=created_at, read_at=read_at, available=available,
+            company_id=company_id if available else None, company_name=company_name if available else "",
+            radar_name=radar_name if available else "", task_title=(title or "") if available else "",
+            due_on=due_on))
+    return tuple(entries)
+
+
+def mark_authorized_notification_read(user, organization_id, notification_id) -> NotificationReadResult:
+    """Mark one of this membership's own notifications read. Resolved by organization + recipient + id in SQL; any
+    other id is the same ``OrganizationAccessDenied``. Already read: no write, ``read_at`` unchanged."""
+    context = _member_context(user, organization_id)
+    mine = _own_notifications(context).filter(pk=_object_id(notification_id))
+    found = mine.values_list("pk", "read_at").first()
+    if found is None:
+        raise OrganizationAccessDenied()
+    if found[1] is not None:
+        return NotificationReadResult(organization_id=context.organization_id, changed=0)  # already read: no write
+    changed = mine.filter(read_at__isnull=True).update(read_at=timezone.now())
+    return NotificationReadResult(organization_id=context.organization_id, changed=changed)
+
+
+def mark_all_authorized_notifications_read(user, organization_id) -> NotificationReadResult:
+    """Mark every unread notification of this membership in this organization read -- nothing of any other
+    membership or organization. Zero unread: no write."""
+    context = _member_context(user, organization_id)
+    unread = _own_notifications(context).filter(read_at__isnull=True)
+    changed = unread.update(read_at=timezone.now()) if unread.exists() else 0  # nothing unread: no write
+    return NotificationReadResult(organization_id=context.organization_id, changed=changed)

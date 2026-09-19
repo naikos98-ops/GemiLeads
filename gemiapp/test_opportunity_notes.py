@@ -298,7 +298,7 @@ class PageTests(NoteTestCase):
             page = self.page()
         self.assertEqual(len(full), len(empty))  # the note count never changes the query count
         # 3 opportunities, 60 notes, 4 authors (one former): measured on SQLite; D34 added two constant task queries
-        self.assertEqual(len(full), 18)  # D35 added one constant suppression read
+        self.assertEqual(len(full), 19)  # D35 suppression read, D37 unread count: constant reads
         note_queries = [q["sql"] for q in full.captured_queries if "opportunitynote" in q["sql"]]
         self.assertEqual(len(note_queries), 1)
         self.assertIn("LIMIT 51", note_queries[0])
@@ -504,7 +504,8 @@ class InvarianceTests(NoteTestCase):
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
         self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36
-        self.assertFalse([n for n in names if "Notification" in n or "Timeline" in n])
+        self.assertFalse([n for n in names if "Timeline" in n])
+        self.assertEqual({n for n in names if "Notification" in n}, {"OrganizationNotification"})  # D37
         self.assertEqual({n for n in names if "Task" in n}, {"OpportunityTask"})  # D34's own table, not a note
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):
