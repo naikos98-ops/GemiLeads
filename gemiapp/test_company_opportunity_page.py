@@ -408,7 +408,7 @@ class SafetyTests(PageTestCase):
                           or "Task" in m.__name__ and m.__name__ != "OpportunityTask"])
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0052_organization_contact_suppression")  # D35 owns 0052 (suppressions); any newer migration must update this pin deliberately
+                         "0053_organization_audit_event")  # D36 owns 0053 (audit log); any newer migration must update this pin deliberately
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):
         legacy_user = entitled_user("legacy-d29@example.com")

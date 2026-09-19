@@ -96,8 +96,9 @@ class SchemaTests(DncTestCase):
 
     def test_the_migration_is_one_additive_create_model(self):
         loader = MigrationLoader(None, ignore_no_migrations=True)
-        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0052_organization_contact_suppression")
+        # D35 owns 0052; D36's 0053 (audit log) follows it.
+        self.assertEqual(loader.disk_migrations[("gemiapp", "0053_organization_audit_event")].dependencies,
+                         [("gemiapp", "0052_organization_contact_suppression")])
         migration = loader.disk_migrations[("gemiapp", "0052_organization_contact_suppression")]
         self.assertEqual(migration.dependencies, [("gemiapp", "0051_opportunity_task")])
         self.assertEqual([(type(op).__name__, op.name) for op in migration.operations],
@@ -388,7 +389,8 @@ class IdempotencyTests(DncTestCase):
             self.dnc()
         self.assertEqual(len(three), len(six))
         kinds = [q["sql"].split()[0].upper() for q in six.captured_queries]
-        self.assertEqual((kinds.count("INSERT"), kinds.count("UPDATE")), (1, 1))  # one row, one bulk status update
+        # one suppression row, its one D36 audit event, one bulk status update
+        self.assertEqual((kinds.count("INSERT"), kinds.count("UPDATE")), (2, 1))
         with CaptureQueriesContext(connection) as repeat:
             self.dnc()
         # organization, membership, company lock, the company's rows, membership lock, suppression lookup
@@ -625,7 +627,7 @@ class PageTests(DncTestCase):
         from django.apps import apps
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
-        self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog"})
+        self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36
         self.assertFalse([n for n in names if "Notification" in n])
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):

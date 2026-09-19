@@ -36,6 +36,7 @@ from .models import (
     OpportunityScoreEvidence,
     OpportunityNote,
     OpportunityTask,
+    OrganizationAuditEvent,
     OrganizationContactSuppression,
     OpportunitySignal,
     Organization,
@@ -648,6 +649,18 @@ class OrganizationContactSuppressionAdmin(OrganizationReadOnlyAdmin):
     list_display = ("organization", "contact_type", "contact_value", "reason", "source", "created_at")
     list_filter = ("contact_type", "reason", "source")
     list_select_related = ("organization",)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(OrganizationAuditEvent)
+class OrganizationAuditEventAdmin(OrganizationReadOnlyAdmin):
+    """Inspection only (D36). Audit events are append-only history written by gemiapp.organization_access."""
+
+    list_display = ("organization", "action", "actor", "company", "opportunity", "created_at")
+    list_filter = ("action",)
+    list_select_related = ("organization", "actor", "company", "opportunity")
 
     def has_delete_permission(self, request, obj=None):
         return False

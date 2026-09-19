@@ -122,7 +122,8 @@ class TransitionTests(SaveTestCase):
         second = save_authorized_opportunity(self.members["sales_manager"], self.org.pk, self.row.pk)
         self.assertEqual(((first.changed, second.changed)), (True, False))
         source = inspect.getsource(save_authorized_opportunity)
-        self.assertIn("transaction.atomic()", source)
+        self.assertIn("with _mutation():", source)  # D36: transaction.atomic() plus the safe FK denial
+        self.assertIn("transaction.atomic()", inspect.getsource(g5._mutation))
         self.assertIn('select_for_update(of=("self",))', source)
 
     def test_there_is_no_unsave_and_no_general_status_endpoint(self):
@@ -265,8 +266,10 @@ class InvariantTests(SaveTestCase):
             save_authorized_opportunity(self.owner, self.org.pk, self.row.pk)
         with CaptureQueriesContext(connection) as noop:
             save_authorized_opportunity(self.owner, self.org.pk, self.row.pk)
-        # organization, membership, locked row (+ savepoint bookkeeping), and the one UPDATE on a real transition
-        self.assertLessEqual(len(transition), 6)
+        # organization, membership, locked row, re-validated actor (+ savepoint bookkeeping), the one UPDATE and the
+        # one D36 audit INSERT on a real transition
+        self.assertLessEqual(len(transition), 8)
+        self.assertEqual(len([q for q in transition.captured_queries if q["sql"].upper().startswith("INSERT")]), 1)
         self.assertEqual(len([q for q in transition.captured_queries if q["sql"].upper().startswith("UPDATE")]), 1)
         self.assertEqual(len([q for q in noop.captured_queries if q["sql"].lstrip().upper().startswith("SELECT")]), 3)
 

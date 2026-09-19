@@ -42,17 +42,19 @@ class SchemaTests(TestCase):
     def test_organization_fields_carry_no_billing_company_or_tenant_data(self):
         self.assertEqual(set(self.fields(Organization)), {"id", "name", "created_at", "updated_at"})
         # Reverse relations only from organization-owned tables: members, profile, (C2) the ICP, (C3) Radars,
-        # (C8) opportunities, (D33) opportunity notes, (D34) opportunity tasks, (D35) contact suppressions.
+        # (C8) opportunities, (D33) opportunity notes, (D34) opportunity tasks, (D35) contact suppressions,
+        # (D36) audit events.
         from .models import (
-            Opportunity, OpportunityNote, OpportunityTask, OrganizationContactSuppression, OrganizationICP,
-            OrganizationRadar,
+            Opportunity, OpportunityNote, OpportunityTask, OrganizationAuditEvent, OrganizationContactSuppression,
+            OrganizationICP, OrganizationRadar,
         )
 
         for field in Organization._meta.get_fields():
             if field.is_relation:
                 self.assertIn(field.related_model,
                               (OrganizationMember, OrganizationProfile, OrganizationICP, OrganizationRadar,
-                               Opportunity, OpportunityNote, OpportunityTask, OrganizationContactSuppression))
+                               Opportunity, OpportunityNote, OpportunityTask, OrganizationContactSuppression,
+                               OrganizationAuditEvent))
         self.assertFalse([f for f in Organization._meta.get_fields() if f.is_relation and f.related_model is Company])
 
     def test_membership_roles_constraints_and_deletion(self):

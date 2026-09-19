@@ -90,7 +90,7 @@ class SchemaTests(AssignTestCase):
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
         # No assignment, activity-history, audit or notification model: those belong to D36/D37.
         self.assertFalse([n for n in names if "Assign" in n or "Notification" in n])
-        self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog"})  # pre-existing staff audit only
+        self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36  # pre-existing staff audit only
         self.assertEqual((self.row.assigned_to_id, self.row.assigned_at), (None, None))
 
 
@@ -358,7 +358,8 @@ class PageAndSafetyTests(AssignTestCase):
         self.assertEqual(counts["first"].count("UPDATE"), 1)
         self.assertEqual(counts["reassign"].count("UPDATE"), 1)
         self.assertEqual(counts["noop"].count("UPDATE"), 0)
-        self.assertEqual([c.count("SELECT") for c in counts.values()], [4, 4, 4])  # org, membership, row, assignee
+        # org, membership, row, assignee; a real (re)assignment also re-validates the actor (D36 audit)
+        self.assertEqual([c.count("SELECT") for c in counts.values()], [5, 5, 4])
         with CaptureQueriesContext(connection) as page:
             self.page()
         self.assertLessEqual(len(page), 18)  # D33 notes, D34 tasks and D35 suppression add constant reads

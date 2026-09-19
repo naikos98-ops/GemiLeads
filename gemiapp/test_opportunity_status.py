@@ -99,9 +99,10 @@ class ContractTests(StatusTestCase):
                              ("assigned", target, True, target), target)
             self.assertEqual((result.opportunity_id, result.company_id, result.organization_id),
                              (self.row.pk, self.company.pk, self.org.pk))
-            updates = self.writes(queries)
+            updates = [sql for sql in self.writes(queries) if sql.upper().startswith("UPDATE")]
             self.assertEqual(len(updates), 1, target)
             self.assertIn('"status"', updates[0])
+            self.assertEqual(len([sql for sql in self.writes(queries) if sql.upper().startswith("INSERT")]), 1)  # D36
             self.assertNotIn('"assigned_to_id"', updates[0])
             self.assertGreaterEqual(after["updated_at"], before["updated_at"])
             self.assertEqual({k: v for k, v in after.items() if k not in ("status", "updated_at")},
@@ -300,10 +301,10 @@ class BoundaryTests(StatusTestCase):
         self.assertFalse([n for n in names if "History" in n or "Notification" in n or "StatusChange" in n])
         # only the pre-existing KAD catalogue / company-activity models: no activity log (item 36)
         self.assertEqual({n for n in names if "Activity" in n}, {"ActivityCode", "ActivityCodeKadLink", "CompanyActivity"})
-        self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog"})
+        self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0052_organization_contact_suppression")  # D32 has no migration; 0050-0052: D33-D35
+                         "0053_organization_audit_event")  # D32 has no migration; 0050-0053: D33-D36
 
     def test_the_frozen_capture_signals_snapshots_timeline_and_ranking_are_untouched(self):
         self.put_assigned(self.maria)
@@ -417,7 +418,8 @@ class PageTests(StatusTestCase):
                     pass
             counts[label] = [q["sql"].split()[0].upper() for q in queries.captured_queries]
         self.assertEqual([c.count("UPDATE") for c in counts.values()], [1, 0, 0])
-        self.assertEqual([c.count("SELECT") for c in counts.values()], [3, 3, 3])  # organization, membership, row
+        # organization, membership, row; a real change also re-validates the actor (D36 audit)
+        self.assertEqual([c.count("SELECT") for c in counts.values()], [4, 3, 3])
 
     def test_refusals_and_the_page_leak_nothing(self):
         self.put_assigned(self.maria)
@@ -434,7 +436,8 @@ class PageTests(StatusTestCase):
         for forbidden in ("raw_data", "gemi_phones", "email", "persons", "send_mail", "set_opportunity_status",
                           "notify", "History", "AuditLog"):
             self.assertNotIn(forbidden, source, forbidden)
-        self.assertIn("transaction.atomic()", source)
+        self.assertIn("with _mutation():", source)  # D36: transaction.atomic() plus the safe FK denial
+        self.assertIn("transaction.atomic()", inspect.getsource(g5._mutation))
         self.assertIn('select_for_update(of=("self",))', source)
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):

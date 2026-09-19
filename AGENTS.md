@@ -159,6 +159,35 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — D36: Audit Log (2026-09-19).** Αμετάβλητο ιστορικό CRM ενεργειών (§52: actor, organization,
+  action, entity, timestamp, metadata). Migration `0053_organization_audit_event` (ένα `CreateModel`, **κανένα
+  backfill**), μοντέλο `OrganizationAuditEvent`, writer `organization_access._audit`, read model
+  `get_authorized_company_audit_events`.
+  - Το D35 δεσμεύτηκε (`30a7b66`), με το hardening: νέες ευκαιρίες εταιρείας που είναι ήδη suppressed **γεννιούνται
+    `DO_NOT_CONTACT`** (C8, μέσω του authorization-free `gemiapp/contact_suppressions.py`).
+  - **Σχήμα (typed, όχι JSON):** `organization` (CASCADE), `actor` → `OrganizationMember`, `action` (9 τιμές, DB
+    CHECK), entity: `company`, `opportunity`, `note`, `task`, `suppression`· metadata: `previous_status`,
+    `new_status`, `previous_assignee`/`new_assignee` (memberships), `reason`· `created_at`. Όλες οι αναφορές
+    **SET_NULL** (το ιστορικό επιβιώνει)· κανένα κείμενο σημείωσης/τίτλος εργασίας, καμία επαφή/πρόσωπο/payload.
+    **Append-only:** `save()` σε υπάρχουσα εγγραφή και `delete()` σηκώνουν σφάλμα· admin χωρίς add/change/delete.
+  - **Ενέργειες:** opportunity_saved (D30), opportunity_assigned / opportunity_reassigned (D31),
+    opportunity_status_changed (D32), note_added (D33), task_created / task_completed (D34), suppression_added και
+    suppression_reapplied (D35· **ένα** company-level event χωρίς όνομα ευκαιρίας, ποτέ ένα ανά γραμμή).
+  - **Μόνο πραγματικές αλλαγές:** ίδια συναλλαγή με τη μετάλλαξη (αν αποτύχει η εγγραφή, γίνεται rollback και της
+    αλλαγής)· κανένα event για no-op (ήδη SAVED, ίδιος υπεύθυνος, ίδιο status, ήδη ολοκληρωμένη εργασία, ήδη
+    suppressed) ή για άρνηση/refusal. Τα D30–D32 αποκτούν τον ίδιο επανέλεγχο της δρώσας membership υπό κλείδωμα με τα
+    D33–D35 και τον κοινό `_mutation()` (FK σφάλμα στο commit → 404, ποτέ 500).
+  - **Ορατότητα (read model):** ίδια με το D29· τα events των ευκαιριών που βλέπει η membership (LIVE) και τα
+    company-level Do Not Contact events. Ο SALES_USER **δεν** βλέπει events αδελφών ευκαιριών. Νεότερα πρώτα
+    (`-created_at, -id`), έως **50**, ένα bounded query. **Κανένα UI στο D29** (ο §52 δεν ορίζει οθόνη)· δεν είναι το
+    B6 timeline. Καμία ειδοποίηση (**βήμα 37**).
+  - Κύκλος migration στο αντίγραφο της dev βάσης: forward → 0 → fixture (όλες οι ενέργειες, no-ops, read model,
+    διαγραφή actor) → parity → reverse → reapply (ξανά 0), όλα PASS.
+  - 17 νέα tests· **1.782 tests OK** με μία κανονική εκτέλεση (`--parallel 4`). `G5_STATUS =
+    PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`· `G4_STATUS = NOT_PASSED`· **`PRODUCTION_MIGRATION_STATUS =
+    BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — D35: Do Not Contact (2026-09-19).** Company-level operational suppression ανά οργανισμό
   (§51 «contact_suppressions», «Πρέπει να υπερισχύει οποιουδήποτε AI/Radar»). Migration
   `0052_organization_contact_suppression` (ένα `CreateModel`, κανένα backfill), μοντέλο
@@ -1148,10 +1177,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 36 — Audit Log** (§52 του `docs/GEMI_LEADS_2_BLUEPRINT.md`:
-  actor, organization, action, entity, timestamp, metadata)· αναμένει έγκριση του D35. Ανοιχτές αποφάσεις προϊόντος:
-  reopen τελικών καταστάσεων, επεξεργασία/διαγραφή σημειώσεων και εργασιών, αναίρεση suppression, email/phone
-  suppression (Phase G).
+- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 37 — Notifications** (§48 του
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`: `notifications`, τύποι NEW_OPPORTUNITY, PRIORITY_SIGNAL, RADAR_MATCH, TASK_DUE,
+  ASSIGNMENT, unread counter)· αναμένει έγκριση του D36. Ανοιχτές αποφάσεις προϊόντος: reopen τελικών καταστάσεων,
+  επεξεργασία/διαγραφή σημειώσεων και εργασιών, αναίρεση suppression, email/phone suppression (Phase G), UI για το
+  audit log.
+- **Release gate για το D36:** η `0053_organization_audit_event` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D35:** η `0052_organization_contact_suppression` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D34:** η `0051_opportunity_task` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D33:** η `0050_opportunity_note` **δεν** εφαρμόζεται σε production πριν τα G0/G1.

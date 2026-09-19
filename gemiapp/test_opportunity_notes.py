@@ -503,7 +503,7 @@ class InvarianceTests(NoteTestCase):
         from django.apps import apps
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
-        self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog"})
+        self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36
         self.assertFalse([n for n in names if "Notification" in n or "Timeline" in n])
         self.assertEqual({n for n in names if "Task" in n}, {"OpportunityTask"})  # D34's own table, not a note
 

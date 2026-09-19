@@ -67,6 +67,7 @@ the Organization architecture only.
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -410,7 +411,7 @@ def save_authorized_opportunity(user, organization_id, opportunity_id) -> SaveOp
     """
     organization = _organization_by_id(organization_id)
     context = require(get_organization_access_context(user, organization), Capability.MANAGE_OPPORTUNITY_WORKFLOW)
-    with transaction.atomic():
+    with _mutation():
         row = (organization_opportunities_for(context)
                .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
                .select_for_update(of=("self",)).only("pk", "organization_id", "company_id", "status").first())
@@ -422,8 +423,12 @@ def save_authorized_opportunity(user, organization_id, opportunity_id) -> SaveOp
             return result  # idempotent: no write at all
         if row.status not in SAVE_ALLOWED_FROM:
             raise OpportunityTransitionRefused(result)
+        _lock_memberships(context, (context.membership_id,))  # the audit actor must still be this membership
+        previous = row.status
         row.status = SAVED
         row.save(update_fields=["status", "updated_at"])
+        _audit(context, AUDIT.OPPORTUNITY_SAVED, company_id=row.company_id, opportunity_id=row.pk,
+               previous_status=previous, new_status=SAVED)
     return SaveOpportunityResult(organization_id=row.organization_id, company_id=row.company_id,
                                  opportunity_id=row.pk, status=SAVED, changed=True)
 
@@ -517,7 +522,7 @@ def assign_authorized_opportunity(user, organization_id, opportunity_id, assigne
     """
     organization = _organization_by_id(organization_id)
     context = require(get_organization_access_context(user, organization), Capability.ASSIGN_OPPORTUNITIES)
-    with transaction.atomic():
+    with _mutation():
         row = (organization_opportunities_for(context)
                .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
                .select_for_update(of=("self",))
@@ -545,10 +550,15 @@ def assign_authorized_opportunity(user, organization_id, opportunity_id, assigne
             raise AssignmentRefused("assignee", result(False, previous, None, row.status))
         if row.status == ASSIGNED and previous == assignee.pk:
             return result(False, assignee.pk, assignee.user_id, ASSIGNED)  # the same assignment: no write at all
+        _lock_memberships(context, (context.membership_id,))  # the audit actor must still be this membership
+        previous_status = row.status
         row.status = ASSIGNED
         row.assigned_to_id = assignee.pk
         row.assigned_at = timezone.now()
         row.save(update_fields=["status", "assigned_to", "assigned_at", "updated_at"])
+        _audit(context, AUDIT.OPPORTUNITY_REASSIGNED if previous_status == ASSIGNED else AUDIT.OPPORTUNITY_ASSIGNED,
+               company_id=row.company_id, opportunity_id=row.pk, previous_status=previous_status, new_status=ASSIGNED,
+               previous_assignee_id=previous, new_assignee_id=assignee.pk)
     return result(True, assignee.pk, assignee.user_id, ASSIGNED)
 
 
@@ -612,7 +622,7 @@ def set_authorized_opportunity_status(user, organization_id, opportunity_id, tar
     """
     organization = _organization_by_id(organization_id)
     context = require(get_organization_access_context(user, organization), Capability.UPDATE_OPPORTUNITY_STATUS)
-    with transaction.atomic():
+    with _mutation():
         row = (organization_opportunities_for(context)
                .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
                .select_for_update(of=("self",)).only("pk", "organization_id", "company_id", "status").first())
@@ -632,8 +642,11 @@ def set_authorized_opportunity_status(user, organization_id, opportunity_id, tar
             raise StatusChangeRefused("terminal", result(previous, False))
         if previous == target:
             return result(previous, False)  # the same status again: no write at all
+        _lock_memberships(context, (context.membership_id,))  # the audit actor must still be this membership
         row.status = target
         row.save(update_fields=["status", "updated_at"])
+        _audit(context, AUDIT.OPPORTUNITY_STATUS_CHANGED, company_id=row.company_id, opportunity_id=row.pk,
+               previous_status=previous, new_status=target)
     return result(target, True)
 
 
@@ -730,6 +743,7 @@ def add_authorized_opportunity_note(user, organization_id, opportunity_id, body)
                                                      opportunity_id=row.pk, note_id=None, author_membership_id=None))
             note = _model("OpportunityNote").objects.create(organization_id=row.organization_id,
                                                             opportunity_id=row.pk, author_id=author, body=text)
+            _audit(context, AUDIT.NOTE_ADDED, company_id=row.company_id, opportunity_id=row.pk, note_id=note.pk)
     except IntegrityError:
         raise OrganizationAccessDenied()
     return NoteResult(organization_id=row.organization_id, company_id=row.company_id, opportunity_id=row.pk,
@@ -932,6 +946,8 @@ def create_authorized_opportunity_task(user, organization_id, opportunity_id, ti
             task = _model("OpportunityTask").objects.create(
                 organization_id=row.organization_id, opportunity_id=row.pk, title=text, due_on=due,
                 created_by_id=context.membership_id, assigned_to_id=assignee)
+            _audit(context, AUDIT.TASK_CREATED, company_id=row.company_id, opportunity_id=row.pk, task_id=task.pk,
+                   new_assignee_id=assignee)
     except IntegrityError:
         raise OrganizationAccessDenied()
     return TaskResult(organization_id=row.organization_id, company_id=row.company_id, opportunity_id=row.pk,
@@ -966,6 +982,7 @@ def complete_authorized_opportunity_task(user, organization_id, opportunity_id, 
             task.completed_at = timezone.now()
             task.completed_by_id = context.membership_id
             task.save(update_fields=["completed_at", "completed_by"])
+            _audit(context, AUDIT.TASK_COMPLETED, company_id=row.company_id, opportunity_id=row.pk, task_id=task.pk)
     except IntegrityError:
         raise OrganizationAccessDenied()
     return TaskResult(organization_id=result.organization_id, company_id=result.company_id,
@@ -1150,6 +1167,12 @@ def apply_authorized_company_do_not_contact(user, organization_id, company_id, r
                 changed = (_model("Opportunity").objects
                            .filter(pk__in=pending, organization_id=context.organization_id, company_id=company_pk)
                            .update(status=DO_NOT_CONTACT, updated_at=timezone.now()))
+            if created or changed:
+                # One company-level event, never one per row: the rows it settled are not named, so no sibling
+                # opportunity is ever revealed through the history.
+                _audit(context, AUDIT.SUPPRESSION_ADDED if created else AUDIT.SUPPRESSION_REAPPLIED,
+                       company_id=company_pk, suppression_id=suppression_id,
+                       reason=reason if created else "", new_status=DO_NOT_CONTACT)
     except IntegrityError:
         raise OrganizationAccessDenied()
     return DoNotContactResult(organization_id=context.organization_id, company_id=company_pk,
@@ -1173,3 +1196,115 @@ def _page_do_not_contact(context: OrganizationAccessContext, gemi_number):
     if value is None:
         return ("unavailable", "", None, ())
     return ("available", "", None, tuple((reason, DNC_REASON_LABELS[reason]) for reason in DNC_COMPANY_REASONS))
+
+
+# --- D36: Audit log ---------------------------------------------------------------------------------
+#
+# §52 «Κάθε σημαντική ενέργεια: actor, organization, action, entity, timestamp, metadata». Every Phase D mutation that
+# actually changes state writes exactly one OrganizationAuditEvent inside its own transaction (``_audit``); refused and
+# no-op calls write none. The actor is the membership re-validated under lock in that same transaction. Reading
+# follows D29 visibility: the company's events for the opportunities this membership may see (never a sibling row a
+# sales user cannot see), plus the company-level Do Not Contact events that name no opportunity. Not the B6 timeline,
+# not note or task content, no notification (item 37).
+
+class _AuditActions:
+    OPPORTUNITY_SAVED = "opportunity_saved"
+    OPPORTUNITY_ASSIGNED = "opportunity_assigned"
+    OPPORTUNITY_REASSIGNED = "opportunity_reassigned"
+    OPPORTUNITY_STATUS_CHANGED = "opportunity_status_changed"
+    NOTE_ADDED = "note_added"
+    TASK_CREATED = "task_created"
+    TASK_COMPLETED = "task_completed"
+    SUPPRESSION_ADDED = "suppression_added"
+    SUPPRESSION_REAPPLIED = "suppression_reapplied"
+
+
+AUDIT = _AuditActions
+# Events that concern the company as a whole and name no opportunity.
+AUDIT_COMPANY_LEVEL_ACTIONS = frozenset({AUDIT.SUPPRESSION_ADDED, AUDIT.SUPPRESSION_REAPPLIED})
+AUDIT_PAGE_LIMIT = 50
+AUDIT_ACTION_LABELS = {
+    AUDIT.OPPORTUNITY_SAVED: "Αποθήκευση ευκαιρίας",
+    AUDIT.OPPORTUNITY_ASSIGNED: "Ανάθεση ευκαιρίας",
+    AUDIT.OPPORTUNITY_REASSIGNED: "Επανανάθεση ευκαιρίας",
+    AUDIT.OPPORTUNITY_STATUS_CHANGED: "Ενημέρωση κατάστασης",
+    AUDIT.NOTE_ADDED: "Νέα σημείωση",
+    AUDIT.TASK_CREATED: "Νέα εργασία",
+    AUDIT.TASK_COMPLETED: "Ολοκλήρωση εργασίας",
+    AUDIT.SUPPRESSION_ADDED: "Καταχώριση μη επικοινωνίας",
+    AUDIT.SUPPRESSION_REAPPLIED: "Επανεφαρμογή μη επικοινωνίας",
+}
+
+
+@contextmanager
+def _mutation():
+    """One mutation transaction for the Phase D services: a foreign-key failure at commit (a membership removed
+    concurrently) is the same safe denial as everything else, never a server error."""
+    try:
+        with transaction.atomic():
+            yield
+    except IntegrityError:
+        raise OrganizationAccessDenied()
+
+
+def _audit(context: OrganizationAccessContext, action: str, *, company_id, **details):
+    """Write one audit event for a change that has just happened in the caller's transaction. Only typed references
+    and what changed; the actor is the context's membership, already re-validated under lock by the caller."""
+    _model("OrganizationAuditEvent").objects.create(organization_id=context.organization_id,
+                                                    actor_id=context.membership_id, action=action,
+                                                    company_id=company_id, **details)
+
+
+@dataclass(frozen=True)
+class AuditEntry:
+    event_id: int
+    action: str
+    action_label: str
+    actor_display_name: str
+    created_at: object
+    opportunity_id: int | None
+    radar_name: str
+    previous_status: str
+    new_status: str
+    previous_assignee_display_name: str
+    new_assignee_display_name: str
+    note_id: int | None
+    task_id: int | None
+    reason: str
+
+
+def get_authorized_company_audit_events(user, organization_id, company_id, *, limit: int = AUDIT_PAGE_LIMIT) -> tuple:
+    """D36 read model: the newest audit events of one company as this membership may see them (newest first, id as
+    the tie-break, at most ``AUDIT_PAGE_LIMIT``). Access is exactly D29's: no visible LIVE opportunity of the company
+    for this membership -> ``OrganizationAccessDenied``. One bounded query for the events."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= AUDIT_PAGE_LIMIT:
+        raise OrganizationAccessDenied()
+    organization = _organization_by_id(organization_id)
+    context = get_organization_access_context(user, organization)
+    company_pk = _object_id(company_id)
+    visible = organization_opportunities_for(context).filter(company_id=company_pk, latest_signal__mode=LIVE)
+    if not visible.exists():
+        raise OrganizationAccessDenied()
+    rows = (_model("OrganizationAuditEvent").objects
+            .filter(organization_id=context.organization_id, company_id=company_pk)
+            .filter(Q(opportunity_id__in=visible.values("pk"))
+                    | Q(opportunity__isnull=True, action__in=AUDIT_COMPANY_LEVEL_ACTIONS))
+            .order_by("-created_at", "-pk")
+            .values_list("pk", "action", "created_at", "opportunity_id", "opportunity__radar__name", "previous_status",
+                         "new_status", "note_id", "task_id", "reason",
+                         "actor_id", "actor__user__first_name", "actor__user__last_name",
+                         "previous_assignee_id", "previous_assignee__user__first_name",
+                         "previous_assignee__user__last_name",
+                         "new_assignee_id", "new_assignee__user__first_name", "new_assignee__user__last_name")[:limit])
+
+    def name(member_id, first, last):
+        return member_display_name(first, last, member_id) if member_id is not None else ""
+
+    return tuple(AuditEntry(
+        event_id=pk, action=action, action_label=AUDIT_ACTION_LABELS.get(action, action),
+        actor_display_name=name(actor, a_first, a_last) or FORMER_MEMBER_LABEL, created_at=created_at,
+        opportunity_id=opportunity_id, radar_name=radar_name or "", previous_status=previous_status,
+        new_status=new_status, previous_assignee_display_name=name(prev, p_first, p_last),
+        new_assignee_display_name=name(new, n_first, n_last), note_id=note_id, task_id=task_id, reason=reason,
+    ) for (pk, action, created_at, opportunity_id, radar_name, previous_status, new_status, note_id, task_id, reason,
+           actor, a_first, a_last, prev, p_first, p_last, new, n_first, n_last) in rows)

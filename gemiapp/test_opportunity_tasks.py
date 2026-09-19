@@ -296,9 +296,10 @@ class CompletionTests(TaskTestCase):
         self.assertEqual((result.completed, result.changed), (True, True))
         stored = self.stored_task(task_id)
         self.assertEqual((stored["completed_at"], stored["completed_by_id"]), (MOMENT, self.m("sales_manager").pk))
-        updates = self.writes(queries)
+        updates = [sql for sql in self.writes(queries) if sql.upper().startswith("UPDATE")]
         self.assertEqual(len(updates), 1)
         self.assertIn('"completed_at"', updates[0])
+        self.assertEqual(len([sql for sql in self.writes(queries) if sql.upper().startswith("INSERT")]), 1)  # D36
         before = self.stored_task(task_id)
         with CaptureQueriesContext(connection) as again:
             second = self.complete(task_id)  # another manager, later: still the first completion
@@ -639,7 +640,7 @@ class InvarianceTests(TaskTestCase):
         from django.apps import apps
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
-        self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog"})
+        self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36
         self.assertFalse([n for n in names if "Notification" in n or "Reminder" in n or "History" in n])
         for path in ("gemiapp/tasks.py", "gemiapp/apps.py"):
             self.assertNotIn("OpportunityTask", open(path, encoding="utf-8").read(), path)

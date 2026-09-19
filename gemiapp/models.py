@@ -2217,6 +2217,86 @@ class OrganizationContactSuppression(models.Model):
         return f"organization #{self.organization_id} · {self.contact_type} {self.contact_value}"
 
 
+class OrganizationAuditEvent(models.Model):
+    """D36 (§52 «Κάθε σημαντική ενέργεια: actor, organization, action, entity, timestamp, metadata»): one immutable
+    record of one customer CRM action that actually changed state.
+
+    Organization-owned and append-only: written only by ``gemiapp.organization_access`` inside the same transaction as
+    the change it describes (both commit or neither does), never for a refused or no-op request, never edited or
+    deleted through the ORM instance API or the admin. It is CRM history, not the B6 company timeline (business
+    events), not the note or task itself, not a signal and not an application log.
+
+    ``entity`` is typed, not polymorphic: the company and, where the action concerns one, the opportunity, note, task
+    or suppression it touched. ``metadata`` is typed too -- only what changed: previous/new status, previous/new
+    assignee membership, the suppression reason. No note or task text, no contact data, no person, no payload. Every
+    reference is SET_NULL, so history outlives what it refers to; the actor is the exact membership (never a copied
+    name or email) and becomes NULL if the member later leaves.
+    """
+
+    OPPORTUNITY_SAVED = "opportunity_saved"
+    OPPORTUNITY_ASSIGNED = "opportunity_assigned"
+    OPPORTUNITY_REASSIGNED = "opportunity_reassigned"
+    OPPORTUNITY_STATUS_CHANGED = "opportunity_status_changed"
+    NOTE_ADDED = "note_added"
+    TASK_CREATED = "task_created"
+    TASK_COMPLETED = "task_completed"
+    SUPPRESSION_ADDED = "suppression_added"
+    SUPPRESSION_REAPPLIED = "suppression_reapplied"
+    ACTIONS = [
+        (OPPORTUNITY_SAVED, "Opportunity saved"), (OPPORTUNITY_ASSIGNED, "Opportunity assigned"),
+        (OPPORTUNITY_REASSIGNED, "Opportunity reassigned"), (OPPORTUNITY_STATUS_CHANGED, "Opportunity status changed"),
+        (NOTE_ADDED, "Note added"), (TASK_CREATED, "Task created"), (TASK_COMPLETED, "Task completed"),
+        (SUPPRESSION_ADDED, "Suppression added"), (SUPPRESSION_REAPPLIED, "Suppression reapplied"),
+    ]
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="audit_events")
+    actor = models.ForeignKey(OrganizationMember, on_delete=models.SET_NULL, null=True, blank=True,
+                              related_name="audit_events")
+    action = models.CharField(max_length=32, choices=ACTIONS)
+    # --- entity ---
+    company = models.ForeignKey(Company, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    opportunity = models.ForeignKey(Opportunity, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name="audit_events")
+    note = models.ForeignKey(OpportunityNote, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    task = models.ForeignKey(OpportunityTask, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    suppression = models.ForeignKey(OrganizationContactSuppression, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name="+")
+    # --- metadata: only what changed ---
+    previous_status = models.CharField(max_length=20, blank=True)
+    new_status = models.CharField(max_length=20, blank=True)
+    previous_assignee = models.ForeignKey(OrganizationMember, on_delete=models.SET_NULL, null=True, blank=True,
+                                          related_name="+")
+    new_assignee = models.ForeignKey(OrganizationMember, on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name="+")
+    reason = models.CharField(max_length=32, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization audit event"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(action__in=["opportunity_saved", "opportunity_assigned", "opportunity_reassigned",
+                                               "opportunity_status_changed", "note_added", "task_created",
+                                               "task_completed", "suppression_added", "suppression_reapplied"]),
+                name="organization_audit_event_known_action"),
+        ]
+        indexes = [
+            models.Index(fields=["organization", "company", "-created_at"], name="org_audit_company_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise ValueError("audit events are append-only")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError("audit events are append-only")
+
+    def __str__(self):
+        return f"{self.action} · organization #{self.organization_id} · {self.created_at:%Y-%m-%d %H:%M}"
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
