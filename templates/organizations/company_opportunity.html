@@ -2,8 +2,8 @@
 {% comment %}
   D29 / blueprint §36 — company opportunity page. Renders only the immutable, already-authorized page value from
   gemiapp.organization_access: no queryset, no request user, no contact data. The mutations are D30 Save, D31
-  Assign, D32 status and D33 notes, POST forms per opportunity row, rendered only when the membership may perform them
-  on that row. Notes are the members' own plain text, shown auto-escaped with pre-wrap. Everything is
+  Assign, D32 status, D33 notes and D34 tasks, POST forms per opportunity row, rendered only when the membership may
+  perform them on that row. Notes and task titles are the members' own plain text, shown auto-escaped. Everything is
   auto-escaped. The frozen C8 explanation («Γιατί αυτή η ευκαιρία») is historical; «Τρέχοντα στοιχεία» is the
   latest canonical snapshot — deliberately different things.
 {% endcomment %}
@@ -182,6 +182,40 @@
                 {% endif %}
               </div>
               {% endif %}
+              {% if opportunity.tasks or opportunity.can_manage_tasks %}
+              <div data-tasks-for="{{ opportunity.opportunity_id }}" style="margin-top: 10px;">
+                <span style="font-size: var(--type-small); font-weight: 700; color: var(--product-muted);">ΕΡΓΑΣΙΕΣ</span>
+                {% for task in opportunity.tasks %}
+                <div data-task="{{ task.task_id }}" data-task-state="{% if task.completed_at %}completed{% elif task.overdue %}overdue{% else %}open{% endif %}" style="margin-top: 6px;">
+                  <p style="overflow-wrap: anywhere; font-size: var(--type-small);{% if task.completed_at %} color: var(--product-muted);{% endif %}">{% if task.completed_at %}✓ {% endif %}{{ task.title }}</p>
+                  <span style="font-size: var(--type-small); color: var(--product-muted);">Προθεσμία {{ task.due_on|date:'d/m/Y' }}{% if task.overdue %} · <strong>Εκπρόθεσμη</strong>{% endif %} · Υπεύθυνος: {{ task.assignee_display_name }} · Από: {{ task.creator_display_name }}{% if task.completed_at %} · Ολοκληρώθηκε {{ task.completed_at|date:'d/m/Y H:i' }} ({{ task.completer_display_name }}){% endif %}</span>
+                  {% if task.can_complete %}
+                  <form method="post" action="{% url 'organization_complete_opportunity_task' page.organization_id opportunity.opportunity_id task.task_id %}" data-task-complete-for="{{ task.task_id }}" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="product-text-button">Ολοκλήρωση</button>
+                  </form>
+                  {% endif %}
+                </div>
+                {% endfor %}
+                {% if opportunity.can_manage_tasks %}
+                <form method="post" action="{% url 'organization_create_opportunity_task' page.organization_id opportunity.opportunity_id %}" data-task-form-for="{{ opportunity.opportunity_id }}" style="margin-top: 6px;">
+                  {% csrf_token %}
+                  <input type="text" name="title" maxlength="200" required aria-label="Τίτλος εργασίας" style="width: 100%;">
+                  <input type="date" name="due_on" min="{{ page.today|date:'Y-m-d' }}" required aria-label="Προθεσμία εργασίας">
+                  {% if opportunity.task_assignees %}
+                  <select name="assignee_membership_id" aria-label="Υπεύθυνος εργασίας">
+                    {% for membership_id, display_name in opportunity.task_assignees %}
+                    <option value="{{ membership_id }}"{% if membership_id == opportunity.task_default_assignee_id %} selected{% endif %}>{{ display_name }}</option>
+                    {% endfor %}
+                  </select>
+                  {% else %}
+                  <span style="font-size: var(--type-small);">Υπεύθυνος: {{ opportunity.task_default_assignee_name }}</span>
+                  {% endif %}
+                  <button type="submit" class="product-text-button">Δημιουργία εργασίας</button>
+                </form>
+                {% endif %}
+              </div>
+              {% endif %}
             </dd>
           </div>
           {% endfor %}
@@ -189,9 +223,12 @@
         {% if page.notes_truncated %}
         <p data-notes-truncated style="font-size: var(--type-small); color: var(--product-muted);">Εμφανίζονται οι 50 πιο πρόσφατες σημειώσεις.</p>
         {% endif %}
+        {% if page.tasks_truncated %}
+        <p data-tasks-truncated style="font-size: var(--type-small); color: var(--product-muted);">Εμφανίζονται 50 εργασίες, πρώτα οι ανοιχτές.</p>
+        {% endif %}
       </section>
-      {% comment %}D30 Save, D31 Assign, D32 status and D33 notes are the only actions, per opportunity row above.
-      Tasks and Do Not Contact arrive with their own Phase D packages; none is rendered here.{% endcomment %}
+      {% comment %}D30 Save, D31 Assign, D32 status, D33 notes and D34 tasks are the only actions, per opportunity
+      row above. Do Not Contact arrives with its own Phase D package; it is not rendered here.{% endcomment %}
     </aside>
   </div>
 </div>

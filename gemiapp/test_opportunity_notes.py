@@ -86,7 +86,9 @@ class SchemaTests(NoteTestCase):
 
     def test_the_migration_is_one_additive_create_model(self):
         loader = MigrationLoader(None, ignore_no_migrations=True)
-        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"), "0050_opportunity_note")
+        # D33 owns 0050; D34's 0051 (tasks) follows it.
+        self.assertEqual(loader.disk_migrations[("gemiapp", "0051_opportunity_task")].dependencies,
+                         [("gemiapp", "0050_opportunity_note")])
         migration = loader.disk_migrations[("gemiapp", "0050_opportunity_note")]
         self.assertEqual(migration.dependencies, [("gemiapp", "0049_opportunity_assignment")])
         self.assertEqual([(type(op).__name__, op.name) for op in migration.operations],
@@ -295,7 +297,8 @@ class PageTests(NoteTestCase):
         with CaptureQueriesContext(connection) as full:
             page = self.page()
         self.assertEqual(len(full), len(empty))  # the note count never changes the query count
-        self.assertEqual(len(full), 15)  # 3 opportunities, 60 notes, 4 authors (one former): measured on SQLite
+        # 3 opportunities, 60 notes, 4 authors (one former): measured on SQLite; D34 added two constant task queries
+        self.assertEqual(len(full), 17)
         note_queries = [q["sql"] for q in full.captured_queries if "opportunitynote" in q["sql"]]
         self.assertEqual(len(note_queries), 1)
         self.assertIn("LIMIT 51", note_queries[0])
@@ -501,7 +504,8 @@ class InvarianceTests(NoteTestCase):
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
         self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog"})
-        self.assertFalse([n for n in names if "Notification" in n or "Task" in n or "Timeline" in n])
+        self.assertFalse([n for n in names if "Notification" in n or "Timeline" in n])
+        self.assertEqual({n for n in names if "Task" in n}, {"OpportunityTask"})  # D34's own table, not a note
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):
         legacy_user = entitled_user("legacy-d33@example.com")

@@ -50,7 +50,8 @@ FRESH = T0 + timedelta(hours=2)
 SECOND = timedelta(seconds=1)
 C8_PERSISTENCE = ("Opportunity", "OpportunitySignal", "OpportunityScoreComponent",
                   "OpportunityScoreEvidence",  # C8 owns these; earlier packages must add none
-                  "OpportunityNote")  # D33's user-authored notes: workflow data, never written by this engine
+                  "OpportunityNote",  # D33's user-authored notes: workflow data, never written by this engine
+                  "OpportunityTask")  # D34's tasks: workflow data, never written by this engine
 
 
 class ScoringTestCase(MatchingTestCase):

@@ -144,6 +144,47 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — D34: Tasks (2026-09-19).** Εργασίες CRM-lite ανά ευκαιρία C8 (§42 «tasks»). Migration
+  `0051_opportunity_task` (ένα `CreateModel`, κανένα backfill), μοντέλο `OpportunityTask`,
+  `organization_access.create_authorized_opportunity_task` / `complete_authorized_opportunity_task`, views
+  `create_opportunity_task` / `complete_opportunity_task`.
+  - Το D33 δεσμεύτηκε (`8624c52`). Το blueprint δεν όριζε το σχήμα· **οι αποφάσεις D34 είναι του χρήστη** (v1).
+  - **Ανήκει σε μία ευκαιρία** (όχι εταιρεία/οργανισμό/μέλος/Radar), φέρει ρητά `organization` (CASCADE),
+    `opportunity` (CASCADE), `title` (plain text, 1–200, trim, NUL απορρίπτεται, DB CHECK), `due_on` (**DateField**,
+    μόνο `YYYY-MM-DD`, σήμερα ή μετά κατά `timezone.localdate()` — Europe/Athens, όχι UTC· καμία ώρα/υπενθύμιση),
+    `created_by` / `assigned_to` / `completed_by` → **`OrganizationMember`** (SET_NULL), `completed_at`, `created_at`.
+    Κατάσταση: OPEN όσο `completed_at IS NULL`, αλλιώς COMPLETED· κανένα boolean/enum/description/`updated_at`.
+  - **Μόνο create + complete.** Καμία επεξεργασία, διαγραφή, ακύρωση, reopen, αλλαγή υπευθύνου. Ολοκλήρωση
+    ολοκληρωμένης = **no-op χωρίς εγγραφή** (χρόνος/ολοκληρωτής αμετάβλητοι). «Εκπρόθεσμη» = παράγεται στην
+    ανάγνωση (ανοιχτή και `due_on < σήμερα`· η σημερινή δεν είναι εκπρόθεσμη), δεν αποθηκεύεται.
+  - **Υπεύθυνος εργασίας** (ανεξάρτητος από `Opportunity.assigned_to`, που δεν αλλάζει): ενεργός OWNER ή
+    SALES_MANAGER του οργανισμού, ή **μόνο** ο SALES_USER στον οποίο είναι ανατεθειμένη η ευκαιρία — ποτέ άσχετος
+    πωλητής, ADMIN ή VIEWER. Προεπιλογή: ο έγκυρος πωλητής της ευκαιρίας, αλλιώς ο δημιουργός. Ο SALES_USER
+    δημιουργεί μόνο στη δική του ευκαιρία και μόνο για τον εαυτό του (άλλο id → άρνηση, όχι σιωπηλή αντικατάσταση).
+  - **Δικαίωμα `manage_opportunity_tasks`:** OWNER, SALES_MANAGER, SALES_USER· ADMIN/VIEWER μόνο ανάγνωση.
+    Ανάγνωση = όποιος βλέπει την ευκαιρία (ο πωλητής βλέπει και εργασίες του διευθυντή στη δική του ευκαιρία).
+    Ολοκλήρωση: διευθυντές κάθε εργασία· ο SALES_USER **μόνο** όσες έχουν `assigned_to == membership του`. LIVE
+    μόνο· SHADOW/ξένη/ανύπαρκτη/αταίριαστη εργασία → ίδιο 404. Επιτρέπονται και σε τελικές ευκαιρίες.
+  - **Κλειδώματα:** ευκαιρία → εργασία (για ολοκλήρωση) → memberships (δρώσα + ονομαζόμενη) σε αύξουσα σειρά id, με
+    επανέλεγχο της ακριβούς δρώσας membership (id/χρήστης/ρόλος)· ίδια σειρά με τον collector `SET_NULL`. Αφαίρεση
+    μέλους πριν το κλείδωμα → 404· FK σφάλμα στο commit → 404, ποτέ 500.
+  - Διαγραφή μέλους: δημιουργός → NULL («Πρώην μέλος»)· υπεύθυνος → NULL (ανοιχτή, «Χωρίς ανάθεση», μόνο διευθυντές
+    την ολοκληρώνουν)· ολοκληρωτής → NULL, παραμένει ολοκληρωμένη. Επανένταξη = νέα membership, δεν παίρνει τίποτα.
+  - Routes: `POST .../opportunities/<id>/tasks/` (`title`, `due_on`, προαιρετικό `assignee_membership_id`) και
+    `POST .../opportunities/<id>/tasks/<task_id>/complete/`· login, CSRF, redirect στη σελίδα D29, `next=` αγνοείται.
+  - Σελίδα D29: «ΕΡΓΑΣΙΕΣ» κάτω από τη δική τους γραμμή Radar, χωριστά από τις σημειώσεις· ανοιχτές πρώτα (προθεσμία,
+    δημιουργία, id), μετά ολοκληρωμένες (νεότερη ολοκλήρωση)· **50** σε όλη τη σελίδα με ουδέτερη ειδοποίηση· φόρμα
+    με selector μόνο για διευθυντές (ο πωλητής βλέπει «Υπεύθυνος: <όνομα>»)· κουμπί ολοκλήρωσης μόνο όπου επιτρέπεται.
+    **17 queries** για 3 ευκαιρίες με σημειώσεις και 60 εργασίες, ανεξάρτητα από το πλήθος.
+  - Καμία επίδραση σε status (ούτε αυτόματο FOLLOW_UP/CONTACTED), ανάθεση ευκαιρίας, score, σημειώσεις, B6 timeline,
+    C9 feed. Κανένα audit log (**βήμα 36**), καμία ειδοποίηση/υπενθύμιση/`TASK_DUE`/scheduler (**βήμα 37**).
+  - Κύκλος migration στο αντίγραφο της dev βάσης: forward → 0 εργασίες → fixture → parity → reverse → reapply
+    (ξανά 0), όλα PASS.
+  - 35 νέα tests· **1.724 tests OK** (δύο συνεχόμενες πλήρεις εκτελέσεις). `G5_STATUS =
+    PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`· `G4_STATUS = NOT_PASSED`· **`PRODUCTION_MIGRATION_STATUS =
+    BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — D33: Notes (2026-09-19).** Εσωτερικές CRM σημειώσεις ανά ευκαιρία C8 (§41 «opportunity_notes»).
   Migration `0050_opportunity_note` (ένα `CreateModel`, κανένα backfill), μοντέλο `OpportunityNote`,
   `organization_access.add_authorized_opportunity_note`, view `organization_views.add_opportunity_note`.
@@ -1030,10 +1071,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 34 — Tasks** (§42 του `docs/GEMI_LEADS_2_BLUEPRINT.md`:
-  «Call tomorrow / Follow up Friday / Check again next week», πίνακας `tasks`, όχι full project management)·
-  αναμένει έγκριση του D33. Το reopen τελικών καταστάσεων, το DO_NOT_CONTACT (βήμα 35) και η επεξεργασία/διαγραφή
-  σημειώσεων μένουν ανοιχτές αποφάσεις προϊόντος.
+- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 35 — Do Not Contact** (§51 του
+  `docs/GEMI_LEADS_2_BLUEPRINT.md`: `contact_suppressions`, global για τον οργανισμό, «Πρέπει να υπερισχύει
+  οποιουδήποτε AI/Radar»)· αναμένει έγκριση του D34. Ανοιχτές αποφάσεις προϊόντος: reopen τελικών καταστάσεων,
+  επεξεργασία/διαγραφή σημειώσεων και εργασιών (ιδανικά μετά το audit log του βήματος 36).
+- **Release gate για το D34:** η `0051_opportunity_task` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D33:** η `0050_opportunity_note` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D31:** η `0049_opportunity_assignment` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D29:** καμία migration· το route είναι πίσω από login και G5, αλλά δεν υπάρχει ακόμη κανένας

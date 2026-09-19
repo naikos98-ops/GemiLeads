@@ -144,6 +144,28 @@ class PageOpportunity:
     # D33: this opportunity's notes (PageNote, newest first, within the page bound) and whether this member may add one.
     notes: tuple = ()
     can_add_note: bool = False
+    # D34: this opportunity's tasks (PageTask: open first, then completed, within the page bound). ``can_manage_tasks``
+    # shows the create form; ``task_assignees`` is its selector (empty for a sales user, whose tasks are their own).
+    tasks: tuple = ()
+    can_manage_tasks: bool = False
+    task_assignees: tuple = ()
+    task_default_assignee_id: int | None = None
+    task_default_assignee_name: str = ""
+
+
+@dataclass(frozen=True)
+class PageTask:
+    """One task as displayed. ``overdue`` is derived for this read (open and due before today); never stored."""
+
+    task_id: int
+    title: str
+    due_on: date
+    completed_at: datetime | None
+    assignee_display_name: str
+    creator_display_name: str
+    completer_display_name: str | None
+    overdue: bool
+    can_complete: bool
 
 
 @dataclass(frozen=True)
@@ -197,6 +219,8 @@ class CompanyOpportunityPage:
     timeline_truncated: bool
     assignees: tuple = ()           # D31: (membership_id, display name) of assignable sales users, or empty
     notes_truncated: bool = False   # D33: more notes exist than the page shows
+    tasks_truncated: bool = False   # D34: more tasks exist than the page shows
+    today: date | None = None       # D34: the local date the page was built for (overdue, earliest due date)
 
 
 def _model(name):
@@ -223,7 +247,9 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
                                   assign_actions: dict | None = None, assignees: tuple = (),
                                   assignments: dict | None = None, status_actions: dict | None = None,
                                   notes: dict | None = None, notes_truncated: bool = False,
-                                  note_actions: dict | None = None) -> CompanyOpportunityPage:
+                                  note_actions: dict | None = None, tasks: dict | None = None,
+                                  tasks_truncated: bool = False, task_actions: dict | None = None,
+                                  today: date | None = None) -> CompanyOpportunityPage:
     """Assemble the page from already-authorized, LIVE-backed opportunities of one company, primary first."""
     primary_row = rows[0]
     company = primary_row.company
@@ -330,6 +356,17 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
         notes=tuple(PageNote(note_id=note_id, body=body, created_at=created_at, author_display_name=author)
                     for note_id, body, created_at, author in (notes or {}).get(row.pk, ())),
         can_add_note=bool((note_actions or {}).get(row.pk)),
+        tasks=tuple(PageTask(task_id=task_id, title=title, due_on=due_on, completed_at=completed_at,
+                             assignee_display_name=assignee, creator_display_name=creator,
+                             completer_display_name=completer,
+                             overdue=today is not None and completed_at is None and due_on < today,
+                             can_complete=may_complete)
+                    for task_id, title, due_on, completed_at, assignee, creator, completer, may_complete
+                    in (tasks or {}).get(row.pk, ())),
+        can_manage_tasks=(task_actions or {}).get(row.pk) is not None,
+        task_assignees=((task_actions or {}).get(row.pk) or ((), None, ""))[0],
+        task_default_assignee_id=((task_actions or {}).get(row.pk) or ((), None, ""))[1],
+        task_default_assignee_name=((task_actions or {}).get(row.pk) or ((), None, ""))[2],
     ) for index, row in enumerate(rows))
 
     timeline = tuple(TimelineItem(
@@ -349,7 +386,7 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
         scored_as_of=frozen.as_of, breakdown=breakdown, current=current, timeline=timeline,
         timeline_truncated=timeline_page.next_cursor is not None,
         assignees=tuple((assignee.membership_id, assignee.display_name) for assignee in assignees),
-        notes_truncated=notes_truncated,
+        notes_truncated=notes_truncated, tasks_truncated=tasks_truncated, today=today,
     )
 
 

@@ -58,6 +58,8 @@ EXPECTED = {
     C.UPDATE_OPPORTUNITY_STATUS:  (1,    0,     1,     1,     0),
     # D33: writing notes follows the sales workflow; reading them follows the opportunity.
     C.ADD_OPPORTUNITY_NOTE:       (1,    0,     1,     1,     0),
+    # D34: tasks follow the sales workflow; a sales user completes only their own (checked per task).
+    C.MANAGE_OPPORTUNITY_TASKS:   (1,    0,     1,     1,     0),
 }
 
 
@@ -158,7 +160,8 @@ class CapabilityMatrixTests(AccessTestCase):
     def test_viewer_is_read_only(self):
         viewer = get_organization_access_context(self.members["viewer"], self.org)
         writes = {C.MANAGE_ORGANIZATION, C.MANAGE_MEMBERS, C.MANAGE_RADARS, C.MANAGE_OPPORTUNITY_WORKFLOW,
-                  C.ASSIGN_OPPORTUNITIES, C.UPDATE_OPPORTUNITY_STATUS, C.ADD_OPPORTUNITY_NOTE}
+                  C.ASSIGN_OPPORTUNITIES, C.UPDATE_OPPORTUNITY_STATUS, C.ADD_OPPORTUNITY_NOTE,
+                  C.MANAGE_OPPORTUNITY_TASKS}
         self.assertFalse([c for c in writes if can(viewer, c)])
         for capability in writes:
             self.denied(require, viewer, capability)
@@ -371,7 +374,7 @@ class SafetyTests(AccessTestCase):
         self.assertFalse([n for n in names if "Access" in n or "Permission" in n or "Assign" in n])
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0050_opportunity_note")  # D33 owns 0050 (notes); any newer migration must update this pin deliberately
+                         "0051_opportunity_task")  # D34 owns 0051 (tasks); any newer migration must update this pin deliberately
 
     def test_the_legacy_product_and_billing_are_untouched(self):
         legacy_user = entitled_user("legacy-g5@example.com")

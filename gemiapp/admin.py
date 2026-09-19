@@ -35,6 +35,7 @@ from .models import (
     OpportunityScoreComponent,
     OpportunityScoreEvidence,
     OpportunityNote,
+    OpportunityTask,
     OpportunitySignal,
     Organization,
     OrganizationICP,
@@ -621,6 +622,18 @@ class OpportunityNoteAdmin(OrganizationReadOnlyAdmin):
     list_display = ("organization", "opportunity", "author", "created_at")
     list_select_related = ("organization", "opportunity", "author")
     date_hierarchy = "created_at"
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(OpportunityTask)
+class OpportunityTaskAdmin(OrganizationReadOnlyAdmin):
+    """Inspection only (D34). Tasks are created and completed solely by gemiapp.organization_access."""
+
+    list_display = ("organization", "opportunity", "title", "due_on", "assigned_to", "completed_at")
+    list_select_related = ("organization", "opportunity", "assigned_to")
+    date_hierarchy = "due_on"
 
     def has_delete_permission(self, request, obj=None):
         return False

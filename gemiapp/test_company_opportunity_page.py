@@ -314,7 +314,7 @@ class SafetyTests(PageTestCase):
             page = self.page()
         self.assertEqual((len(page.opportunities), len(page.timeline)), (3, 20))
         self.assertEqual(len(three), len(one))
-        self.assertLessEqual(len(three), 15)  # D33 added exactly one bounded notes query
+        self.assertLessEqual(len(three), 17)  # D33: one bounded notes query; D34: tasks + task-assignee options
         self.assertTrue(all(q["sql"].lstrip().upper().startswith("SELECT") for q in three.captured_queries))
 
     def test_opening_the_page_writes_nothing(self):
@@ -342,9 +342,11 @@ class SafetyTests(PageTestCase):
         imported = source.split("from .organization_access import (", 1)[1].split(")", 1)[0]
         self.assertEqual({name.strip() for name in imported.split(",") if name.strip()},
                          {"AssignmentRefused", "NoteRefused", "OpportunityTransitionRefused",
-                          "OrganizationAccessDenied", "StatusChangeRefused", "add_authorized_opportunity_note",
-                          "assign_authorized_opportunity", "get_authorized_company_opportunity_page",
-                          "save_authorized_opportunity", "set_authorized_opportunity_status"})
+                          "OrganizationAccessDenied", "StatusChangeRefused", "TaskRefused",
+                          "add_authorized_opportunity_note", "assign_authorized_opportunity",
+                          "complete_authorized_opportunity_task", "create_authorized_opportunity_task",
+                          "get_authorized_company_opportunity_page", "save_authorized_opportunity",
+                          "set_authorized_opportunity_status"})
         for forbidden in (".objects", ".save(", ".create(", ".update(", ".delete(", "organization_radar_matching",
                           "opportunity_scoring", "opportunity_score_breakdown", "opportunity_feed",
                           "get_opportunity_score_breakdown", "set_opportunity_status", "request.organization",
@@ -377,7 +379,10 @@ class SafetyTests(PageTestCase):
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/save/",
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/assign/",
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/status/",
-                          "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/notes/"])
+                          "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/notes/",
+                          "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/tasks/",
+                          "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/tasks/"
+                          "<int:task_id>/complete/"])
         for _, callback in organization_routes:
             self.assertEqual(callback.__module__, "gemiapp.organization_views")
         product_modules = [path for path in pathlib.Path("gemiapp").glob("*.py")
@@ -388,19 +393,20 @@ class SafetyTests(PageTestCase):
     def test_no_mutation_endpoint_model_or_migration(self):
         from django.apps import apps
 
-        # Since D33 the page has exactly four kinds of form, all per opportunity: Save (D30), Assign (D31),
-        # status (D32) and a note (D33).
+        # Since D34 the page has exactly six kinds of form, all per opportunity: Save (D30), Assign (D31),
+        # status (D32), a note (D33), and a task's create and complete (D34).
         html_template = pathlib.Path("templates/organizations/company_opportunity.html").read_text(encoding="utf-8")
-        self.assertEqual(html_template.count("<form"), 4)
-        self.assertEqual(html_template.count("<button"), 4)
+        self.assertEqual(html_template.count("<form"), 6)
+        self.assertEqual(html_template.count("<button"), 6)
         for route in ("organization_save_opportunity", "organization_assign_opportunity", "organization_opportunity_status",
-                      "organization_add_opportunity_note"):
+                      "organization_add_opportunity_note", "organization_create_opportunity_task"):
             self.assertIn("{% url '" + route + "' page.organization_id opportunity.opportunity_id %}", html_template)
         self.assertFalse([m for m in apps.get_app_config("gemiapp").get_models() if "Assign" in m.__name__
-                          or "Note" in m.__name__ and m.__name__ != "OpportunityNote" or "Task" in m.__name__])
+                          or "Note" in m.__name__ and m.__name__ != "OpportunityNote"
+                          or "Task" in m.__name__ and m.__name__ != "OpportunityTask"])
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0050_opportunity_note")  # D33 owns 0050 (notes); any newer migration must update this pin deliberately
+                         "0051_opportunity_task")  # D34 owns 0051 (tasks); any newer migration must update this pin deliberately
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):
         legacy_user = entitled_user("legacy-d29@example.com")

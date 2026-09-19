@@ -66,11 +66,13 @@ the Organization architecture only.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from datetime import date
 
 from django.apps import apps
 from django.db import IntegrityError, transaction
-from django.db.models import Count
+from django.db.models import Case, Count, F, Q, Value, When
 from django.utils import timezone
 
 from .opportunities import get_opportunity_score_breakdown
@@ -106,10 +108,12 @@ class Capability:
     UPDATE_OPPORTUNITY_STATUS = "update_opportunity_status"
     # D33: writing a note. Reading notes needs no capability of its own: they are read with their opportunity.
     ADD_OPPORTUNITY_NOTE = "add_opportunity_note"
+    # D34: creating and completing tasks. Reading them follows the opportunity, like notes.
+    MANAGE_OPPORTUNITY_TASKS = "manage_opportunity_tasks"
 
     ALL = (VIEW_ORGANIZATION, VIEW_ORGANIZATION_SETTINGS, MANAGE_ORGANIZATION, MANAGE_MEMBERS, VIEW_RADARS,
            MANAGE_RADARS, VIEW_ALL_OPPORTUNITIES, VIEW_ASSIGNED_OPPORTUNITIES, MANAGE_OPPORTUNITY_WORKFLOW,
-           ASSIGN_OPPORTUNITIES, UPDATE_OPPORTUNITY_STATUS, ADD_OPPORTUNITY_NOTE)
+           ASSIGN_OPPORTUNITIES, UPDATE_OPPORTUNITY_STATUS, ADD_OPPORTUNITY_NOTE, MANAGE_OPPORTUNITY_TASKS)
 
 
 OWNER, ADMIN, SALES_MANAGER, SALES_USER, VIEWER = "owner", "admin", "sales_manager", "sales_user", "viewer"
@@ -123,9 +127,11 @@ ROLE_CAPABILITIES = {
     ADMIN: _READ_ORGANIZATION | {Capability.MANAGE_ORGANIZATION, Capability.MANAGE_MEMBERS,
                                  Capability.MANAGE_RADARS},
     SALES_MANAGER: _READ_ORGANIZATION | {Capability.MANAGE_OPPORTUNITY_WORKFLOW, Capability.ASSIGN_OPPORTUNITIES,
-                                         Capability.UPDATE_OPPORTUNITY_STATUS, Capability.ADD_OPPORTUNITY_NOTE},
+                                         Capability.UPDATE_OPPORTUNITY_STATUS, Capability.ADD_OPPORTUNITY_NOTE,
+                                         Capability.MANAGE_OPPORTUNITY_TASKS},
     SALES_USER: frozenset({Capability.VIEW_ORGANIZATION, Capability.VIEW_ASSIGNED_OPPORTUNITIES,
-                           Capability.UPDATE_OPPORTUNITY_STATUS, Capability.ADD_OPPORTUNITY_NOTE}),
+                           Capability.UPDATE_OPPORTUNITY_STATUS, Capability.ADD_OPPORTUNITY_NOTE,
+                           Capability.MANAGE_OPPORTUNITY_TASKS}),
     VIEWER: _READ_ORGANIZATION,
 }
 # Capabilities whose scope is the membership's own assignments (satisfiable since D31).
@@ -283,7 +289,7 @@ _PAGE_FIELDS = (
     "scored_as_of", "score_rule_version", "match_rule_version", "latest_signal_id", "radar__name",
     "latest_signal__signal_type", "latest_signal__detected_at", "latest_signal__mode", "company__gemi_number",
     "company__name", "company__trade_names", "assigned_to_id", "assigned_at", "assigned_to__user__first_name",
-    "assigned_to__user__last_name",
+    "assigned_to__user__last_name", "assigned_to__role", "assigned_to__user__is_active",
 )
 
 
@@ -328,10 +334,15 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
     # D33: the notes of exactly these authorized, LIVE-backed rows -- one bounded query, never one per row.
     notes, notes_truncated = _page_notes(context, [row.pk for row in rows])
     note_actions = {row.pk: can(context, Capability.ADD_OPPORTUNITY_NOTE) for row in rows}
+    # D34: the tasks of the same rows (one bounded query) and, per row, what this member may do with them.
+    tasks, tasks_truncated = _page_tasks(context, [row.pk for row in rows])
+    task_actions = _page_task_actions(context, rows)
     return build_company_opportunity_page(organization=organization, rows=rows, live_signal_counts=live_signal_counts,
                                           save_actions=save_actions, assign_actions=assign_actions,
                                           assignees=assignees, assignments=assignments, status_actions=status_actions,
-                                          notes=notes, notes_truncated=notes_truncated, note_actions=note_actions)
+                                          notes=notes, notes_truncated=notes_truncated, note_actions=note_actions,
+                                          tasks=tasks, tasks_truncated=tasks_truncated, task_actions=task_actions,
+                                          today=timezone.localdate())
 
 
 def _organization_by_id(organization_id):
@@ -730,3 +741,285 @@ def _page_notes(context: OrganizationAccessContext, opportunity_ids):
         author = member_display_name(first, last, author_id) if author_id is not None else FORMER_MEMBER_LABEL
         grouped.setdefault(opportunity_id, []).append((pk, text, created_at, author))
     return {key: tuple(value) for key, value in grouped.items()}, len(rows) > NOTES_PAGE_LIMIT
+
+
+# --- D34: Tasks -------------------------------------------------------------------------------------
+#
+# §42 «tasks»: «Call tomorrow / Follow up Friday / Check again next week», «Δεν χτίζουμε full project management
+# system». One task is a title and a due *date* on one explicit opportunity; the only mutations are create and
+# complete. No edit, delete, cancel or reopen; no reminder or TASK_DUE notification (item 37); no audit row (item
+# 36); no status, assignment, score, note, timeline or feed side effect. «Overdue» is derived when read, never
+# stored. Reading tasks follows the opportunity. Mutating them needs ``manage_opportunity_tasks``; a sales user
+# additionally completes only the tasks assigned to their own membership.
+#
+# Locks, in one order for every task mutation: the opportunity, then the task (for completion), then the
+# memberships involved in ascending id order. That is the order Django's SET_NULL collector touches rows when a
+# membership is deleted (referencing opportunities, notes and tasks first, the member row last), so a concurrent
+# deletion and a task mutation cannot deadlock: either the deletion commits first and the mutation is denied, or
+# the mutation commits while the memberships are locked and the deletion then clears the references.
+
+TASK_TITLE_MAX_LENGTH = 200
+TASKS_PAGE_LIMIT = 50
+TASK_UNASSIGNED_LABEL = "Χωρίς ανάθεση"
+# Who may be a task's assignee: managers of the organization, or the one sales user the opportunity is assigned to.
+TASK_MANAGER_ASSIGNEE_ROLES = frozenset({OWNER, SALES_MANAGER})
+TASK_SALES_ASSIGNEE_ROLE = SALES_USER
+_DUE_ON = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+@dataclass(frozen=True)
+class TaskResult:
+    organization_id: int
+    company_id: int
+    opportunity_id: int
+    task_id: int | None
+    assigned_membership_id: int | None
+    completed: bool
+    changed: bool  # False for completing an already completed task, which writes nothing
+
+
+class TaskRefused(Exception):
+    """The opportunity is visible and task-writable for this member, but the request is not a valid task.
+    Nothing stored. One message covers every unusable assignee, so a posted id reveals nothing about members."""
+
+    MESSAGES = {
+        "title_blank": "Ο τίτλος της εργασίας δεν μπορεί να είναι κενός.",
+        "title_too_long": f"Ο τίτλος της εργασίας ξεπερνά το όριο των {TASK_TITLE_MAX_LENGTH} χαρακτήρων.",
+        "title_invalid": "Ο τίτλος της εργασίας περιέχει χαρακτήρες που δεν επιτρέπονται.",
+        "due_invalid": "Η προθεσμία πρέπει να είναι έγκυρη ημερομηνία.",
+        "due_past": "Η προθεσμία δεν μπορεί να είναι στο παρελθόν.",
+        "assignee": "Το μέλος που επιλέχθηκε δεν μπορεί να αναλάβει αυτή την εργασία.",
+    }
+
+    def __init__(self, reason: str, result: TaskResult):
+        super().__init__(self.MESSAGES[reason])
+        self.reason = reason
+        self.result = result
+
+
+def normalize_task_title(value):
+    """(title, None) or (None, reason): plain text, ends trimmed, inner spacing kept, 1-200 characters, no NUL."""
+    if not isinstance(value, str):
+        return None, "title_blank"
+    title = value.strip()
+    if not title:
+        return None, "title_blank"
+    if "\x00" in title:
+        return None, "title_invalid"
+    if len(title) > TASK_TITLE_MAX_LENGTH:
+        return None, "title_too_long"
+    return title, None
+
+
+def parse_task_due_on(value, today):
+    """(date, None) or (None, reason). Only the canonical YYYY-MM-DD form; today or later. No natural language."""
+    if not isinstance(value, str) or not _DUE_ON.fullmatch(value.strip()):
+        return None, "due_invalid"
+    try:
+        due = date.fromisoformat(value.strip())
+    except ValueError:
+        return None, "due_invalid"
+    if due < today:
+        return None, "due_past"
+    return due, None
+
+
+def task_is_overdue(completed_at, due_on, today) -> bool:
+    """Derived, never stored: an open task whose due date is before today. A task due today is not overdue."""
+    return completed_at is None and due_on < today
+
+
+def _completes_any_task(context: OrganizationAccessContext) -> bool:
+    """Managers complete every task on an opportunity they manage; a sales user only their own (checked per task)."""
+    return can(context, Capability.MANAGE_OPPORTUNITY_TASKS) and can(context, Capability.VIEW_ALL_OPPORTUNITIES)
+
+
+def _may_complete_task(context: OrganizationAccessContext, task_assigned_to_id) -> bool:
+    if not can(context, Capability.MANAGE_OPPORTUNITY_TASKS):
+        return False
+    return _completes_any_task(context) or task_assigned_to_id == context.membership_id
+
+
+def _eligible_task_assignee(member, opportunity_assigned_to_id) -> bool:
+    """A locked membership row (as a dict) that may hold a task on this opportunity."""
+    if member is None or not member["user__is_active"]:
+        return False
+    if member["role"] in TASK_MANAGER_ASSIGNEE_ROLES:
+        return True
+    return member["role"] in (TASK_SALES_ASSIGNEE_ROLE,) and member["pk"] == opportunity_assigned_to_id
+
+
+def _lock_memberships(context: OrganizationAccessContext, ids):
+    """Re-read and lock these memberships of the context's organization, in ascending id order (one query), and
+    check that the acting one is still exactly the membership the context was issued for."""
+    rows = (_model("OrganizationMember").objects.select_for_update(of=("self",))
+            .filter(pk__in=sorted({i for i in ids if i is not None}), organization_id=context.organization_id)
+            .order_by("pk").values("pk", "role", "user_id", "user__is_active"))
+    locked = {row["pk"]: row for row in rows}
+    actor = locked.get(context.membership_id)
+    if actor is None or (actor["user_id"], actor["role"]) != (context.user_id, context.role):
+        raise OrganizationAccessDenied()  # removed or changed since the context was resolved
+    return locked
+
+
+def _task_opportunity(context: OrganizationAccessContext, opportunity_id):
+    row = (organization_opportunities_for(context)
+           .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
+           .select_for_update(of=("self",)).only("pk", "organization_id", "company_id", "assigned_to_id").first())
+    if row is None or row.organization_id != context.organization_id:
+        raise OrganizationAccessDenied()
+    return row
+
+
+def create_authorized_opportunity_task(user, organization_id, opportunity_id, title, due_on,
+                                       assignee_membership_id=None) -> TaskResult:
+    """D34: create one open task on one customer-visible opportunity.
+
+    Access first, like every Phase D action: a nonexistent or foreign organization, a non-member, a role without
+    ``manage_opportunity_tasks``, another tenant's, a nonexistent or SHADOW-backed opportunity and -- for a sales
+    user -- one not assigned to this membership are all the same ``OrganizationAccessDenied``. Then the request:
+    title, due date (today or later, in the configured time zone) and assignee, each a ``TaskRefused``.
+
+    Assignee: an active OWNER or SALES_MANAGER of the organization, or the sales user the opportunity is assigned
+    to -- never anyone else, and a sales user only themselves. Omitted, it defaults to the opportunity's valid sales
+    user, else to the acting member. The explicit value is re-validated here, never trusted from the form.
+    """
+    organization = _organization_by_id(organization_id)
+    context = require(get_organization_access_context(user, organization), Capability.MANAGE_OPPORTUNITY_TASKS)
+    explicit = assignee_membership_id is not None and assignee_membership_id != ""
+    wanted = _membership_id(assignee_membership_id) if explicit else None
+    try:
+        with transaction.atomic():
+            row = _task_opportunity(context, opportunity_id)
+
+            def refused(reason):
+                return TaskRefused(reason, TaskResult(
+                    organization_id=row.organization_id, company_id=row.company_id, opportunity_id=row.pk,
+                    task_id=None, assigned_membership_id=None, completed=False, changed=False))
+
+            locked = _lock_memberships(context, (context.membership_id, wanted, row.assigned_to_id))
+            text, reason = normalize_task_title(title)
+            if reason is not None:
+                raise refused(reason)
+            due, reason = parse_task_due_on(due_on, timezone.localdate())
+            if reason is not None:
+                raise refused(reason)
+            if explicit:
+                if wanted is None:
+                    raise refused("assignee")
+                if not _completes_any_task(context) and wanted != context.membership_id:
+                    raise refused("assignee")  # a sales user assigns only to themselves
+                if not _eligible_task_assignee(locked.get(wanted), row.assigned_to_id):
+                    raise refused("assignee")
+                assignee = wanted
+            else:
+                salesperson = locked.get(row.assigned_to_id)
+                if (salesperson is not None and salesperson["role"] in (TASK_SALES_ASSIGNEE_ROLE,)
+                        and _eligible_task_assignee(salesperson, row.assigned_to_id)):
+                    assignee = salesperson["pk"]
+                else:
+                    assignee = context.membership_id
+            task = _model("OpportunityTask").objects.create(
+                organization_id=row.organization_id, opportunity_id=row.pk, title=text, due_on=due,
+                created_by_id=context.membership_id, assigned_to_id=assignee)
+    except IntegrityError:
+        raise OrganizationAccessDenied()
+    return TaskResult(organization_id=row.organization_id, company_id=row.company_id, opportunity_id=row.pk,
+                      task_id=task.pk, assigned_membership_id=assignee, completed=False, changed=True)
+
+
+def complete_authorized_opportunity_task(user, organization_id, opportunity_id, task_id) -> TaskResult:
+    """D34: complete one open task of one customer-visible opportunity; completing it again writes nothing.
+
+    The task is resolved only inside the authorized opportunity (organization + opportunity + task, never a global
+    lookup), so a foreign, missing or mismatched task is the same ``OrganizationAccessDenied`` as everything else. A
+    sales user may complete only a task assigned to their own membership; managers any task they can see.
+    """
+    organization = _organization_by_id(organization_id)
+    context = require(get_organization_access_context(user, organization), Capability.MANAGE_OPPORTUNITY_TASKS)
+    try:
+        with transaction.atomic():
+            row = _task_opportunity(context, opportunity_id)
+            task = (_model("OpportunityTask").objects.select_for_update()
+                    .filter(pk=_object_id(task_id), opportunity_id=row.pk, organization_id=row.organization_id)
+                    .only("pk", "assigned_to_id", "completed_at", "completed_by_id").first())
+            if task is None:
+                raise OrganizationAccessDenied()
+            _lock_memberships(context, (context.membership_id,))
+            if not _may_complete_task(context, task.assigned_to_id):
+                raise OrganizationAccessDenied()
+            result = TaskResult(organization_id=row.organization_id, company_id=row.company_id,
+                                opportunity_id=row.pk, task_id=task.pk, assigned_membership_id=task.assigned_to_id,
+                                completed=True, changed=False)
+            if task.completed_at is not None:
+                return result  # already completed: no write, completer and time untouched
+            task.completed_at = timezone.now()
+            task.completed_by_id = context.membership_id
+            task.save(update_fields=["completed_at", "completed_by"])
+    except IntegrityError:
+        raise OrganizationAccessDenied()
+    return TaskResult(organization_id=result.organization_id, company_id=result.company_id,
+                      opportunity_id=result.opportunity_id, task_id=result.task_id,
+                      assigned_membership_id=result.assigned_membership_id, completed=True, changed=True)
+
+
+def _page_tasks(context: OrganizationAccessContext, opportunity_ids):
+    """Up to ``TASKS_PAGE_LIMIT`` tasks across these already-authorized opportunities, in one query: open tasks
+    first (due date, creation, id), then completed ones (newest completion first). Grouped by opportunity."""
+    if not opportunity_ids:
+        return {}, False
+    is_open = Q(completed_at__isnull=True)
+    rows = list(_model("OpportunityTask").objects
+                .filter(organization_id=context.organization_id, opportunity_id__in=opportunity_ids)
+                .order_by(Case(When(is_open, then=Value(0)), default=Value(1)),
+                          Case(When(is_open, then=F("due_on"))).asc(),
+                          Case(When(is_open, then=F("created_at"))).asc(),
+                          F("completed_at").desc(),
+                          Case(When(is_open, then=F("id")), default=-F("id")).asc())
+                .values_list("pk", "opportunity_id", "title", "due_on", "completed_at", "created_by_id",
+                             "created_by__user__first_name", "created_by__user__last_name", "assigned_to_id",
+                             "assigned_to__user__first_name", "assigned_to__user__last_name", "completed_by_id",
+                             "completed_by__user__first_name", "completed_by__user__last_name")[:TASKS_PAGE_LIMIT + 1])
+
+    def name(member_id, first, last, missing):
+        return member_display_name(first, last, member_id) if member_id is not None else missing
+
+    grouped = {}
+    for (pk, opportunity_id, title, due_on, completed_at, creator, c_first, c_last, assignee, a_first, a_last,
+         completer, d_first, d_last) in rows[:TASKS_PAGE_LIMIT]:
+        grouped.setdefault(opportunity_id, []).append((
+            pk, title, due_on, completed_at, name(assignee, a_first, a_last, TASK_UNASSIGNED_LABEL),
+            name(creator, c_first, c_last, FORMER_MEMBER_LABEL),
+            name(completer, d_first, d_last, FORMER_MEMBER_LABEL) if completed_at else None,
+            completed_at is None and _may_complete_task(context, assignee)))
+    return {key: tuple(value) for key, value in grouped.items()}, len(rows) > TASKS_PAGE_LIMIT
+
+
+def _page_task_actions(context: OrganizationAccessContext, rows):
+    """Per row: None when this member cannot create tasks; otherwise (assignee options, default assignee id,
+    default assignee name). Options are only offered to managers -- a sales user's tasks are always their own."""
+    if not can(context, Capability.MANAGE_OPPORTUNITY_TASKS):
+        return {row.pk: None for row in rows}
+    managers = []
+    if _completes_any_task(context):
+        managers = [(pk, member_display_name(first, last, pk)) for pk, first, last in
+                    _model("OrganizationMember").objects
+                    .filter(organization_id=context.organization_id, role__in=TASK_MANAGER_ASSIGNEE_ROLES,
+                            user__is_active=True)
+                    .order_by("pk").values_list("pk", "user__first_name", "user__last_name")]
+    own_name = dict(managers).get(context.membership_id)
+    actions = {}
+    for row in rows:
+        salesperson = None
+        if (row.assigned_to_id is not None and row.assigned_to.role in (TASK_SALES_ASSIGNEE_ROLE,)
+                and row.assigned_to.user.is_active):
+            salesperson = (row.assigned_to_id, member_display_name(row.assigned_to.user.first_name,
+                                                                   row.assigned_to.user.last_name, row.assigned_to_id))
+        if not _completes_any_task(context):
+            # A sales user only ever sees rows assigned to them: the task is theirs, with no selector.
+            actions[row.pk] = ((), context.membership_id, salesperson[1] if salesperson else "")
+            continue
+        options = tuple(managers) + ((salesperson,) if salesperson else ())
+        default = salesperson or (context.membership_id, own_name or member_display_name("", "", context.membership_id))
+        actions[row.pk] = (options, default[0], default[1])
+    return actions

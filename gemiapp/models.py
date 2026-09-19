@@ -2104,6 +2104,59 @@ class OpportunityNote(models.Model):
         return f"note #{self.pk} · opportunity #{self.opportunity_id}"
 
 
+OPPORTUNITY_TASK_TITLE_MAX_LENGTH = 200  # D34 v1
+
+
+class OpportunityTask(models.Model):
+    """D34 (§42 «tasks»: «Call tomorrow / Follow up Friday / Check again next week»): one day-level CRM to-do on
+    one C8 opportunity. Deliberately CRM-lite: a title and a due date, create and complete only -- no description,
+    edit, delete, cancel or reopen, no time of day, no reminder (a future ``TASK_DUE`` notification belongs to item
+    37). A task is OPEN while ``completed_at`` is NULL and COMPLETED otherwise; there is no other state.
+
+    Creator, assignee and completer are *memberships* (SET_NULL): a member leaving never removes a task, and a user
+    re-added later is a new membership that regains nothing. The task's assignee is its own field, independent of
+    ``Opportunity.assigned_to``; the only coupling is enforced by the writer -- a sales user may only be the
+    assignee of a task on an opportunity assigned to them, so no task is ever handed to someone who cannot see it.
+
+    Written only through gemiapp.organization_access, which also enforces what the database cannot: the task's
+    organization equals its opportunity's, and every membership on it belongs to that same organization.
+    """
+
+    TITLE_MAX_LENGTH = OPPORTUNITY_TASK_TITLE_MAX_LENGTH
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="opportunity_tasks")
+    opportunity = models.ForeignKey(Opportunity, on_delete=models.CASCADE, related_name="tasks")
+    title = models.CharField(max_length=OPPORTUNITY_TASK_TITLE_MAX_LENGTH)
+    due_on = models.DateField()
+    created_by = models.ForeignKey(OrganizationMember, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name="created_opportunity_tasks")
+    assigned_to = models.ForeignKey(OrganizationMember, on_delete=models.SET_NULL, null=True, blank=True,
+                                    related_name="assigned_opportunity_tasks")
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(OrganizationMember, on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name="completed_opportunity_tasks")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Opportunity task"
+        ordering = ["due_on", "created_at", "id"]
+        constraints = [
+            models.CheckConstraint(condition=GreaterThan(Length("title"), 0), name="opportunity_task_title_not_empty"),
+            models.CheckConstraint(
+                condition=LessThanOrEqual(Length("title"), OPPORTUNITY_TASK_TITLE_MAX_LENGTH),
+                name="opportunity_task_title_max_length"),
+            # A completer only ever exists on a completed task (it may later be cleared by SET_NULL).
+            models.CheckConstraint(condition=models.Q(completed_by__isnull=True) | models.Q(completed_at__isnull=False),
+                                   name="opportunity_task_completer_needs_completion"),
+        ]
+        indexes = [
+            models.Index(fields=["organization", "opportunity", "due_on"], name="opportunity_task_read_idx"),
+        ]
+
+    def __str__(self):
+        return f"task #{self.pk} · opportunity #{self.opportunity_id} · {self.due_on}"
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
