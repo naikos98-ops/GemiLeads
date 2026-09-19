@@ -72,8 +72,9 @@ Services
 root and criteria inside one transaction; a rejected or failing call writes nothing and leaves an existing Radar
 as it was. ``set_organization_radar_active`` toggles activity under the same activation rule. Every call takes
 the Organization explicitly and refuses a Radar belonging to another organization -- never the logged-in user,
-a session or a current-organization context. Multi-member access stays blocked by G5; there is no URL, view,
-form, API, middleware, task or schedule, and the admin is read-only.
+a session or a current-organization context. Customers reach these services only through ``organization_access``
+(owner/admin of an entitled organization, ``manage_radars``) from the organization's Radars pages; the form is
+``organization_radar_form``. There is no API, middleware, task or schedule, and the admin is read-only.
 
 Nothing here calls GEMI, the web, Stripe or email.
 """

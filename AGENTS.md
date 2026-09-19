@@ -159,6 +159,39 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — Organization Radar: δημιουργία / επεξεργασία από τον πελάτη (2026-09-19).** Το
+  `OrganizationRadar` είναι πλέον customer-creatable/editable από τη σελίδα Radars του οργανισμού.
+  - **Routes** (`organization_views`, πόρτα μόνο το `organization_access`): `/organizations/<id>/radars/new/`
+    (`organization_radar_create`, GET/POST), `/organizations/<id>/radars/<radar_id>/edit/` (`organization_radar_edit`,
+    GET/POST), `/organizations/<id>/radars/<radar_id>/active/` (`organization_radar_active`, POST `active=1|0`).
+  - **Ρόλοι:** μόνο όσοι έχουν `manage_radars` στον πίνακα §64 — **OWNER και ADMIN**. Ο SALES_MANAGER, ο SALES_USER
+    και ο VIEWER **δεν** αλλάζουν Radars (ίδιο 404)· οι ρόλοι με `view_radars` βλέπουν τη λίστα μόνο για ανάγνωση.
+  - **Entitlement:** κάθε ενέργεια περνά από το compatibility layer (`0a1f094`)· μη entitled οργανισμός → legacy
+    paywall, τίποτα δεν γράφεται. Ξένος οργανισμός/Radar → ίδιο 404.
+  - **Πεδία = μόνο ό,τι υποστηρίζει ο matcher (C3/C5):** όνομα, ενεργό, ελάχιστο score (0–100, προαιρετικό), ΚΑΔ
+    (ακριβής κωδικός + έκδοση· αν ο κωδικός υπάρχει σε 2008 και 2026 ζητείται ρητή έκδοση), περιφερειακές ενότητες,
+    δήμοι, νομικές μορφές, οι υλοποιημένοι τύποι γεγονότων, εξαιρέσεις σε ΚΑΔ/ενότητα/δήμο/νομική μορφή.
+  - **Validation:** `gemiapp/organization_radar_form.py` (μόνο πλατφορμικά στοιχεία αναφοράς ΓΕΜΗ, καμία εγγραφή)
+    αντιστοιχίζει κάθε αναφορά σε **παρούσα** γραμμή και καλεί τον ίδιο κανόνα `validate_radar_definition` του C3·
+    ο domain service ξαναελέγχει κατά την εγγραφή (`create_organization_radar` / `replace_organization_radar` /
+    `set_organization_radar_active`, όλα-ή-τίποτα). Απορρίπτονται με ελληνικό μήνυμα: άγνωστοι/αποσυρμένοι/
+    κακοσχηματισμένοι ΚΑΔ και αναφορές, διπλά κριτήρια, ίδιο κριτήριο ως στόχος και εξαίρεση, score εκτός 0–100,
+    μη υλοποιημένοι/άγνωστοι τύποι γεγονότων, ενεργό Radar χωρίς θετικό κριτήριο, κενό/μακρύ όνομα.
+  - **G5:** `get_authorized_radar_editor`, `create_/replace_authorized_organization_radar`,
+    `set_authorized_organization_radar_active` (επανέλεγχος της δρώσας membership υπό κλείδωμα, `RadarRefused`). Η
+    λίστα Radars δείχνει αναγνώσιμη περίληψη κριτηρίων, Ενεργό/Ανενεργό και — για owner/admin — «Νέο Radar»,
+    επεξεργασία, ενεργοποίηση/απενεργοποίηση.
+  - **Στοιχεία αναφοράς ΓΕΜΗ:** στο αντίγραφο της dev βάσης (και μέχρι να τρέξει το reference sync) οι πίνακες
+    ΚΑΔ/περιοχών/νομικών μορφών είναι κενοί → η φόρμα προσφέρει μόνο τύπους γεγονότων, με ρητό μήνυμα.
+  - **Το legacy `CustomerRadar` μένει ξεχωριστό** (`/radars/`)· καμία μετατροπή. **Η ενεργοποίηση pipeline ΔΕΝ έχει
+    γίνει:** ένα ενεργό Radar είναι μόνο ρύθμιση — κανένα LIVE signal, καμία δημιουργία ευκαιριών, καμία
+    ειδοποίηση/audit event/schedule από αποθήκευση ή (απ)ενεργοποίηση.
+  - Guards που ενημερώθηκαν σκόπιμα: routes και imports του `organization_views` (το form module επιτρέπεται και
+    ελέγχεται ότι δεν αγγίζει δεδομένα tenant), C3 guard για τα routes Radars στο `urls.py`.
+  - 16 νέα tests (`test_organization_radar_ui.py`)· **1.899 tests OK** με μία κανονική εκτέλεση (`--parallel 4`)·
+    **καμία migration**. `G0_STATUS = BLOCKED_NO_STAGING`, `G1_STATUS = BLOCKED`, **`PRODUCTION_MIGRATION_STATUS =
+    BLOCKED_BY_G0_G1`**.
+
 - **Gemi Leads 2.0 — Compatibility layer: UserSubscription → Organization (2026-09-19).** Κανόνας συμβατότητας μέχρι
   να αποφασιστεί η ιδιοκτησία του billing.
   - **Το billing μένει user-owned:** Stripe checkout, webhooks και σχήμα `UserSubscription` **αμετάβλητα**· καμία
@@ -1303,7 +1336,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - **Ιδιοκτησία billing — ανοιχτό:** το billing μένει user-owned με entitlement οργανισμού παράγωγο του owner·
   μεταφορά συνδρομής/Stripe customer σε Organization (και θέσεις/seats) είναι ξεχωριστό, ελεγμένο μελλοντικό πακέτο.
 - **Customer workspace — ανοιχτά:** δεν υπάρχει ακόμη customer UI για δημιουργία οργανισμού, πρόσκληση/διαχείριση
-  μελών, ρυθμίσεις/προφίλ/ICP οργανισμού, δημιουργία/επεξεργασία Radars οργανισμού, audit log (D36) και σήμανση
+  μελών, ρυθμίσεις/προφίλ/ICP οργανισμού, audit log (D36) και σήμανση
   «viewed». Απόφαση προϊόντος: αν το `/dashboard/` (Signals) θα ανακατευθύνει τα μέλη στον πίνακα του οργανισμού.
 - **Gemi Leads 2.0 — επόμενη δουλειά: RELEASE READINESS** (όχι feature πακέτο). Η Phase D ολοκληρώθηκε· πρώτα οι
   πύλες G0/G1 που μπλοκάρουν τις production migrations 0032–0054 και την ενεργοποίηση του D37 schedule σε
@@ -1438,6 +1471,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-09-19 — Organization Radar create/edit (customer UI).** Νέα: `gemiapp/organization_radar_form.py`,
+  `templates/organizations/radar_form.html`, `gemiapp/test_organization_radar_ui.py`. Αλλαγές: `organization_access.py`
+  (editor + writes + αναγνώσιμη περίληψη), `organization_views.py`, `urls.py`, `radars.html`, `product-ui.css`,
+  `organization_radars.py` (μόνο docstring), guards. Επαλήθευση: `check`, `makemigrations --check`, 1.899 tests OK,
+  έλεγχος φόρμας στο browser με προσωρινό fixture `WSFIX` που αφαιρέθηκε πλήρως.
 - **2026-09-19 — Compatibility layer UserSubscription → Organization.** Νέα: `gemiapp/organization_entitlement.py`,
   `gemiapp/management/commands/provision_organization_for_user.py`, `gemiapp/test_organization_entitlement.py`.
   Αλλαγές: `organization_access.py` (entitlement στο context, `OrganizationNotEntitled`, πλοήγηση), `organization_views.py`

@@ -1,8 +1,9 @@
 {% extends 'base.html' %}
 {% comment %}
-  Gemi Leads 2.0 — the organization's Radars (C3), read-only, for roles that may read them: state, score threshold,
-  how many criteria of each kind they hold, and how many companies they have found (LIVE-backed opportunities).
-  There is no customer-facing Radar editing yet; nothing here pretends otherwise.
+  Gemi Leads 2.0 — the organization's Radars (C3), for roles that may read them: state, minimum score, a readable
+  summary of the criteria and how many companies they have found (LIVE-backed opportunities). Members who may manage
+  Radars (owner, admin) also get «Νέο Radar», edit, and activate/deactivate; everyone else reads only. Saving or
+  activating a Radar only stores configuration.
 {% endcomment %}
 {% block title %}Radars οργανισμού · Gemi Leads{% endblock %}
 {% block robots %}noindex, nofollow{% endblock %}
@@ -17,7 +18,7 @@
       <h1>Radars</h1>
     </div>
     <div></div>
-    <div></div>
+    <div>{% if listing.can_manage %}<a href="{% url 'organization_radar_create' organization_id %}" class="product-ink-button" data-new-radar>Νέο Radar</a>{% endif %}</div>
   </div>
   <section class="product-workspace-section" id="radars">
     <h2><span>RADARS ΤΟΥ ΟΡΓΑΝΙΣΜΟΥ</span></h2>
@@ -25,18 +26,31 @@
     <div class="product-workspace-row" data-radar="{{ radar.radar_id }}">
       <div style="min-width: 0;">
         <p style="margin: 0; font-size: var(--type-body); font-weight: 700; overflow-wrap: anywhere;">{{ radar.name }}</p>
-        <p style="margin: 3px 0 0; font-family: ui-monospace, monospace; font-size: var(--type-meta); color: var(--product-muted);">
-          {{ radar.kads }} ΚΑΔ · {{ radar.regions }} περιοχές · {{ radar.legal_forms }} νομικές μορφές · {{ radar.signal_types }} τύποι γεγονότων · {{ radar.exclusions }} αποκλεισμοί
-          {% if radar.score_threshold is not None %} · ελάχιστο score {{ radar.score_threshold }}{% endif %}
+        {% for heading, values in radar.summary %}
+        <p style="margin: 3px 0 0; font-size: var(--type-small); overflow-wrap: anywhere;" data-criteria="{{ heading }}">
+          <span style="font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 600; color: var(--product-muted);">{{ heading|upper }}</span>
+          {{ values|join:" · " }}
         </p>
+        {% empty %}
+        <p style="margin: 3px 0 0; font-size: var(--type-small); color: var(--product-muted);" data-no-criteria>Χωρίς κριτήρια ακόμη.</p>
+        {% endfor %}
+        {% if radar.score_threshold is not None %}<p style="margin: 3px 0 0; font-size: var(--type-small);">Ελάχιστο score: {{ radar.score_threshold }}</p>{% endif %}
       </div>
       <div style="text-align: right; font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">
-        <span style="display: block; font-weight: 700; text-transform: uppercase;">{% if radar.active %}Ενεργό{% else %}Ανενεργό{% endif %}</span>
+        <span style="display: block; font-weight: 700; text-transform: uppercase;" data-radar-state="{% if radar.active %}active{% else %}inactive{% endif %}">{% if radar.active %}Ενεργό{% else %}Ανενεργό{% endif %}</span>
         <a href="{% url 'organization_opportunities' organization_id %}?status=all&amp;radar={{ radar.radar_id }}">{{ radar.opportunities }} εταιρείες →</a>
+        {% if listing.can_manage %}
+        <a href="{% url 'organization_radar_edit' organization_id radar.radar_id %}" style="display: block; margin-top: 6px;" data-edit-radar>Επεξεργασία</a>
+        <form method="post" action="{% url 'organization_radar_active' organization_id radar.radar_id %}" style="margin-top: 6px;" data-toggle-radar>
+          {% csrf_token %}
+          <input type="hidden" name="active" value="{% if radar.active %}0{% else %}1{% endif %}">
+          <button type="submit" class="product-text-button">{% if radar.active %}Απενεργοποίηση{% else %}Ενεργοποίηση{% endif %}</button>
+        </form>
+        {% endif %}
       </div>
     </div>
     {% empty %}
-    <p class="product-workspace-empty" data-empty="radars">Ο οργανισμός δεν έχει ακόμη Radars. Χωρίς Radar δεν εντοπίζονται ευκαιρίες.</p>
+    <p class="product-workspace-empty" data-empty="radars">Ο οργανισμός δεν έχει ακόμη Radars. Χωρίς Radar δεν εντοπίζονται ευκαιρίες.{% if listing.can_manage %} Ξεκίνα με «Νέο Radar».{% endif %}</p>
     {% endfor %}
   </section>
 </div>

@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% comment %}
+  Gemi Leads 2.0 — create / edit one Organization Radar (owner or admin of an entitled organization). The fields are
+  exactly the criteria the matcher supports (C3/C5): name, active, minimum score, exact KADs, prefectures and
+  municipalities, legal forms, implemented signal types, and exclusions on KAD / prefecture / municipality / legal
+  form. Choices come from the present GEMI reference data; option values are internal keys, never shown. Validation
+  is the C3 domain rule, reported in Greek. Saving a Radar only stores configuration: nothing is matched or created.
+{% endcomment %}
+{% block title %}{% if editor.radar_id %}Επεξεργασία Radar{% else %}Νέο Radar{% endif %} · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block content %}
+{% include "organizations/_workspace_bar.html" %}
+{% with organization_id=editor.workspace.organization_id v=form.values %}
+<div class="product-workspace">
+  <div class="product-pagehead">
+    <div>
+      <p class="product-eyebrow">RADARS ΟΡΓΑΝΙΣΜΟΥ</p>
+      <h1>{% if editor.radar_id %}Επεξεργασία Radar{% else %}Νέο Radar{% endif %}</h1>
+    </div>
+    <div></div>
+    <div></div>
+  </div>
+
+  {% if form.errors %}
+  <div class="product-workspace-errors" role="alert" data-form-errors>
+    <p>Το Radar δεν αποθηκεύτηκε:</p>
+    <ul>{% for error in form.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <form method="post" class="product-radar-form" data-radar-form>
+    {% csrf_token %}
+    <section class="product-workspace-section">
+      <h2><span>ΒΑΣΙΚΑ ΣΤΟΙΧΕΙΑ</span></h2>
+      <div class="product-radar-fields">
+        <label>ΟΝΟΜΑ
+          <input name="name" value="{{ v.name }}" maxlength="80" required>
+        </label>
+        <label>ΕΛΑΧΙΣΤΟ SCORE (0–100, ΠΡΟΑΙΡΕΤΙΚΟ)
+          <input name="score_threshold" value="{{ v.score_threshold }}" inputmode="numeric" placeholder="—">
+        </label>
+        <label class="product-radar-check">
+          <input type="checkbox" name="active" value="1" {% if v.active %}checked{% endif %}> Ενεργό Radar
+        </label>
+      </div>
+      <p class="product-workspace-note">Ένα ενεργό Radar χρειάζεται τουλάχιστον έναν ΚΑΔ, μία περιοχή, μία νομική μορφή ή έναν τύπο γεγονότος. Ένα ανενεργό μπορεί να μείνει πρόχειρο.</p>
+    </section>
+
+    <section class="product-workspace-section">
+      <h2><span>ΣΤΟΧΕΥΣΗ</span></h2>
+      <div class="product-radar-fields">
+        <fieldset>
+          <legend>ΓΕΓΟΝΟΤΑ ΠΟΥ ΠΑΡΑΚΟΛΟΥΘΕΙ</legend>
+          {% for value, label in choices.signal_types %}
+          <label class="product-radar-check"><input type="checkbox" name="signal_types" value="{{ value }}" {% if value in v.signal_types %}checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+        </fieldset>
+        {% if choices.reference_available %}
+        <label>ΚΑΔ (ΕΝΑΣ ΑΝΑ ΓΡΑΜΜΗ)
+          <textarea name="kads" rows="4" placeholder="62010000&#10;62010000 2026">{{ v.kads }}</textarea>
+          <small>Αν ο κωδικός υπάρχει και στις δύο εκδόσεις, πρόσθεσε την έκδοση (2008 ή 2026).</small>
+        </label>
+        <label>ΠΕΡΙΦΕΡΕΙΑΚΕΣ ΕΝΟΤΗΤΕΣ
+          <select name="prefectures" multiple size="6">
+            {% for pk, label in choices.prefectures %}<option value="{{ pk }}" {% if pk|stringformat:"s" in v.prefectures %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>ΔΗΜΟΙ
+          <select name="municipalities" multiple size="6">
+            {% for pk, label in choices.municipalities %}<option value="{{ pk }}" {% if pk|stringformat:"s" in v.municipalities %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <fieldset>
+          <legend>ΝΟΜΙΚΕΣ ΜΟΡΦΕΣ</legend>
+          {% for pk, label in choices.legal_forms %}
+          <label class="product-radar-check"><input type="checkbox" name="legal_forms" value="{{ pk }}" {% if pk|stringformat:"s" in v.legal_forms %}checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+        </fieldset>
+        {% endif %}
+      </div>
+      {% if not choices.reference_available %}
+      <p class="product-workspace-note" data-reference-unavailable>Η στόχευση ανά ΚΑΔ, περιοχή και νομική μορφή δεν είναι ακόμη διαθέσιμη. Μπορείς να ορίσεις το Radar με τα γεγονότα που παρακολουθεί.</p>
+      {% endif %}
+    </section>
+
+    {% if choices.reference_available %}
+    <section class="product-workspace-section">
+      <h2><span>ΕΞΑΙΡΕΣΕΙΣ</span></h2>
+      <div class="product-radar-fields">
+        <label>ΚΑΔ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ (ΕΝΑΣ ΑΝΑ ΓΡΑΜΜΗ)
+          <textarea name="excluded_kads" rows="3">{{ v.excluded_kads }}</textarea>
+        </label>
+        <label>ΠΕΡΙΦΕΡΕΙΑΚΕΣ ΕΝΟΤΗΤΕΣ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ
+          <select name="excluded_prefectures" multiple size="5">
+            {% for pk, label in choices.prefectures %}<option value="{{ pk }}" {% if pk|stringformat:"s" in v.excluded_prefectures %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>ΔΗΜΟΙ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ
+          <select name="excluded_municipalities" multiple size="5">
+            {% for pk, label in choices.municipalities %}<option value="{{ pk }}" {% if pk|stringformat:"s" in v.excluded_municipalities %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        <fieldset>
+          <legend>ΝΟΜΙΚΕΣ ΜΟΡΦΕΣ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ</legend>
+          {% for pk, label in choices.legal_forms %}
+          <label class="product-radar-check"><input type="checkbox" name="excluded_legal_forms" value="{{ pk }}" {% if pk|stringformat:"s" in v.excluded_legal_forms %}checked{% endif %}> {{ label }}</label>
+          {% endfor %}
+        </fieldset>
+      </div>
+    </section>
+    {% endif %}
+
+    <div class="product-workspace-filters">
+      <button type="submit" class="product-ink-button">Αποθήκευση</button>
+      <a href="{% url 'organization_radars' organization_id %}" class="product-text-button">Ακύρωση</a>
+    </div>
+  </form>
+</div>
+{% endwith %}
+{% endblock %}

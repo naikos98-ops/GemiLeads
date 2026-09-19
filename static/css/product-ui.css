@@ -473,6 +473,79 @@ body.product-body {
   font-size: var(--type-body);
 }
 
+/* Organization Radar form (create / edit): the filter grammar above, stacked. */
+.product-workspace-errors {
+  margin: 0;
+  padding: 14px 28px;
+  background: var(--product-white);
+  border-bottom: 1px solid var(--product-ink);
+  box-shadow: inset 3px 0 var(--product-amber);
+  font-size: var(--type-small);
+  color: #775215;
+}
+
+.product-workspace-errors p,
+.product-workspace-errors ul {
+  margin: 0;
+}
+
+.product-workspace-errors ul {
+  padding-left: 18px;
+}
+
+.product-radar-fields {
+  padding: 16px 28px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.product-radar-fields label,
+.product-radar-fields legend {
+  display: grid;
+  gap: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 600;
+  color: var(--product-muted);
+}
+
+.product-radar-fields fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.product-radar-fields input:not([type="checkbox"]),
+.product-radar-fields select,
+.product-radar-fields textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border: 1px solid var(--product-line);
+  background: var(--product-white);
+  color: var(--product-ink);
+  font-family: Inter, sans-serif;
+  font-size: var(--type-body);
+}
+
+.product-radar-fields small {
+  font-weight: 400;
+}
+
+.product-radar-fields .product-radar-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: Inter, sans-serif;
+  font-size: var(--type-small);
+  font-weight: 500;
+  color: var(--product-ink);
+}
+
 /* MAIN CONTENT CONTAINER */
 .product-main {
   margin-left: var(--product-rail-width);
@@ -1377,6 +1450,8 @@ body.product-body {
   }
 
   .product-workspace-bar,
+  .product-workspace-errors,
+  .product-radar-fields,
   .product-workspace-section h2,
   .product-workspace-row,
   .product-workspace-empty,

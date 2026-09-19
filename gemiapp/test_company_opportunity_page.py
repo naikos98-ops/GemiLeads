@@ -337,14 +337,27 @@ class SafetyTests(PageTestCase):
 
     def test_the_route_reaches_tenant_data_only_through_the_authorization_layer(self):
         source = inspect.getsource(organization_views).split('"""', 2)[2]
-        # The only project import is the authorization layer (D30 added its Save entry point to the same import).
+        # The only project imports are the authorization layer (D30 added its Save entry point to the same import)
+        # and, since customer Radar editing, the Radar form -- which reads platform GEMI reference data only.
         self.assertEqual([line for line in source.splitlines() if line.startswith(("from .", "import ."))],
-                         ["from .organization_access import ("])
+                         ["from .organization_access import (",
+                          "from .organization_radar_form import initial_radar_form, parse_radar_form, "
+                          "radar_error_message, radar_form_choices"])
+        form_code = pathlib.Path("gemiapp/organization_radar_form.py").read_text(encoding="utf-8").split('"""', 2)[2]
+        for forbidden in ("organization_access", "Organization\"", "OrganizationRadar", "Opportunity", "request.user",
+                          "session", ".save(", "bulk_", "select_for_update"):
+            self.assertNotIn(forbidden, form_code, forbidden)
+        import re as regex
+
+        self.assertFalse(regex.findall(r"objects[^\n]*\.(?:update|delete|create|get_or_create)\(", form_code))
         imported = source.split("from .organization_access import (", 1)[1].split(")", 1)[0]
         self.assertEqual({name.strip() for name in imported.split(",") if name.strip()},
                          {"AssignmentRefused", "DoNotContactRefused", "NoteRefused", "OpportunityTransitionRefused",
                           "OrganizationAccessDenied", "StatusChangeRefused", "TaskRefused",
                           "OrganizationNotEntitled",  # compatibility layer: a member of an unpaid organization
+                          # customer Radar create / edit / activate
+                          "RadarRefused", "create_authorized_organization_radar", "get_authorized_radar_editor",
+                          "replace_authorized_organization_radar", "set_authorized_organization_radar_active",
                           "add_authorized_opportunity_note", "apply_authorized_company_do_not_contact",
                           "assign_authorized_opportunity", "get_authorized_notifications",
                           "get_authorized_unread_notification_count", "mark_all_authorized_notifications_read",
@@ -389,6 +402,9 @@ class SafetyTests(PageTestCase):
                           "organizations/<int:organization_id>/opportunities/",
                           "organizations/<int:organization_id>/tasks/",
                           "organizations/<int:organization_id>/radars/",
+                          "organizations/<int:organization_id>/radars/new/",
+                          "organizations/<int:organization_id>/radars/<int:radar_id>/edit/",
+                          "organizations/<int:organization_id>/radars/<int:radar_id>/active/",
                           "organizations/<int:organization_id>/opportunities/company/<int:company_id>/",
                           "organizations/<int:organization_id>/opportunities/company/<int:company_id>/do-not-contact/",
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/save/",

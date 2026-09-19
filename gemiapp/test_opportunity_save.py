@@ -135,8 +135,11 @@ class TransitionTests(SaveTestCase):
         self.assertEqual([n for n in names if "status" in n and "organization" in n], ["organization_opportunity_status"])
         code = inspect.getsource(g5)
         self.assertNotIn("set_opportunity_status", code)  # the unscoped C8 setter never reaches customer code
-        self.assertEqual(code.count("def set_"), 1)
-        self.assertIn("def set_authorized_opportunity_status(", code)
+        import re
+
+        # One opportunity status setter (D32); the other setter is a Radar's own active flag (customer Radar editing).
+        self.assertEqual(sorted(re.findall(r"def (set_\w+)\(", code)),
+                         ["set_authorized_opportunity_status", "set_authorized_organization_radar_active"])
         for definition in ("def unsave", "def restore", "def toggle", "def change_status"):
             self.assertNotIn(definition, code, definition)
 

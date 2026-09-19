@@ -1584,12 +1584,14 @@ class WorkspaceRadar:
     signal_types: int
     exclusions: int
     opportunities: int             # companies with a visible LIVE-backed opportunity found by this Radar
+    summary: tuple = ()            # (label, readable values) per criterion kind that the Radar uses
 
 
 @dataclass(frozen=True)
 class WorkspaceRadarList:
     workspace: Workspace
     radars: tuple
+    can_manage: bool = False       # may create, edit and (de)activate Radars
 
 
 def get_workspace_navigation(user, current_organization_id=None) -> WorkspaceNavigation:
@@ -1750,24 +1752,146 @@ def get_authorized_workspace_tasks(user, organization_id) -> WorkspaceTaskList:
 
 def get_authorized_workspace_radars(user, organization_id) -> WorkspaceRadarList:
     """The organization's Radars with their criteria counts, for roles that may read them. Read-only."""
+    from .company_opportunity_page import SIGNAL_LABELS
+
     context, _, workspace = _workspace_entry(user, organization_id)
     radars = list(organization_radars_for(context).order_by("-active", "name", "pk")
                   .values_list("pk", "name", "active", "score_threshold"))
     ids = [row[0] for row in radars]
 
-    def per_radar(queryset, counted="pk", distinct=False):
-        if not ids:
-            return {}
-        return dict(queryset.filter(radar_id__in=ids).order_by().values("radar_id")
-                    .annotate(n=Count(counted, distinct=distinct)).values_list("radar_id", "n"))
+    def labels(model, *fields, render):
+        """Readable criteria per Radar (one query per criteria table), in insertion order."""
+        grouped = {}
+        if ids:
+            for row in (_model(model).objects.filter(radar_id__in=ids).order_by("radar_id", "pk")
+                        .values_list("radar_id", *fields)):
+                grouped.setdefault(row[0], []).append(render(*row[1:]))
+        return grouped
 
-    counts = {name: per_radar(_model(model).objects) for name, model in (
-        ("kads", "OrganizationRadarKad"), ("regions", "OrganizationRadarRegion"),
-        ("legal_forms", "OrganizationRadarLegalForm"), ("signal_types", "OrganizationRadarSignalType"),
-        ("exclusions", "OrganizationRadarExclusion"))}
-    opportunities = per_radar(_live_opportunities(context), counted="company_id", distinct=True)
-    return WorkspaceRadarList(workspace=workspace, radars=tuple(
+    def kad(code, version, description=None):
+        text = f"{code} ({version.replace('kad_', '')})" if version else code
+        return f"{text} {description}".strip() if description else text
+
+    criteria = {
+        "kads": labels("OrganizationRadarKad", "kad__source_id", "kad__kad_version", "kad__description", render=kad),
+        "regions": labels("OrganizationRadarRegion", "prefecture__description", "municipality__description",
+                          render=lambda prefecture, municipality: prefecture or municipality or "—"),
+        "legal_forms": labels("OrganizationRadarLegalForm", "legal_type__description",
+                              render=lambda description: description or "—"),
+        "signal_types": labels("OrganizationRadarSignalType", "signal_type",
+                               render=lambda value: SIGNAL_LABELS.get(value, value)),
+        "exclusions": labels("OrganizationRadarExclusion", "kad__source_id", "kad__kad_version",
+                             "prefecture__description", "municipality__description", "legal_type__description",
+                             render=lambda code, version, prefecture, municipality, legal: (
+                                 kad(code, version) if code else prefecture or municipality or legal or "—")),
+    }
+    headings = (("kads", "ΚΑΔ"), ("regions", "Περιοχές"), ("legal_forms", "Νομικές μορφές"),
+                ("signal_types", "Γεγονότα"), ("exclusions", "Εξαιρούνται"))
+    opportunities = {}
+    if ids:
+        opportunities = dict(_live_opportunities(context).filter(radar_id__in=ids).order_by().values("radar_id")
+                             .annotate(n=Count("company_id", distinct=True)).values_list("radar_id", "n"))
+    return WorkspaceRadarList(workspace=workspace, can_manage=can(context, Capability.MANAGE_RADARS), radars=tuple(
         WorkspaceRadar(radar_id=pk, name=name, active=active, score_threshold=threshold,
                        opportunities=opportunities.get(pk, 0),
-                       **{key: values.get(pk, 0) for key, values in counts.items()})
+                       summary=tuple((heading, criteria[key][pk]) for key, heading in headings if criteria[key].get(pk)),
+                       **{key: len(values.get(pk, ())) for key, values in criteria.items()})
         for pk, name, active, threshold in radars))
+
+
+# --- Organization Radars: create, edit, activate ---------------------------------------------------------------
+#
+# The C3 domain service (``gemiapp.organization_radars``) owns every Radar rule and writes root and criteria in one
+# transaction. This layer decides only who may call it: a member of the route's organization, whose organization is
+# entitled (the context already requires that), holding ``manage_radars`` -- OWNER and ADMIN in the §64 table; a
+# sales manager, sales user or viewer is the same refusal as a stranger. A Radar id is resolved only inside the
+# organization, so another tenant's Radar is the single refusal too. Inside the one transaction the acting
+# membership is re-read under lock (removed or changed since the context was resolved -> refusal). A domain rejection
+# (``RadarError``) becomes ``RadarRefused`` and writes nothing. Configuration only: creating, editing or activating a
+# Radar runs no matching, creates no signal, opportunity, notification or audit event and schedules nothing.
+
+
+class RadarRefused(Exception):
+    """The Radar definition broke a C3 rule. Nothing was written; ``error`` is the domain ``RadarError``."""
+
+    def __init__(self, error):
+        super().__init__(str(error))
+        self.error = error
+
+
+@dataclass(frozen=True)
+class RadarEditor:
+    workspace: Workspace
+    radar_id: int | None          # None when creating
+    definition: object | None     # the stored C3 RadarDefinition when editing
+
+
+@dataclass(frozen=True)
+class RadarWriteResult:
+    organization_id: int
+    radar_id: int
+    name: str
+    active: bool
+
+
+def _radar_manager(user, organization_id):
+    context, organization, workspace = _workspace_entry(user, organization_id)
+    require(context, Capability.MANAGE_RADARS)
+    return context, organization, workspace
+
+
+def _organization_radar(context: OrganizationAccessContext, radar_id):
+    radar = organization_radars_for(context).filter(pk=_object_id(radar_id)).first()
+    if radar is None:
+        raise OrganizationAccessDenied()
+    return radar
+
+
+def get_authorized_radar_editor(user, organization_id, radar_id=None) -> RadarEditor:
+    """What the create/edit form starts from, for a member who may manage this organization's Radars."""
+    from .organization_radars import get_organization_radar_definition
+
+    context, organization, workspace = _radar_manager(user, organization_id)
+    if radar_id is None:
+        return RadarEditor(workspace=workspace, radar_id=None, definition=None)
+    radar = _organization_radar(context, radar_id)
+    return RadarEditor(workspace=workspace, radar_id=radar.pk,
+                       definition=get_organization_radar_definition(organization, radar))
+
+
+def _write_radar(user, organization_id, radar_id, write):
+    from .organization_radars import RadarError
+
+    context, organization, _ = _radar_manager(user, organization_id)
+    radar = _organization_radar(context, radar_id) if radar_id is not None else None
+    try:
+        with _mutation():
+            _lock_memberships(context, [context.membership_id])
+            row = write(organization, radar)
+    except RadarError as error:
+        raise RadarRefused(error) from None
+    return RadarWriteResult(organization_id=organization.pk, radar_id=row.pk, name=row.name, active=row.active)
+
+
+def create_authorized_organization_radar(user, organization_id, definition) -> RadarWriteResult:
+    """Create one Radar of this organization from a complete C3 definition (validated again by the domain)."""
+    from .organization_radars import create_organization_radar
+
+    return _write_radar(user, organization_id, None,
+                        lambda organization, _: create_organization_radar(organization, definition))
+
+
+def replace_authorized_organization_radar(user, organization_id, radar_id, definition) -> RadarWriteResult:
+    """Replace the whole configuration of one of this organization's Radars, all-or-nothing."""
+    from .organization_radars import replace_organization_radar
+
+    return _write_radar(user, organization_id, radar_id,
+                        lambda organization, radar: replace_organization_radar(organization, radar, definition))
+
+
+def set_authorized_organization_radar_active(user, organization_id, radar_id, active: bool) -> RadarWriteResult:
+    """Activate or deactivate one of this organization's Radars (an active one needs a positive criterion)."""
+    from .organization_radars import set_organization_radar_active
+
+    return _write_radar(user, organization_id, radar_id,
+                        lambda organization, radar: set_organization_radar_active(organization, radar, active))

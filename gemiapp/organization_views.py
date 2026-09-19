@@ -14,6 +14,10 @@ opportunity list (with the Saved view), its open tasks and its Radars -- four re
 links are built from the user's own memberships, each carrying its explicit organization id; the processor is lazy,
 so a page that never renders the product navigation (or a signed-out visitor) runs no query.
 
+Organization Radars can be created, edited and (de)activated by the members allowed to manage them (owner, admin);
+the posted form is parsed by ``gemiapp.organization_radar_form`` (platform GEMI reference data only) into a C3
+definition, and ``organization_access`` decides whether it may be written.
+
 Membership is necessary but not sufficient: the organization must be entitled through its owner's subscription
 (``gemiapp.organization_entitlement``). A member of an organization that is not gets the legacy paywall -- a message
 and the pricing page -- instead of the page; everyone else still gets the same 404.
@@ -21,14 +25,15 @@ and the pricing page -- instead of the page; everyone else still gets the same 4
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.http import Http404, HttpResponseNotAllowed
 from django.shortcuts import redirect, render
 from django.utils.functional import SimpleLazyObject
 from django.views.decorators.http import require_GET, require_POST
 
 from .organization_access import (
     AssignmentRefused, DoNotContactRefused, NoteRefused, OpportunityTransitionRefused, OrganizationAccessDenied,
-    OrganizationNotEntitled,
+    OrganizationNotEntitled, RadarRefused, create_authorized_organization_radar, get_authorized_radar_editor,
+    replace_authorized_organization_radar, set_authorized_organization_radar_active,
     StatusChangeRefused, TaskRefused, add_authorized_opportunity_note, apply_authorized_company_do_not_contact,
     assign_authorized_opportunity, complete_authorized_opportunity_task, create_authorized_opportunity_task,
     get_authorized_company_opportunity_page, get_authorized_notifications, get_authorized_unread_notification_count,
@@ -36,6 +41,7 @@ from .organization_access import (
     get_authorized_workspace_tasks, get_workspace_navigation, mark_all_authorized_notifications_read,
     mark_authorized_notification_read, save_authorized_opportunity, set_authorized_opportunity_status,
 )
+from .organization_radar_form import initial_radar_form, parse_radar_form, radar_error_message, radar_form_choices
 
 ENTITLEMENT_REQUIRED_MESSAGE = "Απαιτείται ενεργή συνδρομή του ιδιοκτήτη του οργανισμού."
 
@@ -57,6 +63,8 @@ WORKSPACE_SECTIONS = {
     "organization_company_opportunity": "opportunities",
     "organization_tasks": "tasks",
     "organization_radars": "radars",
+    "organization_radar_create": "radars",
+    "organization_radar_edit": "radars",
     "organization_notifications": "notifications",
 }
 
@@ -324,3 +332,61 @@ def mark_all_notifications_read(request, organization_id):
     except OrganizationAccessDenied as refused:
         return _refuse(request, refused)
     return redirect("organization_notifications", organization_id=result.organization_id)
+
+
+def _radar_form_page(request, organization_id, radar_id=None):
+    """Create (no ``radar_id``) or edit one Organization Radar: GET shows the form, POST validates and writes."""
+    if request.method not in ("GET", "HEAD", "POST"):
+        return HttpResponseNotAllowed(["GET", "POST"])
+    try:
+        editor = get_authorized_radar_editor(request.user, organization_id, radar_id)
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
+    if request.method != "POST":
+        form = initial_radar_form(editor.definition)
+    else:
+        form = parse_radar_form(request.POST)
+        if form.is_valid:
+            try:
+                if radar_id is None:
+                    result = create_authorized_organization_radar(request.user, organization_id, form.definition)
+                else:
+                    result = replace_authorized_organization_radar(request.user, organization_id, radar_id,
+                                                                   form.definition)
+            except OrganizationAccessDenied as refused:
+                return _refuse(request, refused)
+            except RadarRefused as refused:
+                form.errors.append(radar_error_message(refused.error))
+            else:
+                messages.success(request, "Το Radar δημιουργήθηκε." if radar_id is None else "Το Radar ενημερώθηκε.")
+                return redirect("organization_radars", organization_id=result.organization_id)
+    return render(request, "organizations/radar_form.html",
+                  {"editor": editor, "form": form, "choices": radar_form_choices()})
+
+
+@login_required
+def workspace_radar_create(request, organization_id):
+    """A new Organization Radar (owner/admin of an entitled organization)."""
+    return _radar_form_page(request, organization_id)
+
+
+@login_required
+def workspace_radar_edit(request, organization_id, radar_id):
+    """Edit one of this organization's Radars; its whole configuration is replaced atomically."""
+    return _radar_form_page(request, organization_id, radar_id)
+
+
+@login_required
+@require_POST
+def workspace_radar_active(request, organization_id, radar_id):
+    """Activate (``active=1``) or deactivate one of this organization's Radars, then back to the Radars page."""
+    try:
+        result = set_authorized_organization_radar_active(request.user, organization_id, radar_id,
+                                                          request.POST.get("active") == "1")
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
+    except RadarRefused as refused:
+        messages.error(request, radar_error_message(refused.error))
+    else:
+        messages.success(request, "Το Radar ενεργοποιήθηκε." if result.active else "Το Radar απενεργοποιήθηκε.")
+    return redirect("organization_radars", organization_id=organization_id)
