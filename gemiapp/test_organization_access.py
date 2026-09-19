@@ -38,6 +38,7 @@ from .organizations import add_organization_member, create_organization
 from .services import company_matches_radar, eligible_radars, send_digests
 from .test_gemi_company_activities import entitled_user, radar_for
 from .test_opportunity_feed import FeedTestCase
+from .test_organization_radars import entitle
 from .test_organization_radar_matching import PRIVATE, T0, make_company, new_company_signal, snapshot
 
 ROLES = ("owner", "admin", "sales_manager", "sales_user", "viewer")
@@ -79,7 +80,7 @@ class AccessTestCase(FeedTestCase):
         for role in ROLES[1:]:
             self.members[role] = user(f"{role}@a.example.com")
             add_organization_member(self.org, self.members[role], role)
-        self.b_owner = user("owner@b.example.com")
+        self.b_owner = entitle(user("owner@b.example.com"))
         self.org_b = create_organization(owner=self.b_owner, name="Tenant B").organization
         self.radar_b_foreign = create_organization_radar(self.org_b, RadarDefinition(
             name="B secret radar", active=True, signal_types=("new_company",)))

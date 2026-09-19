@@ -13,6 +13,10 @@ opportunity list (with the Saved view), its open tasks and its Radars -- four re
 ``workspace_navigation``, the template context processor behind the workspace links in the product navigation. The
 links are built from the user's own memberships, each carrying its explicit organization id; the processor is lazy,
 so a page that never renders the product navigation (or a signed-out visitor) runs no query.
+
+Membership is necessary but not sufficient: the organization must be entitled through its owner's subscription
+(``gemiapp.organization_entitlement``). A member of an organization that is not gets the legacy paywall -- a message
+and the pricing page -- instead of the page; everyone else still gets the same 404.
 """
 
 from django.contrib import messages
@@ -24,6 +28,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from .organization_access import (
     AssignmentRefused, DoNotContactRefused, NoteRefused, OpportunityTransitionRefused, OrganizationAccessDenied,
+    OrganizationNotEntitled,
     StatusChangeRefused, TaskRefused, add_authorized_opportunity_note, apply_authorized_company_do_not_contact,
     assign_authorized_opportunity, complete_authorized_opportunity_task, create_authorized_opportunity_task,
     get_authorized_company_opportunity_page, get_authorized_notifications, get_authorized_unread_notification_count,
@@ -31,6 +36,19 @@ from .organization_access import (
     get_authorized_workspace_tasks, get_workspace_navigation, mark_all_authorized_notifications_read,
     mark_authorized_notification_read, save_authorized_opportunity, set_authorized_opportunity_status,
 )
+
+ENTITLEMENT_REQUIRED_MESSAGE = "Απαιτείται ενεργή συνδρομή του ιδιοκτήτη του οργανισμού."
+
+
+def _refuse(request, refused):
+    """Every refusal is the same 404 -- except for a member of an organization whose owner has no entitlement, who
+    gets the legacy product's paywall (message + pricing), exactly like a paid legacy feature. Nothing of the tenant's
+    data is rendered either way."""
+    if isinstance(refused, OrganizationNotEntitled):
+        messages.error(request, ENTITLEMENT_REQUIRED_MESSAGE)
+        return redirect("pricing")
+    raise Http404()
+
 
 # Which workspace section a route belongs to, for the navigation's active state.
 WORKSPACE_SECTIONS = {
@@ -71,8 +89,8 @@ def workspace_dashboard(request, organization_id):
     """The organization's home screen: counts, top active opportunities, tasks needing attention, notifications."""
     try:
         dashboard = get_authorized_workspace_dashboard(request.user, organization_id)
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     return render(request, "organizations/dashboard.html", {"dashboard": dashboard})
 
 
@@ -84,8 +102,8 @@ def workspace_opportunities(request, organization_id):
         listing = get_authorized_workspace_opportunities(
             request.user, organization_id, view=request.GET.get("status"),
             radar_id=_optional_id(request.GET.get("radar")), cursor=request.GET.get("cursor") or None)
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     return render(request, "organizations/opportunities.html", {"listing": listing})
 
 
@@ -95,8 +113,8 @@ def workspace_tasks(request, organization_id):
     """The open tasks of the opportunities this member may see."""
     try:
         listing = get_authorized_workspace_tasks(request.user, organization_id)
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     return render(request, "organizations/tasks.html", {"listing": listing})
 
 
@@ -106,8 +124,8 @@ def workspace_radars(request, organization_id):
     """The organization's Radars (read-only), for roles that may read them."""
     try:
         listing = get_authorized_workspace_radars(request.user, organization_id)
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     return render(request, "organizations/radars.html", {"listing": listing})
 
 
@@ -117,8 +135,8 @@ def company_opportunity_page(request, organization_id, company_id):
     """D29 / §36: one company, as one organization's member may see it."""
     try:
         page = get_authorized_company_opportunity_page(request.user, organization_id, company_id)
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     return render(request, "organizations/company_opportunity.html", {"page": page})
 
 
@@ -131,8 +149,8 @@ def save_opportunity(request, organization_id, opportunity_id):
     """
     try:
         result = save_authorized_opportunity(request.user, organization_id, opportunity_id)
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     except OpportunityTransitionRefused as refused:
         messages.error(request, OpportunityTransitionRefused.MESSAGE)
         result = refused.result
@@ -154,8 +172,8 @@ def assign_opportunity(request, organization_id, opportunity_id):
     try:
         result = assign_authorized_opportunity(request.user, organization_id, opportunity_id,
                                                request.POST.get("assignee_membership_id"))
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     except AssignmentRefused as refused:
         messages.error(request, str(refused))
         result = refused.result
@@ -177,8 +195,8 @@ def change_opportunity_status(request, organization_id, opportunity_id):
     try:
         result = set_authorized_opportunity_status(request.user, organization_id, opportunity_id,
                                                    request.POST.get("status"))
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     except StatusChangeRefused as refused:
         messages.error(request, str(refused))
         result = refused.result
@@ -200,8 +218,8 @@ def add_opportunity_note(request, organization_id, opportunity_id):
     try:
         result = add_authorized_opportunity_note(request.user, organization_id, opportunity_id,
                                                  request.POST.get("body"))
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     except NoteRefused as refused:
         messages.error(request, str(refused))
         result = refused.result
@@ -223,8 +241,8 @@ def create_opportunity_task(request, organization_id, opportunity_id):
         result = create_authorized_opportunity_task(request.user, organization_id, opportunity_id,
                                                     request.POST.get("title"), request.POST.get("due_on"),
                                                     request.POST.get("assignee_membership_id"))
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     except TaskRefused as refused:
         messages.error(request, str(refused))
         result = refused.result
@@ -240,8 +258,8 @@ def complete_opportunity_task(request, organization_id, opportunity_id, task_id)
     """D34: complete one task of one explicit opportunity (again: no change), then back to its company page."""
     try:
         result = complete_authorized_opportunity_task(request.user, organization_id, opportunity_id, task_id)
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     if result.changed:
         messages.success(request, "Η εργασία ολοκληρώθηκε.")
     return redirect("organization_company_opportunity", organization_id=result.organization_id,
@@ -261,8 +279,8 @@ def company_do_not_contact(request, organization_id, company_id):
         result = apply_authorized_company_do_not_contact(request.user, organization_id, company_id,
                                                          request.POST.get("reason"),
                                                          request.POST.get("confirm") == "yes")
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     except DoNotContactRefused as refused:
         messages.error(request, str(refused))
         result = refused.result
@@ -280,8 +298,8 @@ def notifications_page(request, organization_id):
     try:
         entries = get_authorized_notifications(request.user, organization_id)
         unread = get_authorized_unread_notification_count(request.user, organization_id)
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     return render(request, "organizations/notifications.html",
                   {"organization_id": organization_id, "entries": entries, "unread": unread})
 
@@ -292,8 +310,8 @@ def mark_notification_read(request, organization_id, notification_id):
     """D37: mark one own notification read (already read: no change), then back to the notifications page."""
     try:
         result = mark_authorized_notification_read(request.user, organization_id, notification_id)
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     return redirect("organization_notifications", organization_id=result.organization_id)
 
 
@@ -303,6 +321,6 @@ def mark_all_notifications_read(request, organization_id):
     """D37: mark every own unread notification in this organization read, then back to the notifications page."""
     try:
         result = mark_all_authorized_notifications_read(request.user, organization_id)
-    except OrganizationAccessDenied:
-        raise Http404()
+    except OrganizationAccessDenied as refused:
+        return _refuse(request, refused)
     return redirect("organization_notifications", organization_id=result.organization_id)

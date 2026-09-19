@@ -62,6 +62,15 @@ customer code reads persisted opportunities through this module only.
 
 The legacy user-owned product (CustomerRadar, UserCompanyLead, UserSubscription, billing) is untouched: G5 governs
 the Organization architecture only.
+
+Membership is necessary, not sufficient (compatibility layer)
+------------------------------------------------------------
+Billing stays user-owned. An organization's paid access is derived from its single owner's existing subscription
+(``gemiapp.organization_entitlement``), and a context is minted only for a member of an **entitled** organization --
+checked inside the same one membership query. A member of an organization that is not entitled gets
+``OrganizationNotEntitled``, a subclass of the single refusal with the same message: callers that only know the
+refusal still deny, and the customer views show the legacy paywall instead of a 404. It is raised only after the
+membership is established, so it tells a non-member nothing. Another member's subscription never counts.
 """
 
 from __future__ import annotations
@@ -73,9 +82,10 @@ from datetime import date
 
 from django.apps import apps
 from django.db import IntegrityError, transaction
-from django.db.models import Case, Count, F, Q, Value, When
+from django.db.models import Case, Count, Exists, F, OuterRef, Q, Value, When
 from django.utils import timezone
 
+from .organization_entitlement import entitled_organizations
 from .contact_suppressions import (  # the canonical D35 identity and lookup, re-exported for customer code
     SUPPRESSION_COMPANY, SUPPRESSION_CONTACT_TYPES, company_suppression_value, is_company_suppressed,
     is_contact_suppressed,
@@ -94,6 +104,11 @@ class OrganizationAccessDenied(PermissionError):
 
     def __init__(self):
         super().__init__(self.MESSAGE)
+
+
+class OrganizationNotEntitled(OrganizationAccessDenied):
+    """The caller *is* a member, but the organization's owner holds no entitlement (compatibility layer). Same
+    message as every refusal; raised only once the membership is established."""
 
 
 class Capability:
@@ -170,9 +185,13 @@ def get_organization_access_context(user, organization) -> OrganizationAccessCon
     if not isinstance(organization, Organization) or organization.pk is None:
         raise OrganizationAccessDenied()
     membership = (_model("OrganizationMember").objects
-                  .filter(organization_id=organization.pk, user_id=user.pk).only("pk", "role").first())
+                  .filter(organization_id=organization.pk, user_id=user.pk).only("pk", "role")
+                  .annotate(organization_entitled=Exists(entitled_organizations().filter(pk=OuterRef("organization_id"))))
+                  .first())
     if membership is None or membership.role not in ROLE_CAPABILITIES:
         raise OrganizationAccessDenied()
+    if not membership.organization_entitled:
+        raise OrganizationNotEntitled()
     return OrganizationAccessContext(organization_id=organization.pk, user_id=user.pk, membership_id=membership.pk,
                                      role=membership.role, _issuer=_ISSUER)
 
@@ -1574,15 +1593,18 @@ class WorkspaceRadarList:
 
 
 def get_workspace_navigation(user, current_organization_id=None) -> WorkspaceNavigation:
-    """The organizations this user is a member of, for the navigation. One query over the user's own memberships;
-    a signed-out or inactive user has none. ``current`` is the route's organization when the user is its member,
-    otherwise the user's only organization; with several and none named by the route there is no current one."""
+    """The organizations this user is a member of and may use, for the navigation. One query over the user's own
+    memberships, keeping only entitled organizations (an organization whose owner has no entitlement offers no
+    link); a signed-out or inactive user has none. ``current`` is the route's organization when the user is its
+    member, otherwise the user's only organization; with several and none named by the route there is no current
+    one."""
     User = apps.get_model("auth", "User")
     if not isinstance(user, User) or user.pk is None or not user.is_active:
         return WorkspaceNavigation()
     workspaces = []
     for membership_id, organization_id, name, role in (
             _model("OrganizationMember").objects.filter(user_id=user.pk, role__in=tuple(ROLE_CAPABILITIES))
+            .filter(organization__in=entitled_organizations())
             .order_by("organization__name", "organization_id")
             .values_list("pk", "organization_id", "organization__name", "role")):
         context = OrganizationAccessContext(organization_id=organization_id, user_id=user.pk,

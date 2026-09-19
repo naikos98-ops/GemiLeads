@@ -40,8 +40,15 @@ RADAR_TABLES = (OrganizationRadar, OrganizationRadarKad, OrganizationRadarRegion
                 OrganizationRadarSignalType, OrganizationRadarExclusion)
 
 
+def entitle(user, tier="pro"):
+    """A paying customer: an active paid subscription row (no Stripe involved). Since the compatibility layer an
+    organization is usable only while its owner holds an entitlement."""
+    UserSubscription.objects.filter(user=user).update(tier=tier, status="active")
+    return user
+
+
 def organization(name="Fixture Supplier", email="owner@example.com"):
-    owner = User.objects.create_user(email, email, "StrongPass123")
+    owner = entitle(User.objects.create_user(email, email, "StrongPass123"))
     return create_organization(owner=owner, name=name).organization
 
 

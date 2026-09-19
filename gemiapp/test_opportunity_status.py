@@ -36,7 +36,8 @@ from .organization_access import (
     OrganizationAccessDenied, StatusChangeRefused, get_authorized_opportunity_feed,
     get_authorized_opportunity_score_breakdown, save_authorized_opportunity, set_authorized_opportunity_status,
 )
-from .organizations import add_organization_member
+from .organizations import add_organization_member, create_organization
+from .test_organization_radars import entitle
 from .services import company_matches_radar, eligible_radars, send_digests
 from .test_gemi_company_activities import entitled_user, radar_for
 from .test_opportunity_assignment import MARIA_EMAIL, AssignTestCase
@@ -204,9 +205,9 @@ class AccessTests(StatusTestCase):
 
     def test_the_scope_is_the_exact_membership_never_the_user(self):
         self.put_assigned(self.maria)
-        # Maria also owns another organization: nothing of it reaches this row, through either route.
-        add_organization_member(self.org_b, self.maria_user, "owner")
-        self.assertEqual(self.post_status(self.maria_user, "won", org=self.org_b).status_code, 404)
+        # Maria also owns another (paying, well-formed) organization: nothing of it reaches this row.
+        hers = create_organization(owner=entitle(self.maria_user), name="Της Μαρίας").organization
+        self.assertEqual(self.post_status(self.maria_user, "won", org=hers).status_code, 404)
         # Demoted to viewer here, the old assignment grants her nothing.
         OrganizationMember.objects.filter(pk=self.maria.pk).update(role="viewer")
         self.assertEqual(self.post_status(self.maria_user, "won").status_code, 404)

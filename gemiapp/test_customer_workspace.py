@@ -26,6 +26,7 @@ from .organizations import add_organization_member, create_organization
 from .test_gemi_company_activities import entitled_user
 from .test_opportunity_tasks import TaskTestCase
 from .test_organization_radar_matching import T0, make_company, snapshot
+from .test_organization_radars import entitle
 
 _numbers = iter(range(500_000, 900_000))
 
@@ -218,7 +219,7 @@ class DashboardTests(WorkspaceTestCase):
         self.assertEqual(get_authorized_workspace_dashboard(self.maria_user, self.org.pk).unread_notifications, 0)
 
     def test_an_empty_organization_gets_empty_states_not_errors(self):
-        founder = User.objects.create_user("founder@c.example.com", "founder@c.example.com", "x")
+        founder = entitle(User.objects.create_user("founder@c.example.com", "founder@c.example.com", "x"))
         empty = create_organization(owner=founder, name="Νέος οργανισμός").organization
         dashboard = get_authorized_workspace_dashboard(founder, empty.pk)
         self.assertEqual((dashboard.active_opportunities, dashboard.saved_opportunities, dashboard.open_tasks,

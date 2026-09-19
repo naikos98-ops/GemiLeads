@@ -159,6 +159,36 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — Compatibility layer: UserSubscription → Organization (2026-09-19).** Κανόνας συμβατότητας μέχρι
+  να αποφασιστεί η ιδιοκτησία του billing.
+  - **Το billing μένει user-owned:** Stripe checkout, webhooks και σχήμα `UserSubscription` **αμετάβλητα**· καμία
+    μεταφορά συνδρομών σε Organization ακόμη.
+  - **Entitlement οργανισμού = παράγωγο, read-only** (`gemiapp/organization_entitlement.py`): Organization → η
+    **μοναδική** owner `OrganizationMember` → User → `UserSubscription.has_entitlement` (ενεργό πληρωμένο πλάνο
+    pro/business/enterprise/custom ή έγκυρη complimentary πρόσβαση — ο ίδιος κανόνας με κάθε πληρωμένη legacy
+    λειτουργία, `radar_limit > 0`· SQL δίδυμο `entitlement_q`). Καμία νέα τιμή/πλάνο/όριο.
+    `resolve_organization_entitlement(org)` (με λόγο) και `entitled_organizations()` (queryset).
+  - **Fail closed:** χωρίς owner, με >1 owners, ανενεργός λογαριασμός owner, χωρίς γραμμή συνδρομής ή free/inactive/
+    expired πλάνο → όχι entitled. Η συνδρομή άλλου μέλους **δεν μετράει ποτέ**· staff/superuser καμία παράκαμψη.
+  - **Κανόνας πρόσβασης 2.0:** membership **και** entitlement. Ελέγχεται στο `get_organization_access_context` μέσα
+    στο ίδιο ένα membership query (κάθε customer entry point περνά από εκεί). Μέλος μη entitled οργανισμού →
+    `OrganizationNotEntitled` (υποκλάση της ενιαίας άρνησης, ίδιο μήνυμα) → στα views το legacy paywall: μήνυμα
+    «Απαιτείται ενεργή συνδρομή του ιδιοκτήτη του οργανισμού.» + redirect στο `pricing`, χωρίς δεδομένα tenant.
+    Μη μέλη → το ίδιο 404 όπως πριν. Η πλοήγηση δείχνει μόνο entitled οργανισμούς. Cross-tenant απομόνωση αμετάβλητη.
+  - **Provisioning: μόνο χειροκίνητο/operator-run:** `python manage.py provision_organization_for_user <id | username |
+    email> [--name "…"] [--dry-run]`. Μέσω `create_organization` (Organization + OrganizationProfile + owner
+    membership), idempotent (υπάρχων μοναδικός owned οργανισμός → «unchanged»), `select_for_update` στον χρήστη.
+    Αρνείται: άγνωστο/αμφίσημο αναγνωριστικό, ανενεργό λογαριασμό, >1 owned οργανισμούς, μέλος άλλου οργανισμού
+    χωρίς να είναι owner. Αναφέρει το entitlement, **δεν** το χορηγεί. Δεν αγγίζει συνδρομή/Stripe, legacy Radars,
+    leads, matches· δεν δημιουργεί OrganizationRadar/Opportunity.
+  - **Καμία αυτόματη δημιουργία οργανισμού** σε signup, login, migration ή επίσκεψη σελίδας.
+  - Στο αντίγραφο της dev βάσης ο υπάρχων «TEST ORGANIZATION» (owner: staff χρήστης #2, χωρίς συνδρομή) είναι πλέον
+    **μη entitled** → οι σελίδες του δείχνουν paywall μέχρι να αποκτήσει ο owner entitlement (π.χ. complimentary).
+  - Fixtures tests: οι owners των οργανισμών είναι πλέον πληρωμένοι (`test_organization_radars.entitle`).
+  - 28 νέα tests (`test_organization_entitlement.py`)· **1.883 tests OK** με μία κανονική εκτέλεση (`--parallel 4`)·
+    καμία migration. `G0_STATUS = BLOCKED_NO_STAGING`, `G1_STATUS = BLOCKED`, **`PRODUCTION_MIGRATION_STATUS =
+    BLOCKED_BY_G0_G1`**.
+
 - **Gemi Leads 2.0 — Customer workspace: dashboard & πλοήγηση (2026-09-19).** Οι ήδη υλοποιημένες λειτουργίες
   οργανισμού γίνονται προσβάσιμες από το κανονικό UI, χωρίς αλλαγή backend αρχιτεκτονικής, billing, scoring, signals,
   δημιουργίας ευκαιριών, tenant isolation ή migrations.
@@ -1270,6 +1300,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Ιδιοκτησία billing — ανοιχτό:** το billing μένει user-owned με entitlement οργανισμού παράγωγο του owner·
+  μεταφορά συνδρομής/Stripe customer σε Organization (και θέσεις/seats) είναι ξεχωριστό, ελεγμένο μελλοντικό πακέτο.
 - **Customer workspace — ανοιχτά:** δεν υπάρχει ακόμη customer UI για δημιουργία οργανισμού, πρόσκληση/διαχείριση
   μελών, ρυθμίσεις/προφίλ/ICP οργανισμού, δημιουργία/επεξεργασία Radars οργανισμού, audit log (D36) και σήμανση
   «viewed». Απόφαση προϊόντος: αν το `/dashboard/` (Signals) θα ανακατευθύνει τα μέλη στον πίνακα του οργανισμού.
@@ -1406,6 +1438,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-09-19 — Compatibility layer UserSubscription → Organization.** Νέα: `gemiapp/organization_entitlement.py`,
+  `gemiapp/management/commands/provision_organization_for_user.py`, `gemiapp/test_organization_entitlement.py`.
+  Αλλαγές: `organization_access.py` (entitlement στο context, `OrganizationNotEntitled`, πλοήγηση), `organization_views.py`
+  (legacy paywall για μέλη μη entitled οργανισμών), test fixtures/guards. Επαλήθευση: `check`, `makemigrations --check`,
+  1.883 tests OK, dry-run της εντολής στο αντίγραφο της dev βάσης (τίποτα δεν γράφτηκε).
 - **2026-09-19 — Gemi Leads 2.0 customer workspace (dashboard & πλοήγηση).** Νέα: `templates/organizations/`
   (`dashboard.html`, `opportunities.html`, `tasks.html`, `radars.html`, `_workspace_bar.html`, `_workspace_rail.html`,
   `_opportunity_row.html`, `_task_row.html`), `gemiapp/test_customer_workspace.py`. Αλλαγές: `organization_access.py`

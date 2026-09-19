@@ -344,6 +344,7 @@ class SafetyTests(PageTestCase):
         self.assertEqual({name.strip() for name in imported.split(",") if name.strip()},
                          {"AssignmentRefused", "DoNotContactRefused", "NoteRefused", "OpportunityTransitionRefused",
                           "OrganizationAccessDenied", "StatusChangeRefused", "TaskRefused",
+                          "OrganizationNotEntitled",  # compatibility layer: a member of an unpaid organization
                           "add_authorized_opportunity_note", "apply_authorized_company_do_not_contact",
                           "assign_authorized_opportunity", "get_authorized_notifications",
                           "get_authorized_unread_notification_count", "mark_all_authorized_notifications_read",
