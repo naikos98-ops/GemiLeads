@@ -159,9 +159,31 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — Release readiness G0/G1 (2026-09-19).** Πλήρης καταγραφή: `docs/RELEASE_READINESS.md`.
+  - **`G0_STATUS = BLOCKED_NO_STAGING`**: δεν υπάρχει staging service, staging βάση ή staging GEMI key. Ένα τοπικό
+    αντίγραφο της dev βάσης **δεν** είναι staging. **`G1_STATUS = BLOCKED`** (εξαρτάται από το G0).
+  - **Migration range:** `main`/`origin/main` τελειώνουν στην 0031· η production **συνάγεται** στην 0031 (Render
+    `preDeployCommand: python manage.py migrate`) αλλά **δεν** έχει επαληθευτεί. 0032–0054 υπάρχουν μόνο σε αυτό το
+    branch. **Κίνδυνος:** merge + deploy = αυτόματη εφαρμογή 0032–0054 σε production. Καμία merge πριν τα G0/G1.
+  - **Staging guard (`config/environment.py`):** `GEMI_LEADS_ENVIRONMENT` = `production` (default όταν λείπει — καμία
+    αλλαγή συμπεριφοράς) / `staging` / `development`· άλλη τιμή → δεν ξεκινά. Σε staging: GEMI key **μόνο** από
+    `GEMI_STAGING_API_KEY` (το `GEMI_API_KEY` αγνοείται)· χωρίς αυτό `GEMI_COLLECTOR_ENABLED = False` και το
+    `GemiClient.get` αρνείται κάθε αίτημα πριν σταλεί· email = `STAGING_EMAIL_BACKEND` ή console· Brevo key μόνο από
+    `STAGING_BREVO_API_KEY`· outreach πάντα off· live Stripe key (`sk_live_`/`rk_live_`) → δεν ξεκινά.
+  - **D37 schedule rollback:** το `post_migrate` ξαναγράφει τη γραμμή του D37 ακόμη και στην 0031. Το
+    `generate_task_due_notifications_task` ελέγχει πλέον αν υπάρχει ο πίνακας και επιστρέφει
+    `{"skipped": "notification_schema_missing"}` με warning αντί να αποτυγχάνει. Διαδικασία rollback κάτω από 0054:
+    σταμάτα τον worker → migrate → διέγραψε τη γραμμή `func='gemiapp.tasks.generate_task_due_notifications_task'` →
+    ξεκίνα τον worker.
+  - **Τοπική PostgreSQL πρόβα (όχι G0/G1):** throwaway PostgreSQL 17 στο 127.0.0.1, φορτωμένο από το dev αντίγραφο.
+    Backup/restore σε απομονωμένη βάση, reverse 0054 → 0031, forward 0031 → 0054: όλα exit 0, legacy aggregates
+    (counts + md5) ίδια σε κάθε βήμα. Cluster, dump και backup καταστράφηκαν.
+  - **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.** Επόμενο βήμα: απομονωμένο staging (Render service +
+    δική του PostgreSQL, `GEMI_LEADS_ENVIRONMENT=staging`, κανένα production secret).
+
 - **Gemi Leads 2.0 — Phase D ΟΛΟΚΛΗΡΩΘΗΚΕ (`PHASE_D_STATUS = COMPLETE`, 2026-09-19).** Τα βήματα 29–37 είναι
   δεσμευμένα/επαληθευμένα. Αυτό **δεν** σημαίνει production-ready: `G0`/`G1` μπλοκάρουν τις production migrations
-  (0048–0054), `G4_STATUS = NOT_PASSED`, `G5_STATUS = PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`. **Η επόμενη δουλειά
+  (0032–0054), `G4_STATUS = NOT_PASSED`, `G5_STATUS = PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`. **Η επόμενη δουλειά
   είναι release readiness (πύλες), όχι νέο feature πακέτο.**
 - **Gemi Leads 2.0 — D37: In-app Notifications (2026-09-19).** §48 «notifications», «Unread counter». Migration
   `0054_organization_notification` (ένα `CreateModel`, **κανένα backfill**), μοντέλο `OrganizationNotification`,
@@ -1218,8 +1240,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 ## Τι απομένει
 
 - **Gemi Leads 2.0 — επόμενη δουλειά: RELEASE READINESS** (όχι feature πακέτο). Η Phase D ολοκληρώθηκε· πρώτα οι
-  πύλες G0/G1 που μπλοκάρουν τις production migrations 0048–0054 και την ενεργοποίηση του D37 schedule σε
-  production, έπειτα το G4. Ανοιχτές αποφάσεις προϊόντος: emitters/παραλήπτες για NEW_OPPORTUNITY, PRIORITY_SIGNAL,
+  πύλες G0/G1 που μπλοκάρουν τις production migrations 0032–0054 και την ενεργοποίηση του D37 schedule σε
+  production, έπειτα το G4. **Επόμενο βήμα G0:** απομονωμένο staging (δες `docs/RELEASE_READINESS.md`). Ανοιχτές αποφάσεις προϊόντος: emitters/παραλήπτες για NEW_OPPORTUNITY, PRIORITY_SIGNAL,
   RADAR_MATCH· reopen τελικών καταστάσεων· επεξεργασία/διαγραφή σημειώσεων και εργασιών· αναίρεση suppression·
   email/phone suppression (Phase G)· UI για το audit log.
 - **Release gate για το D37:** η `0054_organization_notification` και το D37 schedule **δεν** ενεργοποιούνται σε

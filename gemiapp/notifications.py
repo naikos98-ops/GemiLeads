@@ -17,6 +17,7 @@ the partial unique constraint turns a concurrent duplicate into a no-op (``ignor
 from dataclasses import dataclass
 
 from django.apps import apps
+from django.db import connection
 from django.db.models import Exists, F, OuterRef, Q
 from django.utils import timezone
 
@@ -35,6 +36,12 @@ class DueNotificationRun:
     today: object
     candidates: int
     created: int
+
+
+def notification_schema_ready() -> bool:
+    """Whether the notification table exists. A schema rolled back below 0054 while the daily schedule row still
+    exists (``post_migrate`` never removes schedule rows) must produce a logged skip, not a failing task."""
+    return _model("OrganizationNotification")._meta.db_table in connection.introspection.table_names()
 
 
 def _assignee_may_read_opportunity() -> Q:

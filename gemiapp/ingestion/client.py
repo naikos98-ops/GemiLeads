@@ -72,6 +72,8 @@ DEFAULT_MAX_WAIT_SECONDS = {
 # surface in ImportRun.error_message and the Superadmin pipeline view.
 MISSING_KEY_MESSAGE = "Λείπει το GEMI_API_KEY από το περιβάλλον."
 INVALID_KEY_MESSAGE = "Το GEMI_API_KEY δεν είναι έγκυρο."
+# G0: a staging deployment without its own GEMI key has the collector switched off (config/environment.py).
+COLLECTOR_DISABLED_MESSAGE = "Ο συλλέκτης ΓΕΜΗ είναι απενεργοποιημένος σε αυτό το περιβάλλον."
 UNREACHABLE_MESSAGE = "Το GEMI API δεν απάντησε."
 
 _current_lane: ContextVar[GemiLane | None] = ContextVar("gemi_lane", default=None)
@@ -315,6 +317,8 @@ class GemiClient:
         (gemiapp.ingestion.schemas) before it is returned; a mismatch raises
         GemiResponseValidationError and nothing is returned. Every collector should pass one.
         """
+        if not getattr(settings, "GEMI_COLLECTOR_ENABLED", True):
+            raise GemiConfigurationError(COLLECTOR_DISABLED_MESSAGE)  # nothing is sent
         if not self._api_key:
             raise GemiConfigurationError(MISSING_KEY_MESSAGE)
         lane = GemiLane(lane)

@@ -9,6 +9,14 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+# Release readiness (G0): which deployment this is. Unset = production, whose behaviour is unchanged; a staging
+# deployment never inherits the production GEMI key, SMTP relay, email-provider key or outreach, and refuses a live
+# Stripe key (see config/environment.py).
+from config.environment import deployment_safety  # noqa: E402
+
+DEPLOYMENT = deployment_safety(os.environ)
+GEMI_LEADS_ENVIRONMENT = DEPLOYMENT.environment
+
 SENTRY_DSN = os.environ.get("SENTRY_DSN")
 if SENTRY_DSN:
     sentry_sdk.init(
@@ -201,7 +209,7 @@ from django.core.mail import message as _dj_mail_message
 
 _dj_mail_message.utf8_charset = _dj_mail_message.utf8_charset_qp
 
-EMAIL_BACKEND = resolve_email_backend(DEBUG, os.getenv("EMAIL_BACKEND"))
+EMAIL_BACKEND = DEPLOYMENT.email_backend or resolve_email_backend(DEBUG, os.getenv("EMAIL_BACKEND"))
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
@@ -233,7 +241,7 @@ OUTREACH_TEST_EMAIL = os.getenv("OUTREACH_TEST_EMAIL", "naikos98@gmail.com")
 
 # Emergency/master switch for every cold-outreach path. Fail closed: production must opt in
 # explicitly before a manual queue, background worker, daily drain, or test outreach can send.
-OUTREACH_ENABLED = os.getenv("OUTREACH_ENABLED", "0") == "1"
+OUTREACH_ENABLED = os.getenv("OUTREACH_ENABLED", "0") == "1" and not DEPLOYMENT.outreach_forced_off
 
 # Max cold-outreach emails per rolling 24h. Past the Brevo plan's daily quota the SMTP relay
 # accepts the message (250 OK) and silently drops it, so send() succeeds and the row would be
@@ -254,7 +262,7 @@ BREVO_WEBHOOK_TOKEN = os.getenv("BREVO_WEBHOOK_TOKEN", "")
 # button and the system-health panel can warn "quota exhausted" instead of reporting a
 # success for a message the relay accepted (250 OK) and then silently dropped. Unset = the
 # checks are skipped, sending still works.
-BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
+BREVO_API_KEY = DEPLOYMENT.email_provider_api_key
 
 # Stripe settings
 STRIPE_PUBLIC_KEY = os.getenv("STRIPE_PUBLIC_KEY")
@@ -302,7 +310,9 @@ GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "")
 # Leave unset to omit the meta tag entirely; DNS TXT verification needs nothing here.
 GOOGLE_SITE_VERIFICATION = os.getenv("GOOGLE_SITE_VERIFICATION", "")
 
-GEMI_API_KEY = os.environ.get("GEMI_API_KEY", "")
+GEMI_API_KEY = DEPLOYMENT.gemi_api_key
+# False only on a staging deployment without its own GEMI_STAGING_API_KEY: every GEMI request is refused unsent.
+GEMI_COLLECTOR_ENABLED = DEPLOYMENT.gemi_collector_enabled
 GEMI_API_BASE = "https://opendata-api.businessportal.gr/api/opendata/v1"
 # Every GEMI request goes through gemiapp.ingestion.GemiClient and draws on one rate budget kept in
 # the "shared" database cache, so it holds across workers, clusters and instances. The gateway allows

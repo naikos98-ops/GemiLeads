@@ -279,8 +279,12 @@ def run_gemi_company_refresh_task():
 
 def generate_task_due_notifications_task():
     """D37: create the missing in-app TASK_DUE notifications (scheduled every day at 08:00 Europe/Athens)."""
-    from .notifications import generate_due_task_notifications
+    from .notifications import generate_due_task_notifications, notification_schema_ready
 
+    if not notification_schema_ready():
+        # Rolled back below 0054 with the schedule row still registered: skip loudly instead of failing daily.
+        logger.warning("Task-due notifications skipped: the notification table does not exist")
+        return {"skipped": "notification_schema_missing"}
     run = generate_due_task_notifications()
     logger.info("Task-due notifications for %s: %s candidates, %s created", run.today, run.candidates, run.created)
     return {"today": str(run.today), "candidates": run.candidates, "created": run.created}
