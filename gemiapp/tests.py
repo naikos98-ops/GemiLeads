@@ -4472,6 +4472,9 @@ class CacheBackendTests(TestCase):
         self.assertIn("gemi_cache", connection.introspection.table_names())
 
 
+# The export is checked against the production hash format, so this class keeps Django's default hasher even though
+# the test runner uses a fast one for everything else.
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.PBKDF2PasswordHasher"])
 class BackupCriticalTests(TestCase):
     """ΓΕΜΗ data is re-fetchable (measured: ~10 hours, ~18,856 API calls). Users,
     subscriptions, radars and leads are not re-fetchable at all."""

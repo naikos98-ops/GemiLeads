@@ -37,9 +37,24 @@
 ```powershell
 .\.venv\Scripts\python.exe manage.py migrate
 .\.venv\Scripts\python.exe manage.py check
-.\.venv\Scripts\python.exe manage.py test
+.\.venv\Scripts\python.exe manage.py test --noinput --parallel 4
 .\run_dev.ps1
 ```
+
+**Κανονική εντολή πλήρους regression suite:** `manage.py test --noinput --parallel 4` (~40 s για 1.726 tests,
+16 λογικοί πυρήνες). Όλο το suite, κανένα skip/tag/exclude/failfast. Το `TEST_RUNNER` είναι
+`config.fast_test_runner.FastHasherTestRunner`: ίδιο discovery και ίδια tests με τον `DiscoverRunner`, αλλά με τον
+test-only `MD5PasswordHasher` (στη main process και σε κάθε `--parallel` worker). Το production κρατά τον default
+PBKDF2 του Django (το `settings.py` **δεν** ορίζει `PASSWORD_HASHERS`)· tests που ελέγχουν τη μορφή του production
+hash κάνουν `override_settings(PASSWORD_HASHERS=[PBKDF2...])` (π.χ. `BackupCriticalTests`). Το `--keepdb` **δεν**
+χρησιμοποιείται: η test βάση είναι in-memory SQLite (~4 s δημιουργία), άρα δεν κερδίζει τίποτα, και με
+`--parallel` αφήνει αρχεία `default_N.sqlite3` στη ρίζα.
+
+**Πολιτική επαλήθευσης ανά πακέτο (από το D35):** (1) focused tests του νέου πακέτου, (2) affected/regression
+suites, (3) `manage.py check`, (4) `manage.py makemigrations --check`, (5) **μία** κανονική πλήρης εκτέλεση. Δεύτερη
+συνεχόμενη πλήρης εκτέλεση μόνο σε flaky/intermittent αποτυχία, ζήτημα concurrency/locking που χρειάζεται
+επανάληψη, μεγάλη αλλαγή tenant/security υποδομής, ρητό αίτημα ή τελική release/staging επαλήθευση. Ο κύκλος
+migration (forward/reverse/reapply στο αντίγραφο της dev βάσης) παραμένει υποχρεωτικός για πακέτα με migration.
 
 Demo login (μόνο development): `demo@gemileads.gr` / `demo12345`.
 
@@ -143,6 +158,17 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   στο default του allauth σκόπιμα.
 
 ## Τρέχουσα κατάσταση
+
+- **Επιτάχυνση του πλήρους test suite (2026-09-19).** Το D34 δεσμεύτηκε (`a3ae6a3`). Μέτρηση: η δημιουργία της test
+  βάσης (in-memory SQLite, 51 migrations) κοστίζει ~4 s· ο **PBKDF2 hasher** (1.000.000 iterations) κόστιζε
+  ~0,51 s ανά hash και τα `setUp` δημιουργούν χιλιάδες χρήστες με password — αυτό ήταν σχεδόν όλο το runtime.
+  Νέο `config/fast_test_runner.py` (test-only `MD5PasswordHasher`, και στους parallel workers), `TEST_RUNNER` στο
+  `settings.py`, `BackupCriticalTests` με ρητό PBKDF2 override, 2 guard tests (`test_fast_test_runner.py`: το
+  production κρατά τον default hasher). Serial με fast hasher: 82 s· **`--parallel 4`: ~40 s**· `--parallel 8`: 36 s·
+  `--keepdb`: κανένα κέρδος. Προηγούμενες σειριακές εκτελέσεις: 1.895–2.343 s. **1.726 tests OK** (1.724 + 2 guards),
+  κανένα test/assertion δεν αφαιρέθηκε ή αποδυναμώθηκε. Κανονική εντολή και νέα πολιτική επαλήθευσης: βλ. «Τοπική
+  εκκίνηση».
+
 
 - **Gemi Leads 2.0 — D34: Tasks (2026-09-19).** Εργασίες CRM-lite ανά ευκαιρία C8 (§42 «tasks»). Migration
   `0051_opportunity_task` (ένα `CreateModel`, κανένα backfill), μοντέλο `OpportunityTask`,

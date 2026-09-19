@@ -224,6 +224,9 @@ EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "info@gemileads.gr")
 # overrides it back to False to exercise the real logic against a stubbed resolver. Never
 # set outside tests -- it turns the hard-bounce guard off entirely.
 SKIP_MX_VALIDATION = "test" in sys.argv
+# Only `manage.py test` reads this: the full suite with a fast test-only password hasher (see the module).
+# PASSWORD_HASHERS is deliberately not set here, so the running product keeps Django's default PBKDF2.
+TEST_RUNNER = "config.fast_test_runner.FastHasherTestRunner"
 
 # Default recipient for the "Δοκιμαστική αποστολή" button on the Εύρεση Πελατών page.
 OUTREACH_TEST_EMAIL = os.getenv("OUTREACH_TEST_EMAIL", "naikos98@gmail.com")
