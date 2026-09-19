@@ -351,7 +351,17 @@ def record_company_signal(
     logger.info(
         "Company signal recorded: type=%s mode=%s company=%s rule=%s", signal_type, mode, company.pk, rule_version,
     )
+    # G2: once this new signal (and whatever the producer writes with it) is committed, run the shadow opportunity
+    # pipeline for it -- synchronously, isolated from the producer (see gemiapp.opportunity_pipeline). A signal
+    # rolled back with its producer's transaction is never processed; a replayed, existing signal is not reprocessed.
+    transaction.on_commit(lambda signal_id=signal.pk: _process_after_commit(signal_id))
     return signal, True
+
+
+def _process_after_commit(signal_id):
+    from .opportunity_pipeline import process_signal_after_commit
+
+    return process_signal_after_commit(signal_id)
 
 
 def promote_company_signal(signal, *, at: datetime | None = None):

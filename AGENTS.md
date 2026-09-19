@@ -159,6 +159,40 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — G2: SHADOW opportunity pipeline end-to-end (2026-09-19).** Η αλυσίδα
+  `CompanySignal(SHADOW) → ενεργά OrganizationRadars (C5 pre-filter + v1 evaluation) → μόνο entitled οργανισμοί →
+  C6 score + C7 breakdown → C8 materialize_opportunity` τρέχει πλέον από ένα κανονικό entry point:
+  `gemiapp.opportunity_pipeline.process_company_signal(signal, as_of=None, dry_run=False)` → `PipelineRun`.
+  Καμία επανυλοποίηση: μόνο οι υπάρχουσες C5–C8 συναρτήσεις (+ καθαρή εξαγωγή
+  `explain_opportunity_scores_for_report`, ώστε να γίνεται ένα matching pass).
+  - **Μόνο SHADOW:** LIVE signal → `skipped=live_not_enabled`. Κανένα promote/αλλαγή mode. **Οι customer επιφάνειες
+    μένουν LIVE-only** (D29, λίστες, Saved, dashboard counts, ειδοποιήσεις)· ένα SHADOW-backed opportunity δεν
+    φαίνεται πουθενά. Ένα SHADOW signal **δεν ξαναγράφει ποτέ** opportunity του οποίου το capture είναι LIVE-backed
+    (`skipped_live_backed`) — ώστε να μην κρυφτεί ορατή ευκαιρία· το C8 αμετάβλητο.
+  - **Entitlement:** μόνο Radars οργανισμών που είναι entitled τώρα· οι υπόλοιποι `skipped_not_entitled`, ούτε score
+    ούτε εγγραφή. Ιστορικά opportunities δεν διαγράφονται όταν λήγει το entitlement. Ανενεργό Radar → τίποτα (C5).
+  - **Idempotent:** μοναδικότητα C8 (organization, Radar, company)· signal ήδη συνδεδεμένο με opportunity →
+    `unchanged` χωρίς recapture (ένα replay δεν «γερνά» το παγωμένο capture). Το replay κάνει μόνο ό,τι λείπει.
+  - **Wiring (απόφαση):** το `record_company_signal`, όταν **δημιουργεί** signal, καταχωρίζει
+    `transaction.on_commit(...)` → `process_signal_after_commit` — **σύγχρονα, μετά το commit** του signal και της
+    evidence, στην ίδια διεργασία με τον (operator-run, batch) producer. Όχι django-q task: οι producers είναι
+    χειροκίνητες εντολές (κανένα request path/schedule) και ένα task ανά signal θα γέμιζε την ORM ουρά
+    (`queue_limit` 50) σε backfill και θα απαιτούσε worker. Αποτυχία pipeline → log + `errors`, ποτέ exception
+    προς τον producer, το signal μένει ανέγγιχτο· rolled-back producer → τίποτα· replayed/υπάρχον signal → τίποτα.
+    Κανόνες ανίχνευσης και dedupe αμετάβλητοι.
+  - **Παρατηρησιμότητα (χωρίς schema):** μία γραμμή log ανά run (`gemiapp.opportunity_pipeline`): signal, mode,
+    context, considered, entitled, skipped_not_entitled, matched, insufficient_state, no_match, created, updated,
+    unchanged, below_threshold, skipped_live_backed, errors.
+  - **Replay (operator):** `python manage.py process_shadow_signals [--since-hours 24] [--limit 100] [--after-id N]
+    [--dry-run] [--verbose-runs]` — μόνο SHADOW, σειρά id, όριο 1–1000, ένα `as_of` ανά run, σύνοψη, ποτέ LIVE.
+  - Κανένα notification/email/digest/outreach/assignment/task/audit event από το pipeline. Legacy (CustomerRadar,
+    UserCompanyLead, RadarMatch, DigestPreference/Delivery) και billing (UserSubscription, Stripe) ανέγγιχτα.
+  - Στοιχεία αναφοράς: χωρίς snapshot/reference, Radars με κριτήρια → `INSUFFICIENT_STATE` (μετριούνται)· Radars μόνο
+    με τύπους γεγονότων δουλεύουν. Στο αντίγραφο της dev βάσης: 0 signals (discovery/refresh δεν έχουν τρέξει).
+  - **`G4_STATUS = NOT_PASSED`** — η LIVE cutover παραμένει **απαγορευμένη**. 23 νέα tests
+    (`test_shadow_pipeline.py`)· **1.922 tests OK** με μία κανονική εκτέλεση· **καμία migration**.
+    `G0_STATUS = BLOCKED_NO_STAGING`, `G1_STATUS = BLOCKED`, **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`**.
+
 - **Gemi Leads 2.0 — Organization Radar: δημιουργία / επεξεργασία από τον πελάτη (2026-09-19).** Το
   `OrganizationRadar` είναι πλέον customer-creatable/editable από τη σελίδα Radars του οργανισμού.
   - **Routes** (`organization_views`, πόρτα μόνο το `organization_access`): `/organizations/<id>/radars/new/`
@@ -1471,6 +1505,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-09-19 — G2 SHADOW opportunity pipeline.** Νέα: `gemiapp/opportunity_pipeline.py`,
+  `gemiapp/management/commands/process_shadow_signals.py`, `gemiapp/test_shadow_pipeline.py`. Αλλαγές:
+  `company_signals.py` (on_commit hook στη δημιουργία signal), `opportunity_score_breakdown.py` (καθαρή εξαγωγή
+  `explain_opportunity_scores_for_report`). Επαλήθευση: `check`, `makemigrations --check`, 1.922 tests OK, dry-run
+  της εντολής στο αντίγραφο της dev βάσης.
 - **2026-09-19 — Organization Radar create/edit (customer UI).** Νέα: `gemiapp/organization_radar_form.py`,
   `templates/organizations/radar_form.html`, `gemiapp/test_organization_radar_ui.py`. Αλλαγές: `organization_access.py`
   (editor + writes + αναγνώσιμη περίληψη), `organization_views.py`, `urls.py`, `radars.html`, `product-ui.css`,

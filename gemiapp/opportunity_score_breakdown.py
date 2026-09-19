@@ -302,7 +302,12 @@ def explain_opportunity_scores(signal, *, as_of: datetime) -> tuple:
     C5 provides the matches and C6 the points; this adds one bounded load of the matched Radars' definitions for
     the evidence. The breakdown building itself is pure.
     """
-    report = matching.explain_organization_radar_matches(signal)
+    return explain_opportunity_scores_for_report(matching.explain_organization_radar_matches(signal), as_of=as_of)
+
+
+def explain_opportunity_scores_for_report(report, *, as_of: datetime) -> tuple:
+    """The same, for a C5 matching report the caller already holds (one matching pass, e.g. the G2 pipeline, which
+    keeps only the evaluations it may act on). Nothing is re-matched or re-decided here."""
     if not report.matches:
         return ()
     by_radar = {item.radar_id: item.evaluation for item in report.evaluations}
