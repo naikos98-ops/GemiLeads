@@ -2157,6 +2157,66 @@ class OpportunityTask(models.Model):
         return f"task #{self.pk} · opportunity #{self.opportunity_id} · {self.due_on}"
 
 
+class OrganizationContactSuppression(models.Model):
+    """D35 (§51 «contact_suppressions», «Global για organization», «Πρέπει να υπερισχύει οποιουδήποτε AI/Radar»): one
+    organization's Do Not Contact record -- enforcement state that future contact workflows must consult.
+
+    Identity is (organization, contact_type, contact_value), unique. D35 v1 supports only ``contact_type =
+    "company"``, whose ``contact_value`` is the company's normalized GEMI number: an intentional, documented
+    extension of §51's identity space that suppresses a *company subject* without bringing any phone or email into
+    Gemi Leads 2.0. Phase G may add ``email`` / ``phone`` contact points under the same uniqueness and enforcement.
+
+    Organization-scoped: nothing here ever affects another organization. Not the legacy ``PersonSuppression``
+    (platform-wide Article 21 objection by person name) nor ``OutreachSuppression`` (platform-wide unsubscribe of
+    the legacy outreach email); neither is read or written by this model. No expiry, no update, no unsuppress:
+    ``reason``, ``source``, ``created_by`` and ``created_at`` are the record's own compliance provenance (the
+    general audit stream is item 36). Nothing is copied from the company: no name, contact, person or payload.
+    """
+
+    COMPANY = "company"
+    CONTACT_TYPES = [(COMPANY, "Company")]  # email / phone: Phase G
+
+    EXPLICIT_OBJECTION = "explicit_objection"
+    EMAIL_UNSUBSCRIBE = "email_unsubscribe"
+    CALL_OBJECTION = "call_objection"
+    COMPLIANCE_REGISTRY = "compliance_registry"
+    MANUAL = "manual"
+    REASONS = [(EXPLICIT_OBJECTION, "Explicit objection"), (EMAIL_UNSUBSCRIBE, "Email unsubscribe"),
+               (CALL_OBJECTION, "Call objection"), (COMPLIANCE_REGISTRY, "Compliance registry"), (MANUAL, "Manual")]
+    SOURCES = [(MANUAL, "Manual")]
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="contact_suppressions")
+    contact_type = models.CharField(max_length=16, choices=CONTACT_TYPES)
+    contact_value = models.CharField(max_length=64)
+    reason = models.CharField(max_length=32, choices=REASONS)
+    source = models.CharField(max_length=16, choices=SOURCES)
+    created_by = models.ForeignKey(OrganizationMember, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name="created_contact_suppressions")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Organization contact suppression"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["organization", "contact_type", "contact_value"],
+                                    name="unique_organization_contact_suppression"),
+            models.CheckConstraint(condition=models.Q(contact_type__in=["company"]),
+                                   name="contact_suppression_known_type"),
+            models.CheckConstraint(condition=~models.Q(contact_value=""), name="contact_suppression_value_not_empty"),
+            models.CheckConstraint(
+                condition=models.Q(reason__in=["explicit_objection", "email_unsubscribe", "call_objection",
+                                               "compliance_registry", "manual"]),
+                name="contact_suppression_known_reason"),
+            # One address unsubscribing never suppresses a whole company.
+            models.CheckConstraint(condition=~(models.Q(contact_type="company") & models.Q(reason="email_unsubscribe")),
+                                   name="contact_suppression_company_reason"),
+            models.CheckConstraint(condition=models.Q(source__in=["manual"]), name="contact_suppression_known_source"),
+        ]
+
+    def __str__(self):
+        return f"organization #{self.organization_id} · {self.contact_type} {self.contact_value}"
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 

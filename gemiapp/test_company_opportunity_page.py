@@ -314,7 +314,7 @@ class SafetyTests(PageTestCase):
             page = self.page()
         self.assertEqual((len(page.opportunities), len(page.timeline)), (3, 20))
         self.assertEqual(len(three), len(one))
-        self.assertLessEqual(len(three), 17)  # D33: one bounded notes query; D34: tasks + task-assignee options
+        self.assertLessEqual(len(three), 18)  # D33: bounded notes; D34: tasks + assignee options; D35: suppression
         self.assertTrue(all(q["sql"].lstrip().upper().startswith("SELECT") for q in three.captured_queries))
 
     def test_opening_the_page_writes_nothing(self):
@@ -341,9 +341,10 @@ class SafetyTests(PageTestCase):
                          ["from .organization_access import ("])
         imported = source.split("from .organization_access import (", 1)[1].split(")", 1)[0]
         self.assertEqual({name.strip() for name in imported.split(",") if name.strip()},
-                         {"AssignmentRefused", "NoteRefused", "OpportunityTransitionRefused",
+                         {"AssignmentRefused", "DoNotContactRefused", "NoteRefused", "OpportunityTransitionRefused",
                           "OrganizationAccessDenied", "StatusChangeRefused", "TaskRefused",
-                          "add_authorized_opportunity_note", "assign_authorized_opportunity",
+                          "add_authorized_opportunity_note", "apply_authorized_company_do_not_contact",
+                          "assign_authorized_opportunity",
                           "complete_authorized_opportunity_task", "create_authorized_opportunity_task",
                           "get_authorized_company_opportunity_page", "save_authorized_opportunity",
                           "set_authorized_opportunity_status"})
@@ -376,6 +377,7 @@ class SafetyTests(PageTestCase):
                                    "django.contrib.admin") and not route.startswith("admin/")]
         self.assertEqual([route for route, _ in organization_routes],
                          ["organizations/<int:organization_id>/opportunities/company/<int:company_id>/",
+                          "organizations/<int:organization_id>/opportunities/company/<int:company_id>/do-not-contact/",
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/save/",
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/assign/",
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/status/",
@@ -393,11 +395,11 @@ class SafetyTests(PageTestCase):
     def test_no_mutation_endpoint_model_or_migration(self):
         from django.apps import apps
 
-        # Since D34 the page has exactly six kinds of form, all per opportunity: Save (D30), Assign (D31),
-        # status (D32), a note (D33), and a task's create and complete (D34).
+        # Since D35 the page has exactly seven kinds of form: six per opportunity -- Save (D30), Assign (D31),
+        # status (D32), a note (D33), a task's create and complete (D34) -- and the one company-level Do Not Contact.
         html_template = pathlib.Path("templates/organizations/company_opportunity.html").read_text(encoding="utf-8")
-        self.assertEqual(html_template.count("<form"), 6)
-        self.assertEqual(html_template.count("<button"), 6)
+        self.assertEqual(html_template.count("<form"), 7)
+        self.assertEqual(html_template.count("<button"), 7)
         for route in ("organization_save_opportunity", "organization_assign_opportunity", "organization_opportunity_status",
                       "organization_add_opportunity_note", "organization_create_opportunity_task"):
             self.assertIn("{% url '" + route + "' page.organization_id opportunity.opportunity_id %}", html_template)
@@ -406,7 +408,7 @@ class SafetyTests(PageTestCase):
                           or "Task" in m.__name__ and m.__name__ != "OpportunityTask"])
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0051_opportunity_task")  # D34 owns 0051 (tasks); any newer migration must update this pin deliberately
+                         "0052_organization_contact_suppression")  # D35 owns 0052 (suppressions); any newer migration must update this pin deliberately
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):
         legacy_user = entitled_user("legacy-d29@example.com")

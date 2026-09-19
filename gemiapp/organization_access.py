@@ -75,6 +75,10 @@ from django.db import IntegrityError, transaction
 from django.db.models import Case, Count, F, Q, Value, When
 from django.utils import timezone
 
+from .contact_suppressions import (  # the canonical D35 identity and lookup, re-exported for customer code
+    SUPPRESSION_COMPANY, SUPPRESSION_CONTACT_TYPES, company_suppression_value, is_company_suppressed,
+    is_contact_suppressed,
+)
 from .opportunities import get_opportunity_score_breakdown
 from .company_signals import LIVE
 from .opportunity_feed import (
@@ -110,10 +114,14 @@ class Capability:
     ADD_OPPORTUNITY_NOTE = "add_opportunity_note"
     # D34: creating and completing tasks. Reading them follows the opportunity, like notes.
     MANAGE_OPPORTUNITY_TASKS = "manage_opportunity_tasks"
+    # D35: company-level Do Not Contact. Never a sales user's: it changes every opportunity of the company,
+    # including sibling rows a sales user cannot see.
+    MANAGE_CONTACT_SUPPRESSIONS = "manage_contact_suppressions"
 
     ALL = (VIEW_ORGANIZATION, VIEW_ORGANIZATION_SETTINGS, MANAGE_ORGANIZATION, MANAGE_MEMBERS, VIEW_RADARS,
            MANAGE_RADARS, VIEW_ALL_OPPORTUNITIES, VIEW_ASSIGNED_OPPORTUNITIES, MANAGE_OPPORTUNITY_WORKFLOW,
-           ASSIGN_OPPORTUNITIES, UPDATE_OPPORTUNITY_STATUS, ADD_OPPORTUNITY_NOTE, MANAGE_OPPORTUNITY_TASKS)
+           ASSIGN_OPPORTUNITIES, UPDATE_OPPORTUNITY_STATUS, ADD_OPPORTUNITY_NOTE, MANAGE_OPPORTUNITY_TASKS,
+           MANAGE_CONTACT_SUPPRESSIONS)
 
 
 OWNER, ADMIN, SALES_MANAGER, SALES_USER, VIEWER = "owner", "admin", "sales_manager", "sales_user", "viewer"
@@ -128,7 +136,7 @@ ROLE_CAPABILITIES = {
                                  Capability.MANAGE_RADARS},
     SALES_MANAGER: _READ_ORGANIZATION | {Capability.MANAGE_OPPORTUNITY_WORKFLOW, Capability.ASSIGN_OPPORTUNITIES,
                                          Capability.UPDATE_OPPORTUNITY_STATUS, Capability.ADD_OPPORTUNITY_NOTE,
-                                         Capability.MANAGE_OPPORTUNITY_TASKS},
+                                         Capability.MANAGE_OPPORTUNITY_TASKS, Capability.MANAGE_CONTACT_SUPPRESSIONS},
     SALES_USER: frozenset({Capability.VIEW_ORGANIZATION, Capability.VIEW_ASSIGNED_OPPORTUNITIES,
                            Capability.UPDATE_OPPORTUNITY_STATUS, Capability.ADD_OPPORTUNITY_NOTE,
                            Capability.MANAGE_OPPORTUNITY_TASKS}),
@@ -337,12 +345,14 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
     # D34: the tasks of the same rows (one bounded query) and, per row, what this member may do with them.
     tasks, tasks_truncated = _page_tasks(context, [row.pk for row in rows])
     task_actions = _page_task_actions(context, rows)
+    # D35: the company's Do Not Contact state in this organization, and whether this member may apply it.
+    do_not_contact = _page_do_not_contact(context, rows[0].company.gemi_number)
     return build_company_opportunity_page(organization=organization, rows=rows, live_signal_counts=live_signal_counts,
                                           save_actions=save_actions, assign_actions=assign_actions,
                                           assignees=assignees, assignments=assignments, status_actions=status_actions,
                                           notes=notes, notes_truncated=notes_truncated, note_actions=note_actions,
                                           tasks=tasks, tasks_truncated=tasks_truncated, task_actions=task_actions,
-                                          today=timezone.localdate())
+                                          today=timezone.localdate(), do_not_contact=do_not_contact)
 
 
 def _organization_by_id(organization_id):
@@ -1023,3 +1033,143 @@ def _page_task_actions(context: OrganizationAccessContext, rows):
         default = salesperson or (context.membership_id, own_name or member_display_name("", "", context.membership_id))
         actions[row.pk] = (options, default[0], default[1])
     return actions
+
+
+# --- D35: Do Not Contact ----------------------------------------------------------------------------
+#
+# §51 «contact_suppressions»: organization-scoped, «Πρέπει να υπερισχύει οποιουδήποτε AI/Radar». D35 v1 suppresses a
+# *company* for one organization: contact_type "company", contact_value = the normalized GEMI number (no phone or
+# email enters 2.0; Phase G adds those contact points). Applying it creates at most one suppression row and moves
+# every opportunity this organization has for the company to DO_NOT_CONTACT -- the only path that ever sets that
+# status (D32 refuses it as a target). No unsuppress, no reason edit, no expiry. Assignment, notes, tasks, score,
+# signals and the feed's contents are untouched; other organizations are never affected. The enforcement read is
+# ``is_contact_suppressed`` / ``is_company_suppressed`` (``gemiapp.contact_suppressions``, re-exported here): every
+# future contact workflow must ask it first. C8 asks it too, so an opportunity created after the suppression is born
+# DO_NOT_CONTACT.
+
+DO_NOT_CONTACT = "do_not_contact"
+# The reasons a company-level suppression may carry: §51's list without «email unsubscribe», because one address
+# opting out must never suppress a whole company.
+DNC_COMPANY_REASONS = ("explicit_objection", "call_objection", "compliance_registry", "manual")
+DNC_REASON_LABELS = {
+    "explicit_objection": "Ρητή αντίρρηση της εταιρείας",
+    "call_objection": "Αντίρρηση σε τηλεφωνική επικοινωνία",
+    "compliance_registry": "Μητρώο συμμόρφωσης",
+    "manual": "Απόφαση του οργανισμού",
+    "email_unsubscribe": "Απεγγραφή email",
+}
+DNC_SOURCE = "manual"
+
+
+@dataclass(frozen=True)
+class DoNotContactResult:
+    organization_id: int
+    company_id: int
+    suppression_id: int | None
+    created: bool                 # False when the suppression already existed (idempotent)
+    opportunities_changed: int    # rows moved to DO_NOT_CONTACT by this request
+
+
+class DoNotContactRefused(Exception):
+    """The company is visible to this member, but the request cannot be applied. Nothing stored."""
+
+    MESSAGES = {
+        "confirm": "Επιβεβαιώστε ότι δεν θέλετε επικοινωνία με αυτή την εταιρεία.",
+        "reason": "Επιλέξτε έγκυρο λόγο για τη μη επικοινωνία.",
+        "identity": "Η εταιρεία δεν έχει έγκυρο αριθμό ΓΕΜΗ· η μη επικοινωνία δεν μπορεί να καταχωριστεί.",
+    }
+
+    def __init__(self, reason: str, result: DoNotContactResult):
+        super().__init__(self.MESSAGES[reason])
+        self.reason = reason
+        self.result = result
+
+
+def apply_authorized_company_do_not_contact(user, organization_id, company_id, reason, confirmed) -> DoNotContactResult:
+    """D35: suppress one company for this organization and settle every one of its opportunities as DO_NOT_CONTACT.
+
+    Access first: a nonexistent or foreign organization, a non-member, a role without ``manage_contact_suppressions``
+    and a company without any customer-visible LIVE opportunity in this organization are all the same
+    ``OrganizationAccessDenied``. Then the request: an explicit confirmation, one of the company-level reasons and a
+    usable GEMI number, each a ``DoNotContactRefused``. Type, value, source and creator are derived here, never read
+    from the request.
+
+    One transaction, one lock order: the company row (``FOR NO KEY UPDATE``, the lock C8 also takes before it
+    creates an opportunity, so a concurrent materialization either finishes first and is swept up here, or waits and
+    then sees the suppression), every opportunity of the company in this organization (ascending id), the acting
+    membership (re-validated), then the suppression insert -- the order Django's SET_NULL collector touches rows when a
+    membership is deleted. Repeating is idempotent: an existing suppression is kept as it is (its reason,
+    creator and time are never rewritten) and only rows not yet DO_NOT_CONTACT are updated, in one statement. A
+    concurrent identical insert is caught by the unique constraint and converges on the existing row. SQLite proves
+    the behaviour, not PostgreSQL's row locks.
+    """
+    organization = _organization_by_id(organization_id)
+    context = require(get_organization_access_context(user, organization), Capability.MANAGE_CONTACT_SUPPRESSIONS)
+    company_pk = _object_id(company_id)
+    Suppression = _model("OrganizationContactSuppression")
+    try:
+        with transaction.atomic():
+            # Nothing about the company is returned before access is decided below.
+            _model("Company").objects.select_for_update(no_key=True).filter(pk=company_pk).values_list("pk").first()
+            rows = list(organization_opportunities_for(context).filter(company_id=company_pk)
+                        .select_for_update(of=("self",)).order_by("pk")
+                        .values_list("pk", "status", "latest_signal__mode", "company__gemi_number"))
+            if not any(mode == LIVE for _, _, mode, _ in rows):
+                raise OrganizationAccessDenied()  # the entry point must be a customer-visible LIVE opportunity
+            _lock_memberships(context, (context.membership_id,))
+
+            def refused(why):
+                return DoNotContactRefused(why, DoNotContactResult(
+                    organization_id=context.organization_id, company_id=company_pk, suppression_id=None,
+                    created=False, opportunities_changed=0))
+
+            if confirmed is not True:
+                raise refused("confirm")
+            if not isinstance(reason, str) or reason not in DNC_COMPANY_REASONS:
+                raise refused("reason")
+            value = company_suppression_value(rows[0][3])
+            if value is None:
+                raise refused("identity")
+            identity = dict(organization_id=context.organization_id, contact_type=SUPPRESSION_COMPANY,
+                            contact_value=value)
+            suppression_id = Suppression.objects.filter(**identity).values_list("pk", flat=True).first()
+            created = False
+            if suppression_id is None:
+                try:
+                    with transaction.atomic():
+                        suppression_id = Suppression.objects.create(
+                            **identity, reason=reason, source=DNC_SOURCE, created_by_id=context.membership_id).pk
+                    created = True
+                except IntegrityError:
+                    suppression_id = Suppression.objects.filter(**identity).values_list("pk", flat=True).first()
+                    if suppression_id is None:
+                        raise
+            pending = [pk for pk, status, _, _ in rows if status != DO_NOT_CONTACT]
+            changed = 0
+            if pending:
+                changed = (_model("Opportunity").objects
+                           .filter(pk__in=pending, organization_id=context.organization_id, company_id=company_pk)
+                           .update(status=DO_NOT_CONTACT, updated_at=timezone.now()))
+    except IntegrityError:
+        raise OrganizationAccessDenied()
+    return DoNotContactResult(organization_id=context.organization_id, company_id=company_pk,
+                              suppression_id=suppression_id, created=created, opportunities_changed=changed)
+
+
+def _page_do_not_contact(context: OrganizationAccessContext, gemi_number):
+    """The page's view of the company's suppression in this organization: (state, reason label, created_at, reasons).
+    ``state`` is "suppressed", "available" (this member may apply it), "unavailable" (no GEMI identity) or None."""
+    value = company_suppression_value(gemi_number)
+    existing = None
+    if value is not None:
+        existing = (_model("OrganizationContactSuppression").objects
+                    .filter(organization_id=context.organization_id, contact_type=SUPPRESSION_COMPANY,
+                            contact_value=value)
+                    .values_list("reason", "created_at").first())
+    if existing is not None:
+        return ("suppressed", DNC_REASON_LABELS.get(existing[0], existing[0]), existing[1], ())
+    if not can(context, Capability.MANAGE_CONTACT_SUPPRESSIONS):
+        return (None, "", None, ())
+    if value is None:
+        return ("unavailable", "", None, ())
+    return ("available", "", None, tuple((reason, DNC_REASON_LABELS[reason]) for reason in DNC_COMPANY_REASONS))

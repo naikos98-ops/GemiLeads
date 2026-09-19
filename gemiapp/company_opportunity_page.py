@@ -221,6 +221,12 @@ class CompanyOpportunityPage:
     notes_truncated: bool = False   # D33: more notes exist than the page shows
     tasks_truncated: bool = False   # D34: more tasks exist than the page shows
     today: date | None = None       # D34: the local date the page was built for (overdue, earliest due date)
+    # D35: the company's Do Not Contact state in this organization: "suppressed" (with reason label and time),
+    # "available" (this member may apply it, with the allowed (value, label) reasons), "unavailable" or None.
+    do_not_contact_state: str | None = None
+    do_not_contact_reason_label: str = ""
+    do_not_contact_created_at: datetime | None = None
+    do_not_contact_reasons: tuple = ()
 
 
 def _model(name):
@@ -249,7 +255,8 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
                                   notes: dict | None = None, notes_truncated: bool = False,
                                   note_actions: dict | None = None, tasks: dict | None = None,
                                   tasks_truncated: bool = False, task_actions: dict | None = None,
-                                  today: date | None = None) -> CompanyOpportunityPage:
+                                  today: date | None = None,
+                                  do_not_contact: tuple | None = None) -> CompanyOpportunityPage:
     """Assemble the page from already-authorized, LIVE-backed opportunities of one company, primary first."""
     primary_row = rows[0]
     company = primary_row.company
@@ -387,6 +394,10 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
         timeline_truncated=timeline_page.next_cursor is not None,
         assignees=tuple((assignee.membership_id, assignee.display_name) for assignee in assignees),
         notes_truncated=notes_truncated, tasks_truncated=tasks_truncated, today=today,
+        do_not_contact_state=(do_not_contact or (None, "", None, ()))[0],
+        do_not_contact_reason_label=(do_not_contact or (None, "", None, ()))[1],
+        do_not_contact_created_at=(do_not_contact or (None, "", None, ()))[2],
+        do_not_contact_reasons=(do_not_contact or (None, "", None, ()))[3],
     )
 
 

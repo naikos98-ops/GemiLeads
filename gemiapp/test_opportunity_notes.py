@@ -298,7 +298,7 @@ class PageTests(NoteTestCase):
             page = self.page()
         self.assertEqual(len(full), len(empty))  # the note count never changes the query count
         # 3 opportunities, 60 notes, 4 authors (one former): measured on SQLite; D34 added two constant task queries
-        self.assertEqual(len(full), 17)
+        self.assertEqual(len(full), 18)  # D35 added one constant suppression read
         note_queries = [q["sql"] for q in full.captured_queries if "opportunitynote" in q["sql"]]
         self.assertEqual(len(note_queries), 1)
         self.assertIn("LIMIT 51", note_queries[0])

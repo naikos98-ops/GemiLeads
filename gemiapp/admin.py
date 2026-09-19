@@ -36,6 +36,7 @@ from .models import (
     OpportunityScoreEvidence,
     OpportunityNote,
     OpportunityTask,
+    OrganizationContactSuppression,
     OpportunitySignal,
     Organization,
     OrganizationICP,
@@ -634,6 +635,19 @@ class OpportunityTaskAdmin(OrganizationReadOnlyAdmin):
     list_display = ("organization", "opportunity", "title", "due_on", "assigned_to", "completed_at")
     list_select_related = ("organization", "opportunity", "assigned_to")
     date_hierarchy = "due_on"
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(OrganizationContactSuppression)
+class OrganizationContactSuppressionAdmin(OrganizationReadOnlyAdmin):
+    """Inspection only (D35). Suppressions are created solely by gemiapp.organization_access; never edited or removed
+    here -- reversing a Do Not Contact record needs an explicit compliance decision."""
+
+    list_display = ("organization", "contact_type", "contact_value", "reason", "source", "created_at")
+    list_filter = ("contact_type", "reason", "source")
+    list_select_related = ("organization",)
 
     def has_delete_permission(self, request, obj=None):
         return False

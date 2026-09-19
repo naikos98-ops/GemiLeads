@@ -66,6 +66,7 @@ from . import opportunity_scoring as scoring
 from . import organization_radar_matching as matching
 from .opportunity_score_breakdown import OpportunityScoreBreakdown
 from .opportunity_scoring import OpportunityScore
+from .contact_suppressions import is_company_suppressed
 
 # Capture-time evidence writers, one per C7 evidence value.
 _EVIDENCE_WRITERS = {
@@ -89,6 +90,8 @@ _EVIDENCE_READERS = {
 }
 
 BELOW_THRESHOLD = "below_score_threshold"
+# D35: the status a row is born with when its company is already suppressed for the organization.
+DO_NOT_CONTACT = "do_not_contact"
 
 
 class OpportunityError(ValueError):
@@ -216,6 +219,7 @@ def materialize_opportunity(*, signal, radar, score: OpportunityScore,
             Opportunity, organization_id=organization_id, radar_id=radar.pk, company_id=signal.company_id,
             defaults=dict(first_signal_id=signal.pk, **values),
         )
+        # An existing row keeps its workflow status whatever it is: a recapture never rewrites it.
         if created:
             _capture(opportunity, breakdown)
         rescored = False
@@ -238,14 +242,22 @@ def _locked_or_created(Opportunity, *, organization_id, radar_id, company_id, de
 
     PostgreSQL holds the row lock for a concurrent worker; SQLite does not reproduce that faithfully, so the
     invariant is documented and the constraint proven, rather than claimed to be proven by SQLite.
+
+    D35: a *new* row is born with the organization's Do Not Contact state for the company. The company row is locked
+    first (``FOR NO KEY UPDATE``, the same lock the Do Not Contact action takes before it settles the company's rows),
+    so a suppression committed concurrently is either seen here or sweeps this row up afterwards -- the row is never
+    left looking contactable. Only creation consults it; an existing row's status is never touched.
     """
     identity = dict(organization_id=organization_id, radar_id=radar_id, company_id=company_id)
     existing = Opportunity.objects.select_for_update().filter(**identity).first()
     if existing is not None:
         return existing, False
+    company = (_model("Company").objects.select_for_update(no_key=True).filter(pk=company_id)
+               .only("pk", "gemi_number").first())
+    initial = {"status": DO_NOT_CONTACT} if company is not None and is_company_suppressed(organization_id, company) else {}
     try:
         with transaction.atomic():
-            return Opportunity.objects.create(**identity, **defaults), True
+            return Opportunity.objects.create(**identity, **defaults, **initial), True
     except IntegrityError:  # another worker created it first
         return Opportunity.objects.select_for_update().get(**identity), False
 

@@ -361,7 +361,7 @@ class PageAndSafetyTests(AssignTestCase):
         self.assertEqual([c.count("SELECT") for c in counts.values()], [4, 4, 4])  # org, membership, row, assignee
         with CaptureQueriesContext(connection) as page:
             self.page()
-        self.assertLessEqual(len(page), 17)  # D33 notes and D34 tasks each add constant, bounded reads
+        self.assertLessEqual(len(page), 18)  # D33 notes, D34 tasks and D35 suppression add constant reads
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):
         legacy_user = entitled_user("legacy-d31@example.com")

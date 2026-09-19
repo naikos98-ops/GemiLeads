@@ -116,7 +116,9 @@ class SchemaTests(TaskTestCase):
 
     def test_the_migration_is_one_additive_create_model(self):
         loader = MigrationLoader(None, ignore_no_migrations=True)
-        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"), "0051_opportunity_task")
+        # D34 owns 0051; D35's 0052 (suppressions) follows it.
+        self.assertEqual(loader.disk_migrations[("gemiapp", "0052_organization_contact_suppression")].dependencies,
+                         [("gemiapp", "0051_opportunity_task")])
         migration = loader.disk_migrations[("gemiapp", "0051_opportunity_task")]
         self.assertEqual(migration.dependencies, [("gemiapp", "0050_opportunity_note")])
         self.assertEqual([(type(op).__name__, op.name) for op in migration.operations],
@@ -525,7 +527,8 @@ class PageTests(TaskTestCase):
         with CaptureQueriesContext(connection) as full:
             page = self.page()
         self.assertEqual(len(full), len(empty))  # the task count never changes the query count
-        self.assertEqual(len(full), 17)  # 3 opportunities, notes, 60 tasks, 4 member states: measured on SQLite
+        # 3 opportunities, notes, 60 tasks, 4 member states: measured on SQLite; D35 added one suppression read
+        self.assertEqual(len(full), 18)
         task_queries = [q["sql"] for q in full.captured_queries if "opportunitytask" in q["sql"]]
         self.assertEqual(len(task_queries), 1)
         self.assertIn("LIMIT 51", task_queries[0])

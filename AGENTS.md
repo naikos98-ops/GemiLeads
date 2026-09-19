@@ -159,6 +159,57 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — D35: Do Not Contact (2026-09-19).** Company-level operational suppression ανά οργανισμό
+  (§51 «contact_suppressions», «Πρέπει να υπερισχύει οποιουδήποτε AI/Radar»). Migration
+  `0052_organization_contact_suppression` (ένα `CreateModel`, κανένα backfill), μοντέλο
+  `OrganizationContactSuppression`, `organization_access.apply_authorized_company_do_not_contact`, view
+  `organization_views.company_do_not_contact`.
+  - Το D34 (`a3ae6a3`) και η επιτάχυνση του suite (`922b49d`, κανονική εντολή `manage.py test --noinput --parallel 4`,
+    ~40 s) δεσμεύτηκαν. Οι αποφάσεις D35 είναι του χρήστη (v1).
+  - **Ταυτότητα:** `(organization, contact_type, contact_value)` unique· μόνο `contact_type = "company"` με
+    `contact_value` = κανονικοποιημένος αριθμός ΓΕΜΗ (ο ίδιος κανόνας με το `ingestion.discovery.normalize_gemi_number`)·
+    **ρητή, προσωρινή επέκταση** του χώρου ταυτοτήτων του §51· email/phone contact points **αναβάλλονται στο Phase G**.
+    Χωρίς έγκυρο ΓΕΜΗ → άρνηση. Πεδία: `reason` (υποχρεωτικό· για εταιρεία μόνο explicit_objection, call_objection,
+    compliance_registry, manual — **ποτέ** email_unsubscribe), `source` (πάντα `manual`), `created_by` →
+    `OrganizationMember` (SET_NULL), `created_at`. DB CHECKs για τύπο/λόγο/πηγή/μη κενή τιμή. Κανένα όνομα, επαφή,
+    πρόσωπο ή payload.
+  - **Οργανισμός:** επηρεάζει μόνο τον ίδιο οργανισμό· η ίδια εταιρεία σε άλλο οργανισμό μένει ανέγγιχτη.
+  - **Δικαίωμα `manage_contact_suppressions`:** μόνο OWNER και SALES_MANAGER (ποτέ SALES_USER, αφού αλλάζει και
+    κρυφές αδελφές γραμμές)· ADMIN/VIEWER όχι. Είσοδος μόνο αν η εταιρεία έχει ορατή LIVE ευκαιρία· αλλιώς ίδιο 404.
+  - **Επίδραση:** μία εγγραφή suppression και **κάθε** ευκαιρία του οργανισμού για την εταιρεία (όλα τα Radars,
+    και κρυφές SHADOW γραμμές, χωρίς να αποκαλύπτονται) → `DO_NOT_CONTACT` (μία bulk UPDATE). Το D32 συνεχίζει να
+    αρνείται τον στόχο `do_not_contact`· μόνο το D35 τον δημιουργεί. Ανάθεση, σημειώσεις, εργασίες (οι ανοιχτές μένουν
+    ανοιχτές), score, signals, snapshots, κατάταξη feed: αμετάβλητα· το φίλτρο status του C9 βρίσκει τις γραμμές.
+  - **Idempotent:** η υπάρχουσα εγγραφή κερδίζει (λόγος/δημιουργός/χρόνος δεν ξαναγράφονται), καμία περιττή UPDATE·
+    ταυτόχρονο ίδιο insert → unique constraint → σύγκλιση στην υπάρχουσα, ποτέ 500. Κλειδώματα: ευκαιρίες της
+    εταιρείας (αύξουσα σειρά) → δρώσα membership (επανέλεγχος) → insert. **Κανένα unsuppress/edit/expiry.**
+  - **Enforcement:** `is_contact_suppressed(organization, contact_type, contact_value)` και
+    `is_company_suppressed(organization, company)` ζουν στο authorization-free `gemiapp/contact_suppressions.py` (μία
+    υλοποίηση· το G5 τα επανεξάγει) — κάθε μελλοντική ροή επικοινωνίας (email/τηλέφωνο/AI) πρέπει να τα ρωτά πρώτα.
+    Το D35 δεν υλοποιεί καμία ροή επικοινωνίας.
+  - **Μελλοντικές ευκαιρίες (hardening):** το C8 (`_locked_or_created`), **μόνο όταν δημιουργεί νέα γραμμή**,
+    κλειδώνει τη γραμμή της εταιρείας (`FOR NO KEY UPDATE`) και ρωτά το `is_company_suppressed`· αν υπάρχει suppression
+    για τον οργανισμό, η ευκαιρία **γεννιέται `DO_NOT_CONTACT`** (ποτέ πρώτα NEW). Match, score, breakdown, κατώφλι
+    αμετάβλητα· άλλος οργανισμός → κανονικά `new`. Υπάρχουσα γραμμή: το C8 **ποτέ** δεν ξαναγράφει το status της (DNC
+    μένει DNC, WON μένει WON). Η ενέργεια D35 παίρνει το ίδιο company lock πρώτα, άρα ταυτόχρονο C8 create και DNC
+    σειριοποιούνται. Κόστος: +2 queries ανά **νέα** γραμμή (lock + lookup), 0 στις επανακαταγραφές. Χωρίς έγκυρο ΓΕΜΗ:
+    κανένα lookup, κανονικά `new`.
+  - **Legacy:** το `PersonSuppression` (πλατφορμικό, άρθρο 21, ανά όνομα προσώπου) και το `OutreachSuppression`
+    (πλατφορμικό unsubscribe/bounce του legacy outreach email) μένουν ανεξάρτητα· ούτε διαβάζονται ούτε γράφονται.
+  - Route `POST /organizations/<id>/opportunities/company/<company_id>/do-not-contact/` (`reason`, `confirm=yes`):
+    login, CSRF, redirect στη σελίδα D29, `next=` αγνοείται· type/value/source/creator/status ποτέ από το request.
+    Σελίδα D29: **ένα** company-level τμήμα «ΜΗ ΕΠΙΚΟΙΝΩΝΙΑ» (όχι ανά Radar, όχι στο dropdown του D32) με εξήγηση,
+    select λόγου και υποχρεωτικό checkbox επιβεβαίωσης (ελέγχεται στον server)· μετά: «✓ Χωρίς επικοινωνία» με λόγο
+    και ημερομηνία, χωρίς αναίρεση. 18 queries για τη σελίδα.
+  - Κανένα audit log (**βήμα 36** θα καταγράψει «suppression added»), καμία ειδοποίηση (**βήμα 37**).
+  - Κύκλος migration στο αντίγραφο της dev βάσης: forward → 0 → fixture (3 Radars στον A, 1 στον B) → parity →
+    reverse → reapply (ξανά 0), όλα PASS.
+  - 39 νέα tests· **1.765 tests OK** με τη μία κανονική εκτέλεση (`--parallel 4`). Σε αποτυχία μέσα σε parallel
+    worker (χωρίς `tblib` δεν φαίνεται traceback) ξανατρέξε το module σειριακά. `G5_STATUS =
+    PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`· `G4_STATUS = NOT_PASSED`· **`PRODUCTION_MIGRATION_STATUS =
+    BLOCKED_BY_G0_G1`.**
+
+
 - **Επιτάχυνση του πλήρους test suite (2026-09-19).** Το D34 δεσμεύτηκε (`a3ae6a3`). Μέτρηση: η δημιουργία της test
   βάσης (in-memory SQLite, 51 migrations) κοστίζει ~4 s· ο **PBKDF2 hasher** (1.000.000 iterations) κόστιζε
   ~0,51 s ανά hash και τα `setUp` δημιουργούν χιλιάδες χρήστες με password — αυτό ήταν σχεδόν όλο το runtime.
@@ -1097,10 +1148,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 35 — Do Not Contact** (§51 του
-  `docs/GEMI_LEADS_2_BLUEPRINT.md`: `contact_suppressions`, global για τον οργανισμό, «Πρέπει να υπερισχύει
-  οποιουδήποτε AI/Radar»)· αναμένει έγκριση του D34. Ανοιχτές αποφάσεις προϊόντος: reopen τελικών καταστάσεων,
-  επεξεργασία/διαγραφή σημειώσεων και εργασιών (ιδανικά μετά το audit log του βήματος 36).
+- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 36 — Audit Log** (§52 του `docs/GEMI_LEADS_2_BLUEPRINT.md`:
+  actor, organization, action, entity, timestamp, metadata)· αναμένει έγκριση του D35. Ανοιχτές αποφάσεις προϊόντος:
+  reopen τελικών καταστάσεων, επεξεργασία/διαγραφή σημειώσεων και εργασιών, αναίρεση suppression, email/phone
+  suppression (Phase G).
+- **Release gate για το D35:** η `0052_organization_contact_suppression` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D34:** η `0051_opportunity_task` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D33:** η `0050_opportunity_note` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D31:** η `0049_opportunity_assignment` **δεν** εφαρμόζεται σε production πριν τα G0/G1.

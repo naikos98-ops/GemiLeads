@@ -3,7 +3,8 @@
   D29 / blueprint §36 — company opportunity page. Renders only the immutable, already-authorized page value from
   gemiapp.organization_access: no queryset, no request user, no contact data. The mutations are D30 Save, D31
   Assign, D32 status, D33 notes and D34 tasks, POST forms per opportunity row, rendered only when the membership may
-  perform them on that row. Notes and task titles are the members' own plain text, shown auto-escaped. Everything is
+  perform them on that row, plus ONE company-level D35 Do Not Contact form (it affects every opportunity of the
+  company in the organization). Notes and task titles are the members' own plain text, shown auto-escaped. Everything is
   auto-escaped. The frozen C8 explanation («Γιατί αυτή η ευκαιρία») is historical; «Τρέχοντα στοιχεία» is the
   latest canonical snapshot — deliberately different things.
 {% endcomment %}
@@ -120,6 +121,31 @@
         {% endfor %}
       </section>
 
+      <!-- D35: company-level Do Not Contact for the whole organization -- not a per-Radar status -->
+      {% if page.do_not_contact_state %}
+      <section class="product-history" id="do-not-contact" data-do-not-contact="{{ page.do_not_contact_state }}">
+        <p>ΜΗ ΕΠΙΚΟΙΝΩΝΙΑ</p>
+        {% if page.do_not_contact_state == 'suppressed' %}
+        <div style="font-size: var(--type-small); font-weight: 700;">✓ Χωρίς επικοινωνία για τον οργανισμό · {{ page.do_not_contact_reason_label }} · {{ page.do_not_contact_created_at|date:'d/m/Y H:i' }}</div>
+        {% elif page.do_not_contact_state == 'unavailable' %}
+        <div style="font-size: var(--type-small); color: var(--product-muted);">Η εταιρεία δεν έχει έγκυρο αριθμό ΓΕΜΗ· η μη επικοινωνία δεν μπορεί να καταχωριστεί.</div>
+        {% else %}
+        <div style="font-size: var(--type-small); color: var(--product-muted);">Ισχύει για ολόκληρη την εταιρεία σε όλο τον οργανισμό: κάθε ευκαιρία της, σε κάθε Radar, γίνεται «Χωρίς επικοινωνία». Δεν αναιρείται.</div>
+        <form method="post" action="{% url 'organization_company_do_not_contact' page.organization_id page.company.company_id %}" data-do-not-contact-form style="margin-top: 6px;">
+          {% csrf_token %}
+          <select name="reason" required aria-label="Λόγος μη επικοινωνίας">
+            <option value="">Επιλέξτε λόγο</option>
+            {% for value, label in page.do_not_contact_reasons %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+          <label style="display: block; font-size: var(--type-small);"><input type="checkbox" name="confirm" value="yes" required> Δεν θέλω να επικοινωνούμε με αυτή την εταιρεία</label>
+          <button type="submit" class="product-text-button">Καταχώριση μη επικοινωνίας</button>
+        </form>
+        {% endif %}
+      </section>
+      {% endif %}
+
       <!-- Every visible opportunity for this company (one per Radar); statuses are never merged -->
       <section class="product-history" id="opportunities">
         <p>ΕΥΚΑΙΡΙΕΣ ΑΝΑ RADAR ({{ page.opportunities|length }})</p>
@@ -227,8 +253,8 @@
         <p data-tasks-truncated style="font-size: var(--type-small); color: var(--product-muted);">Εμφανίζονται 50 εργασίες, πρώτα οι ανοιχτές.</p>
         {% endif %}
       </section>
-      {% comment %}D30 Save, D31 Assign, D32 status, D33 notes and D34 tasks are the only actions, per opportunity
-      row above. Do Not Contact arrives with its own Phase D package; it is not rendered here.{% endcomment %}
+      {% comment %}D30 Save, D31 Assign, D32 status, D33 notes and D34 tasks are the per-row actions above; D35 Do Not
+      Contact is the one company-level action. There is no unsuppress.{% endcomment %}
     </aside>
   </div>
 </div>

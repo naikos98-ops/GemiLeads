@@ -294,14 +294,16 @@ class BoundaryTests(StatusTestCase):
         from django.apps import apps
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
-        self.assertEqual({n for n in names if "Suppression" in n}, {"OutreachSuppression", "PersonSuppression"})
+        # the two legacy platform suppressions, plus D35's organization-scoped one (never written by D32)
+        self.assertEqual({n for n in names if "Suppression" in n},
+                         {"OutreachSuppression", "PersonSuppression", "OrganizationContactSuppression"})
         self.assertFalse([n for n in names if "History" in n or "Notification" in n or "StatusChange" in n])
         # only the pre-existing KAD catalogue / company-activity models: no activity log (item 36)
         self.assertEqual({n for n in names if "Activity" in n}, {"ActivityCode", "ActivityCodeKadLink", "CompanyActivity"})
         self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog"})
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0051_opportunity_task")  # D32 has no migration; 0050/0051 are D33 notes, D34 tasks
+                         "0052_organization_contact_suppression")  # D32 has no migration; 0050-0052: D33-D35
 
     def test_the_frozen_capture_signals_snapshots_timeline_and_ranking_are_untouched(self):
         self.put_assigned(self.maria)

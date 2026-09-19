@@ -4,7 +4,8 @@ Every view here reaches organization-owned data **only** through ``gemiapp.organ
 organization comes from the route and is authorized there against the logged-in user's membership, never from a
 session, middleware or the user. Every refusal becomes the same 404, whatever its reason, so a route never tells a
 caller whether an organization, company or opportunity exists. The page is a GET-only read; the only mutations are
-D30 Save, D31 Assign, D32 status changes, D33 notes and D34 tasks, CSRF-protected POSTs that redirect back to the page.
+D30 Save, D31 Assign, D32 status changes, D33 notes, D34 tasks and the company-level D35 Do Not Contact,
+CSRF-protected POSTs that redirect back to the page.
 """
 
 from django.contrib import messages
@@ -14,10 +15,10 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
 from .organization_access import (
-    AssignmentRefused, NoteRefused, OpportunityTransitionRefused, OrganizationAccessDenied, StatusChangeRefused,
-    TaskRefused, add_authorized_opportunity_note, assign_authorized_opportunity, complete_authorized_opportunity_task,
-    create_authorized_opportunity_task, get_authorized_company_opportunity_page, save_authorized_opportunity,
-    set_authorized_opportunity_status,
+    AssignmentRefused, DoNotContactRefused, NoteRefused, OpportunityTransitionRefused, OrganizationAccessDenied,
+    StatusChangeRefused, TaskRefused, add_authorized_opportunity_note, apply_authorized_company_do_not_contact,
+    assign_authorized_opportunity, complete_authorized_opportunity_task, create_authorized_opportunity_task,
+    get_authorized_company_opportunity_page, save_authorized_opportunity, set_authorized_opportunity_status,
 )
 
 
@@ -154,5 +155,30 @@ def complete_opportunity_task(request, organization_id, opportunity_id, task_id)
         raise Http404()
     if result.changed:
         messages.success(request, "Η εργασία ολοκληρώθηκε.")
+    return redirect("organization_company_opportunity", organization_id=result.organization_id,
+                    company_id=result.company_id)
+
+
+@login_required
+@require_POST
+def company_do_not_contact(request, organization_id, company_id):
+    """D35: suppress the whole company for this organization (every one of its opportunities becomes Do Not Contact),
+    then back to the company page.
+
+    Only ``reason`` and the ``confirm`` checkbox are read from the form; the suppressed identity, its source and
+    creator are derived from the authorized context. The destination is derived from the route, never the request.
+    """
+    try:
+        result = apply_authorized_company_do_not_contact(request.user, organization_id, company_id,
+                                                         request.POST.get("reason"),
+                                                         request.POST.get("confirm") == "yes")
+    except OrganizationAccessDenied:
+        raise Http404()
+    except DoNotContactRefused as refused:
+        messages.error(request, str(refused))
+        result = refused.result
+    else:
+        if result.created or result.opportunities_changed:
+            messages.success(request, "Η εταιρεία καταχωρίστηκε ως «Χωρίς επικοινωνία» για τον οργανισμό.")
     return redirect("organization_company_opportunity", organization_id=result.organization_id,
                     company_id=result.company_id)
