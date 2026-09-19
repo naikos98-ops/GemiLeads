@@ -28,15 +28,49 @@ number and this key, the event is stable forever: repeated observations, several
 incorporation date, a newer rule version and a future promotion to live all resolve to the same signal.
 Changing this shape after release would be a deliberate identity migration, not a code tweak.
 
-Detected time
--------------
-``detected_at`` is when Discovery v2 first observed the company: the ``started_at`` of the run that
-produced the earliest eligible observation. Observations carry only ``created_at``, which is the moment the
-run's rows were bulk-written at the end of the scan and is identical for every row in that run, so it is a
-persistence artefact rather than an observation time. When several runs observed the same company, the
-earliest eligible observation wins, and a rerun never moves the value.
+Discovery time and detected time are distinct
+----------------------------------------------
+**Discovery observation time** is when Discovery v2 first observed the company: the ``started_at`` of the run
+that produced the earliest eligible observation (observations carry only ``created_at``, a bulk-write artefact
+identical for every row of a run). When several runs observed the company, the earliest eligible observation
+wins. It stays exactly where it is -- on the observation and its run, linked to the signal through
+``CompanySignalDiscoveryEvidence`` -- and is never rewritten.
 
-It is never the materialisation command's run time, never "now", and never ``Company.imported_at``.
+**Signal ``detected_at``** is the first moment Gemi Leads had *both* that discovery evidence *and* a canonical
+company state sufficient for deterministic Radar evaluation:
+
+    detected_at = max(discovery observation time, baseline snapshot observed_at)
+
+This is required, not cosmetic. Radar matching (C5) reads only state observed at or before ``detected_at`` and
+never looks forward; a company discovered as new is by definition not stored locally when discovery sees it, so
+any state of it is observed later. Without this rule every KAD, region and legal-form Radar would be
+``INSUFFICIENT_STATE`` for every new company. When no trustworthy state exists (below), there is no baseline and
+``detected_at`` is the discovery observation time, exactly as before -- criteria Radars then stay insufficient.
+
+Neither value is ever the materialisation command's run time or "now". The value is fixed when the signal is
+created; a rerun never moves it.
+
+Detection-time state (the baseline)
+-----------------------------------
+Before the signal is recorded, the company's canonical state is made available:
+
+* the company already has a snapshot -> its first (baseline) snapshot is **reused**; nothing is written;
+* otherwise a baseline is **created** with the existing B3 writer (``normalize_company`` ->
+  ``record_company_snapshot``: same schema and normalizer versions, state hash and quality semantics) from the
+  importer's stored record, and only when that record is provably trustworthy:
+  - ``Company.raw_data`` passes the A2 ``company_search`` contract as one search result,
+  - its ``arGemi`` is this company's GEMI number,
+  - no Django admin addition or change was logged for the company, and
+  - A6 establishes its observation time (``Company.updated_at``, the moment the importer wrote the record it had
+    just received from GEMI -- the same evidence as A6 ``last_seen_at``);
+* otherwise (missing, malformed or foreign record, admin-edited row, normalisation failure) **no state**: nothing
+  is guessed, fabricated or taken from a later snapshot.
+
+The baseline, the signal and its discovery evidence are written in one transaction, in that order, so a signal
+never exists without the state it was detected with, and the G2 pipeline (on commit) finds that state through
+the matcher's unchanged ``observed_at <= detected_at`` lookup. No GEMI request is made: the state is what the
+approved importer already stored. This narrowly revises B3's "no baselines from stored ``raw_data``": only for a
+company being materialised as newly discovered, only from a validated, identity-checked, A6-timestamped record.
 
 Effective date
 --------------
@@ -75,6 +109,7 @@ from typing import Iterable
 
 from django.apps import apps
 from django.db import transaction
+from django.utils import timezone
 
 from .company_signals import (
     DISCOVERY,
@@ -85,7 +120,12 @@ from .company_signals import (
     record_company_signal,
     rule_for,
 )
+from .company_snapshots import BASELINE_CREATED, record_company_snapshot
+from .ingestion.company_metadata import RAW_GEMI_RECORD, company_is_admin_touched, derive_company_metadata
 from .ingestion.discovery import INVALID_DATE, LATE_PUBLICATION, NEW_INCORPORATION
+from .ingestion.errors import GemiResponseValidationError
+from .ingestion.normalizer import normalize_company
+from .ingestion.schemas import ResponseFamily, validate_response
 
 logger = logging.getLogger(__name__)
 
@@ -105,12 +145,60 @@ INVALID_EVIDENCE = "invalid_evidence"
 NOT_ELIGIBLE = "not_eligible"
 
 
+# Detection-time state of a newly recorded signal.
+STATE_BASELINE_CREATED = "baseline_created"
+STATE_BASELINE_REUSED = "baseline_reused"
+STATE_UNAVAILABLE = "state_unavailable"
+
+
 @dataclass(frozen=True)
 class ProducerResult:
     status: str
     gemi_number: str
     signal_id: int | None = None
     detail: str = ""
+    detection_state: str = ""        # for a created signal: baseline created / reused / state unavailable
+
+
+def trusted_importer_observation(company):
+    """(observed_at, "") when ``Company.raw_data`` is a trustworthy GEMI observation of this very company, else
+    (None, reason). Reads stored data only; never calls GEMI."""
+    derived = derive_company_metadata(
+        gemi_number=company.gemi_number, raw_data=company.raw_data, imported_at=company.imported_at,
+        updated_at=company.updated_at, admin_touched=company_is_admin_touched(company.pk))
+    if derived.raw_state != RAW_GEMI_RECORD:
+        return None, derived.raw_state
+    if derived.admin_touched:
+        return None, "admin_touched"
+    observed_at = derived.values["last_seen_at"]
+    if observed_at is None or timezone.is_naive(observed_at):
+        return None, "no_observation_time"
+    try:
+        validate_response(ResponseFamily.COMPANY_SEARCH, {"searchResults": [company.raw_data]})
+    except GemiResponseValidationError:
+        return None, "invalid_record"
+    return observed_at, ""
+
+
+def _detection_state(company):
+    """(state, baseline snapshot or None, reason): reuse the company's baseline, or create it from a trustworthy
+    importer record with the B3 writer, or report that no state is available. Called inside the producer's
+    transaction, before the signal is recorded."""
+    CompanySnapshot = apps.get_model("gemiapp", "CompanySnapshot")
+    baseline = CompanySnapshot.objects.filter(company=company).order_by("observed_at", "id").first()
+    if baseline is not None:
+        return STATE_BASELINE_REUSED, baseline, ""
+    observed_at, reason = trusted_importer_observation(company)
+    if observed_at is None:
+        return STATE_UNAVAILABLE, None, reason
+    try:
+        normalized = normalize_company(company.raw_data, as_of=timezone.localdate(observed_at))
+    except (TypeError, ValueError):
+        return STATE_UNAVAILABLE, None, "normalisation_failed"
+    outcome = record_company_snapshot(company, normalized, observed_at)
+    if outcome.status != BASELINE_CREATED:  # impossible without a prior snapshot; never guess
+        return STATE_UNAVAILABLE, None, outcome.status
+    return STATE_BASELINE_CREATED, outcome.snapshot, ""
 
 
 def eligible_observations():
@@ -145,12 +233,22 @@ def produce_new_company_signal(observation) -> ProducerResult:
         effective = _effective_date(observation)
     except ValueError as exc:
         return ProducerResult(INVALID_EVIDENCE, observation.gemi_number, detail=str(exc))
+    CompanySignal = apps.get_model("gemiapp", "CompanySignal")
+    discovered_at = observation.run.started_at
+    state, reason = "", ""
     try:
         with transaction.atomic():
+            detected_at = discovered_at
+            key = build_dedupe_key(signal_type=NEW_COMPANY, gemi_number=company.gemi_number, event_key=dict(EVENT_KEY))
+            if not CompanySignal.objects.filter(dedupe_key=key).exists():
+                # Detection-time state first, then the signal that is detected with it (see the module docstring).
+                state, baseline, reason = _detection_state(company)
+                if baseline is not None:
+                    detected_at = max(discovered_at, baseline.observed_at)
             signal, created = record_company_signal(
                 company=company, signal_type=NEW_COMPANY, source_type=DISCOVERY, event_key=dict(EVENT_KEY),
                 effective=effective, confidence=CONFIDENCE, mode=SHADOW,
-                detected_at=observation.run.started_at,
+                detected_at=detected_at,
             )
             # First evidence wins: an existing link is never replaced by a later observation.
             CompanySignalDiscoveryEvidence.objects.get_or_create(
@@ -158,7 +256,8 @@ def produce_new_company_signal(observation) -> ProducerResult:
             )
     except SignalConflictError as exc:
         return ProducerResult(CONFLICT, observation.gemi_number, detail=str(exc))
-    return ProducerResult(CREATED if created else EXISTING, observation.gemi_number, signal_id=signal.pk)
+    return ProducerResult(CREATED if created else EXISTING, observation.gemi_number, signal_id=signal.pk,
+                          detail=reason, detection_state=state if created else "")
 
 
 @dataclass
@@ -174,6 +273,9 @@ class MaterialisationReport:
     missing_or_invalid_effective_dates: int = 0
     conflicts: int = 0
     invalid_evidence: int = 0
+    baselines_created: int = 0
+    baselines_reused: int = 0
+    state_unavailable: int = 0
     batches: int = 0
     last_gemi_number: str = ""
     conflicting_gemi_numbers: list = field(default_factory=list)
@@ -188,6 +290,8 @@ class MaterialisationReport:
             f"unmaterialised (no Company yet)={self.unmaterialised_no_company}",
             f"{prefix}evidence: late publications={self.late_publications} valid effective dates="
             f"{self.valid_effective_dates} missing or invalid dates={self.missing_or_invalid_effective_dates}",
+            f"{prefix}detection-time state: baselines created={self.baselines_created} reused="
+            f"{self.baselines_reused} unavailable={self.state_unavailable}",
             f"{prefix}conflicts={self.conflicts} invalid evidence={self.invalid_evidence} mode=shadow (always)",
             *([f"{prefix}conflicting gemi numbers: {self.conflicting_gemi_numbers}"] if self.conflicting_gemi_numbers else []),
         ]
@@ -237,6 +341,9 @@ def materialize_new_company_signals(
             result = produce_new_company_signal(observation)
             if result.status == CREATED:
                 report.signals_created += 1
+                report.baselines_created += int(result.detection_state == STATE_BASELINE_CREATED)
+                report.baselines_reused += int(result.detection_state == STATE_BASELINE_REUSED)
+                report.state_unavailable += int(result.detection_state == STATE_UNAVAILABLE)
             elif result.status == EXISTING:
                 report.signals_existing += 1
             elif result.status == CONFLICT:

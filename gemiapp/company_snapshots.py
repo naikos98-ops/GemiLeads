@@ -95,6 +95,13 @@ it, and then, inside one transaction holding a lock on the latest snapshot:
 A baseline never means "the company changed"; it only establishes comparison history. Nothing here infers
 what changed, and no signal is emitted: that is B5's work.
 
+Two callers observe companies: the B4 refresh collector (fresh GEMI observations) and the B2 NEW_COMPANY
+producer, which records a newly discovered company's **detection-time baseline** from the importer's stored
+record -- only when that record passes the A2 ``company_search`` contract, belongs to the company, was not
+edited through the admin and has an A6 observation time -- so the signal can be detected with canonical state
+(``gemiapp.new_company_signals``). Both go through this writer; no baseline is ever built from any other stored
+``raw_data``.
+
 ``observed_at`` must be supplied and timezone-aware -- there is no hidden ``timezone.now()`` fallback, and it
 is never the incorporation date, the status-change date or the row's creation time. An observation older
 than the current state's span is rejected rather than allowed to rewrite chronology.

@@ -159,6 +159,34 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — NEW_COMPANY: κατάσταση τη στιγμή της ανίχνευσης (2026-09-19, Option A).** Διόρθωση της
+  δομικής αιτίας: μια καινούρια εταιρεία δεν έχει τοπική κατάσταση όταν τη βλέπει το Discovery v2, οπότε κάθε
+  Radar με ΚΑΔ/περιοχή/νομική μορφή έβγαινε `INSUFFICIENT_STATE`.
+  - **Δύο διαφορετικές έννοιες:** *χρόνος παρατήρησης discovery* = το πρώτο τεκμήριο (το `started_at` του run της
+    παλαιότερης επιλέξιμης παρατήρησης· μένει στο observation/run και συνδέεται με το σήμα μέσω
+    `CompanySignalDiscoveryEvidence`, ποτέ δεν ξαναγράφεται). *`detected_at` του σήματος* = η πρώτη στιγμή που το
+    Gemi Leads είχε **και** το τεκμήριο discovery **και** κανονική κατάσταση επαρκή για ντετερμινιστική αξιολόγηση
+    Radar: `detected_at = max(χρόνος discovery, observed_at του baseline snapshot)`. Απαραίτητο για το ιστορικό
+    matching: ο C5 διαβάζει μόνο κατάσταση με `observed_at <= detected_at` (αμετάβλητος, κανένα «latest» fallback).
+  - **Baseline:** αν η εταιρεία έχει ήδη snapshot → επαναχρησιμοποιείται το πρώτο (καμία εγγραφή)· αλλιώς
+    δημιουργείται με τον υπάρχοντα B3 writer (`normalize_company` → `record_company_snapshot`, ίδια schema/normalizer
+    versions, state hash, ποιότητες) από το `Company.raw_data` του importer **μόνο** αν: περνά το A2 contract
+    `company_search`, το `arGemi` είναι της ίδιας εταιρείας, δεν υπάρχει καταγεγραμμένη αλλαγή μέσω Django admin,
+    και το A6 δίνει χρόνο παρατήρησης (`updated_at`, όπως το A6 `last_seen_at`). Σειρά σε **μία** συναλλαγή:
+    baseline → `detected_at` → σήμα → discovery evidence· μετά το commit τρέχει το SHADOW pipeline.
+  - **Χωρίς αξιόπιστη εγγραφή** (λείπει, κακοσχηματισμένη, άλλης εταιρείας, αποτυγχάνει το contract, admin-edited,
+    αποτυχία normalisation): **καμία κατάσταση**, τίποτα δεν μαντεύεται· `detected_at` = χρόνος discovery (όπως
+    πριν) και τα Radars με κριτήρια μένουν `INSUFFICIENT_STATE`.
+  - **Idempotent:** υπάρχον σήμα → καμία κατάσταση/εγγραφή· επανεκτέλεση → κανένα διπλό snapshot/σήμα, κανένα
+    ξαναγράψιμο capture. Το report μετρά baselines created / reused / unavailable. **Κανένα αίτημα ΓΕΜΗ**, καμία
+    migration. Company/CompanyActivity μόνο διαβάζονται· legacy importer, CustomerRadar, leads, matches, digests,
+    billing αμετάβλητα.
+  - **Όρια:** πεδία που η εγγραφή δεν δίνει (π.χ. `null` δήμος/νομική μορφή, δραστηριότητες αβέβαιης ισχύος)
+    μένουν άγνωστα → `INSUFFICIENT_STATE` για το αντίστοιχο κριτήριο. Η πρώτη επόμενη παρατήρηση του refresh
+    συγκρίνεται με αυτό το baseline (μέτρηση στο G4).
+  - **`G4_STATUS = NOT_PASSED`** — η LIVE παραμένει **απαγορευμένη**. 15 νέα tests (`test_new_company_state.py`)·
+    **1.937 tests OK** με μία κανονική εκτέλεση.
+
 - **Gemi Leads 2.0 — G2: SHADOW opportunity pipeline end-to-end (2026-09-19).** Η αλυσίδα
   `CompanySignal(SHADOW) → ενεργά OrganizationRadars (C5 pre-filter + v1 evaluation) → μόνο entitled οργανισμοί →
   C6 score + C7 breakdown → C8 materialize_opportunity` τρέχει πλέον από ένα κανονικό entry point:
@@ -991,7 +1019,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   - **A → B → A δίνει 3 γραμμές**: δεν υπάρχει unique (company, state_hash), ώστε η επιστροφή σε
     προηγούμενη κατάσταση να μένει ορατή.
   - Καμία backfill από `raw_data` (θα ήταν πλαστό baseline), κανένα task, κανένα σήμα. Το B4 θα φέρνει
-    φρέσκες παρατηρήσεις και θα καλεί αυτόν τον writer.
+    φρέσκες παρατηρήσεις και θα καλεί αυτόν τον writer. *(Αναθεώρηση 2026-09-19: εξαίρεση μόνο για το
+    detection-time baseline μιας εταιρείας που υλοποιείται ως NEW_COMPANY, από επικυρωμένη, ταυτοποιημένη,
+    A6-χρονοσημασμένη εγγραφή του importer — βλ. «NEW_COMPANY: κατάσταση τη στιγμή της ανίχνευσης».)*
   - Αντίγραφο dev βάσης: **0 snapshots** μετά τη migration· η προσομοίωση fixture (A→A→B→B→A) έδωσε 3
     γραμμές με ίδιο hash A1/A2 και εξαφανίστηκε με το reverse.
   - **Δύο πεδία τύπου δραστηριότητας, σκόπιμα:** το `activity_type` είναι η canonical A7 τιμή (μέσω `normalize_kad_search`: χωρίς τόνους, κεφαλαία)· το `source_activity_type` είναι η A3 `normalize_text`, που κάνει NFC και
@@ -1011,7 +1041,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     εκτός ταυτότητας: ημερομηνία σύστασης, run/observation id, detected_at, κατάταξη, mode, έκδοση κανόνα.
   - **`detected_at`** = `started_at` του **παλαιότερου** run με επιλέξιμη παρατήρηση (οι παρατηρήσεις έχουν
     μόνο `created_at`, που είναι η στιγμή μαζικής εγγραφής στο τέλος του run). Ποτέ η ώρα της εντολής, ποτέ
-    το `Company.imported_at`· επανεκτέλεση δεν το μετακινεί.
+    το `Company.imported_at`· επανεκτέλεση δεν το μετακινεί. *(Αναθεώρηση 2026-09-19: αυτός είναι πλέον ο χρόνος
+    παρατήρησης discovery· το `detected_at` του σήματος = max(αυτός, observed_at του baseline).)*
   - **`effective_date`** = η ημερομηνία σύστασης μόνο όταν η A3 ποιότητα είναι `valid` (ακρίβεια DATE, χωρίς
     πλασματική ώρα)· αλλιώς **καμία** ώρα πηγής (NONE) — η ημερομηνία ανίχνευσης δεν την αντικαθιστά ποτέ.
   - **Εταιρεία που δεν υπάρχει ακόμη** (φυσιολογικό στο shadow): καμία δημιουργία Company, κανένα σήμα· η
@@ -1367,6 +1398,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **G4 blocker A — late publications:** εταιρείες που ο legacy importer δεν αποθηκεύει ποτέ τοπικά (φέρνει μόνο
+  όσες έχουν ημερομηνία σύστασης = ημερομηνία στόχου) μένουν `pending_no_company` και **δεν** παίρνουν σήμα
+  NEW_COMPANY μέχρι το cutover του Discovery v2. Δεν λύθηκε σκόπιμα.
+- **G4 blocker B — χρονοπρογραμματισμός:** ο όγκος NEW_COMPANY εξαρτάται από το αν το Discovery v2 τρέχει **πριν**
+  ο legacy importer κάνει τις εταιρείες «known» (οι ήδη τοπικές ταξινομούνται `known` και δεν είναι επιλέξιμες).
+  Χρειάζεται απόφαση για τη σειρά/ώρα των runs. Δεν λύθηκε σκόπιμα.
 - **Ιδιοκτησία billing — ανοιχτό:** το billing μένει user-owned με entitlement οργανισμού παράγωγο του owner·
   μεταφορά συνδρομής/Stripe customer σε Organization (και θέσεις/seats) είναι ξεχωριστό, ελεγμένο μελλοντικό πακέτο.
 - **Customer workspace — ανοιχτά:** δεν υπάρχει ακόμη customer UI για δημιουργία οργανισμού, πρόσκληση/διαχείριση
@@ -1429,7 +1466,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   Το task μπαίνει στο `apps.SCHEDULES` μόνο μετά από ξεχωριστή απόφαση.
 - **Release gate για το B3 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0041` δημιουργεί μόνο
   τον πίνακα snapshots, που μένει **άδειος**: κανένα baseline δεν φτιάχνεται από παλιά `raw_data`. Τα πρώτα
-  baselines θα προκύψουν από τις φρέσκες παρατηρήσεις του B4. Αλλαγή της κανονικής κατάστασης απαιτεί ρητή
+  baselines θα προκύψουν από τις φρέσκες παρατηρήσεις του B4 — και (από 2026-09-19) από το detection-time
+  baseline των NEW_COMPANY από αξιόπιστη εγγραφή του importer. Αλλαγή της κανονικής κατάστασης απαιτεί ρητή
   αύξηση του `COMPANY_SNAPSHOT_SCHEMA_VERSION`.
 - **Release gate για το B2 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** τα σήματα NEW_COMPANY
   παράγονται **μόνο** από ευρήματα Discovery v2, που παραμένει shadow. Άρα: πρώτα το 14ήμερο shadow gate του
@@ -1504,6 +1542,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-19 — NEW_COMPANY state at detection (Option A).** Αλλαγές: `gemiapp/new_company_signals.py`
+  (detection-time baseline + `detected_at = max(discovery, baseline)`, counters), `gemiapp/ingestion/company_metadata.py`
+  (`company_is_admin_touched`), `gemiapp/company_snapshots.py` (docstring). Νέο: `gemiapp/test_new_company_state.py`.
+  Επαλήθευση: `check`, `makemigrations --check`, 1.937 tests OK· καμία migration, κανένα αίτημα ΓΕΜΗ.
 
 - **2026-09-19 — G2 SHADOW opportunity pipeline.** Νέα: `gemiapp/opportunity_pipeline.py`,
   `gemiapp/management/commands/process_shadow_signals.py`, `gemiapp/test_shadow_pipeline.py`. Αλλαγές:

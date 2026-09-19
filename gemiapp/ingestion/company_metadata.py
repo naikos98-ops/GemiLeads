@@ -203,16 +203,23 @@ class BackfillReport:
         ]
 
 
-def _admin_touched_company_ids() -> set[int]:
+def _admin_company_log_entries():
+    """Django admin additions and changes of Company rows: the evidence that a row is not a pure GEMI observation."""
     from django.contrib.admin.models import ADDITION, CHANGE, LogEntry
     from django.contrib.contenttypes.models import ContentType
 
-    Company = apps.get_model("gemiapp", "Company")
-    content_type = ContentType.objects.get_for_model(Company)
-    object_ids = LogEntry.objects.filter(
-        content_type=content_type, action_flag__in=[ADDITION, CHANGE],
-    ).values_list("object_id", flat=True)
+    content_type = ContentType.objects.get_for_model(apps.get_model("gemiapp", "Company"))
+    return LogEntry.objects.filter(content_type=content_type, action_flag__in=[ADDITION, CHANGE])
+
+
+def _admin_touched_company_ids() -> set[int]:
+    object_ids = _admin_company_log_entries().values_list("object_id", flat=True)
     return {int(object_id) for object_id in object_ids if str(object_id).isdigit()}
+
+
+def company_is_admin_touched(company_id: int) -> bool:
+    """Whether a Django admin addition or change was logged for this company (the A6 exclusion, for one row)."""
+    return _admin_company_log_entries().filter(object_id=str(company_id)).exists()
 
 
 def backfill_company_metadata(*, batch_size: int = 500, dry_run: bool = False, start_id: int = 0) -> BackfillReport:
