@@ -307,6 +307,172 @@ body.product-body {
   color: var(--product-ink);
 }
 
+/* ORGANIZATION WORKSPACE (Gemi Leads 2.0): rail group, workspace bar and section tabs.
+   Same grammar as the rail above: mono eyebrows, ink text, the shared "selected" signature
+   (inset 3px amber rule on ink). Only rendered for organization members. */
+.product-rail-workspace {
+  border-top: 1px solid var(--product-ink);
+  padding: 10px 0 4px;
+}
+
+.product-rail-workspace p {
+  margin: 0;
+  padding: 4px 15px 6px;
+}
+
+.product-rail-workspace p span,
+.product-workspace-context span {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-micro);
+  letter-spacing: .05em;
+  color: var(--product-muted);
+  font-weight: 600;
+}
+
+.product-rail-workspace p b {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--type-secondary);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.product-rail-workspace a {
+  display: block;
+  padding: 6px 15px;
+  font-size: var(--type-secondary);
+  font-weight: 600;
+  color: var(--product-ink);
+  text-decoration: none;
+}
+
+.product-rail-workspace a[aria-current="page"],
+.product-workspace-tabs a[aria-current="page"] {
+  background: var(--product-ink);
+  color: var(--product-white);
+  box-shadow: inset 3px 0 var(--product-amber);
+}
+
+.product-workspace-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+  padding: 10px 28px;
+  border-bottom: 1px solid var(--product-ink);
+  background: var(--product-white);
+}
+
+.product-workspace-context {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.product-workspace-context b {
+  font-size: var(--type-body);
+  overflow-wrap: anywhere;
+}
+
+.product-workspace-context small {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  color: var(--product-muted);
+}
+
+.product-workspace-tabs {
+  display: flex;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.product-workspace-tabs a {
+  padding: 7px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-meta);
+  font-weight: 600;
+  color: var(--product-ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* Workspace pages: registers in the Leads grammar (white sheet, line-separated rows, mono meta). */
+.product-workspace-section {
+  background: var(--product-white);
+  border-bottom: 1px solid var(--product-ink);
+}
+
+.product-workspace-section h2 {
+  margin: 0;
+  padding: 12px 28px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--product-line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-meta);
+  font-weight: 600;
+  color: var(--product-muted);
+}
+
+.product-workspace-section h2 a {
+  color: var(--product-ink);
+  white-space: nowrap;
+}
+
+.product-workspace-row {
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--product-line);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.product-workspace-empty,
+.product-workspace-note {
+  margin: 0;
+  padding: 16px 28px;
+  font-size: var(--type-small);
+  color: var(--product-muted);
+}
+
+.product-workspace-note {
+  background: var(--product-white);
+  border-bottom: 1px solid var(--product-line);
+}
+
+.product-workspace-filters {
+  padding: 16px 28px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+  background: var(--product-paper);
+  border-bottom: 1px solid var(--product-ink);
+}
+
+.product-workspace-filters label {
+  display: grid;
+  gap: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 600;
+  color: var(--product-muted);
+}
+
+.product-workspace-filters select {
+  min-width: 180px;
+  padding: 9px 12px;
+  border: 1px solid var(--product-line);
+  background: var(--product-white);
+  color: var(--product-ink);
+  font-size: var(--type-body);
+}
+
 /* MAIN CONTENT CONTAINER */
 .product-main {
   margin-left: var(--product-rail-width);
@@ -1210,6 +1376,43 @@ body.product-body {
     padding-bottom: 57px;
   }
 
+  .product-workspace-bar,
+  .product-workspace-section h2,
+  .product-workspace-row,
+  .product-workspace-empty,
+  .product-workspace-note,
+  .product-workspace-filters {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .product-workspace-row {
+    flex-direction: column;
+  }
+
+  .product-workspace-row > div:last-child {
+    text-align: left !important;
+  }
+
+  .product-workspace-tabs {
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .product-pagehead .product-workspace-facts {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  .product-pagehead .product-workspace-facts span {
+    flex: 1 1 30%;
+  }
+
+  /* five entries (members get «Οργανισμός»): the label size keeps every word on one line */
+  .product-mobile-nav:has(> a:nth-child(5)) a {
+    font-size: var(--type-label);
+  }
+
   .product-pagehead {
     min-height: auto;
     padding: 16px;
@@ -1399,7 +1602,9 @@ body.product-body {
     position: fixed;
     z-index: 50;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    /* four legacy entries, plus «Οργανισμός» for organization members */
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     inset: auto 0 0;
     background: var(--product-ink);
     height: 57px;

@@ -1,0 +1,24 @@
+{% comment %}
+  Gemi Leads 2.0 — which organization (customer workspace) this page belongs to, and its sections. Rendered at the
+  top of every organization page; on narrow screens it is the section navigation. Built from the context processor
+  gemiapp.organization_views.workspace_navigation (the user's own memberships); links only, no forms.
+{% endcomment %}
+{% with ws=workspace_nav.current %}
+{% if ws and workspace_nav.current_is_route %}
+<div class="product-workspace-bar" data-workspace="{{ ws.organization_id }}">
+  <p class="product-workspace-context">
+    <span>ΟΡΓΑΝΙΣΜΟΣ</span>
+    <b>{{ ws.name }}</b>
+    <small>{{ ws.role_label }}</small>
+  </p>
+  <nav class="product-workspace-tabs" aria-label="Ενότητες οργανισμού">
+    <a href="{% url 'organization_dashboard' ws.organization_id %}" {% if workspace_section == 'dashboard' %}aria-current="page"{% endif %}>Πίνακας</a>
+    <a href="{% url 'organization_opportunities' ws.organization_id %}" {% if workspace_section == 'opportunities' %}aria-current="page"{% endif %}>Ευκαιρίες</a>
+    <a href="{% url 'organization_opportunities' ws.organization_id %}?status=saved" {% if workspace_section == 'saved' %}aria-current="page"{% endif %}>Αποθηκευμένες</a>
+    <a href="{% url 'organization_tasks' ws.organization_id %}" {% if workspace_section == 'tasks' %}aria-current="page"{% endif %}>Εργασίες</a>
+    {% if ws.can_view_radars %}<a href="{% url 'organization_radars' ws.organization_id %}" {% if workspace_section == 'radars' %}aria-current="page"{% endif %}>Radars</a>{% endif %}
+    <a href="{% url 'organization_notifications' ws.organization_id %}" {% if workspace_section == 'notifications' %}aria-current="page"{% endif %}>Ειδοποιήσεις</a>
+  </nav>
+</div>
+{% endif %}
+{% endwith %}

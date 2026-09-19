@@ -24,6 +24,12 @@ urlpatterns = [
     path("leads/<int:pk>/notes/", views.lead_notes, name="lead_notes"),
     path("companies/<str:gemi_number>/", views.company_detail, name="company_detail"),
     # Gemi Leads 2.0: organization-scoped, authorized only through gemiapp.organization_access.
+    path("organizations/<int:organization_id>/", organization_views.workspace_dashboard,
+         name="organization_dashboard"),
+    path("organizations/<int:organization_id>/opportunities/", organization_views.workspace_opportunities,
+         name="organization_opportunities"),
+    path("organizations/<int:organization_id>/tasks/", organization_views.workspace_tasks, name="organization_tasks"),
+    path("organizations/<int:organization_id>/radars/", organization_views.workspace_radars, name="organization_radars"),
     path("organizations/<int:organization_id>/opportunities/company/<int:company_id>/",
          organization_views.company_opportunity_page, name="organization_company_opportunity"),
     path("organizations/<int:organization_id>/opportunities/company/<int:company_id>/do-not-contact/",

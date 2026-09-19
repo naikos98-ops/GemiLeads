@@ -12,9 +12,10 @@
 {% block robots %}noindex, nofollow{% endblock %}
 
 {% block content %}
+{% include "organizations/_workspace_bar.html" %}
 <div class="product-workspace">
   <div class="product-dossier-head">
-    <a href="{% url 'dashboard' %}" class="product-back">← Πίσω</a>
+    <a href="{% url 'organization_opportunities' page.organization_id %}" class="product-back">← Ευκαιρίες</a>
     <p class="product-record-no">{{ page.organization_name }} · ΕΥΚΑΙΡΙΑ</p>
     <div class="product-dossier-title">
       <div>

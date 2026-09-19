@@ -96,9 +96,10 @@
   </header>
   <nav class="product-rail" aria-label="Κύρια πλοήγηση">
     <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><span>MARKET</span><b>Signals</b><small>new registrations</small></a>
-    <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name %}aria-current="page"{% endif %}><span>CRITERIA</span><b>Radars</b><small>matching definitions</small></a>
+    <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name and 'organization' not in request.resolver_match.url_name %}aria-current="page"{% endif %}><span>CRITERIA</span><b>Radars</b><small>matching definitions</small></a>
     <a href="{% url 'lead_list' %}" {% if request.resolver_match.url_name == 'lead_list' or request.resolver_match.url_name == 'company_detail' %}aria-current="page"{% endif %}><span>OUTCOME</span><b>Leads</b><small>qualified businesses</small></a>
     <a href="{% url 'settings' %}" {% if request.resolver_match.url_name == 'settings' %}aria-current="page"{% endif %}><span>SYSTEM</span><b>Settings</b><small>plan &amp; digest</small></a>
+    {% if workspace_nav.workspaces %}{% include "organizations/_workspace_rail.html" %}{% endif %}
     <div class="product-flow" aria-label="Source to match to lead"><span>SOURCE</span><i></i><span>MATCH</span><i></i><span>LEAD</span></div>
     <div class="product-source"><span>PUBLIC DATA SOURCE</span><b>ΓΕΜΗ OPEN DATA</b></div>
   </nav>
@@ -158,9 +159,12 @@
   {% if user.is_authenticated %}
   <nav class="product-mobile-nav" aria-label="Κύρια πλοήγηση κινητού">
     <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}>Signals</a>
-    <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name %}aria-current="page"{% endif %}>Radars</a>
+    <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name and 'organization' not in request.resolver_match.url_name %}aria-current="page"{% endif %}>Radars</a>
     <a href="{% url 'lead_list' %}" {% if request.resolver_match.url_name == 'lead_list' or request.resolver_match.url_name == 'company_detail' %}aria-current="page"{% endif %}>Leads</a>
     <a href="{% url 'settings' %}" {% if request.resolver_match.url_name == 'settings' %}aria-current="page"{% endif %}>Settings</a>
+    {% with ws=workspace_nav.home %}{% if ws %}
+    <a href="{% url 'organization_dashboard' ws.organization_id %}" data-mobile-workspace {% if workspace_nav.current_is_route %}aria-current="page"{% endif %}>Οργανισμός</a>
+    {% endif %}{% endwith %}
   </nav>
   {% endif %}
   <script src="{% static 'js/app.js' %}"></script>

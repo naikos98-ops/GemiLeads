@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% comment %}
+  Gemi Leads 2.0 — the organization's home screen. Renders only the immutable, already-authorized
+  WorkspaceDashboard from gemiapp.organization_access: counts (companies, LIVE-backed only, inside this membership's
+  visibility), the top active opportunities in the feed order, open tasks by due date and the member's own newest
+  notifications. Read-only: no form, nothing is generated or marked here.
+{% endcomment %}
+{% block title %}Πίνακας · {{ dashboard.workspace.name }} · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block content %}
+{% include "organizations/_workspace_bar.html" %}
+{% with organization_id=dashboard.workspace.organization_id %}
+<div class="product-workspace">
+  <div class="product-pagehead">
+    <div>
+      <p class="product-eyebrow">ΠΙΝΑΚΑΣ ΟΡΓΑΝΙΣΜΟΥ</p>
+      <h1>{{ dashboard.workspace.name }}</h1>
+    </div>
+    <div class="product-facts product-workspace-facts">
+      <span data-count="active"><b><a href="{% url 'organization_opportunities' organization_id %}" style="color: inherit;">{{ dashboard.active_opportunities }}</a></b>Ενεργές ευκαιρίες</span>
+      <span data-count="new"><b><a href="{% url 'organization_opportunities' organization_id %}?status=new" style="color: inherit;">{{ dashboard.new_opportunities }}</a></b>Νέες</span>
+      <span data-count="saved"><b><a href="{% url 'organization_opportunities' organization_id %}?status=saved" style="color: inherit;">{{ dashboard.saved_opportunities }}</a></b>Αποθηκευμένες</span>
+      <span data-count="tasks"><b><a href="{% url 'organization_tasks' organization_id %}" style="color: inherit;">{{ dashboard.open_tasks }}</a></b>Ανοιχτές εργασίες</span>
+      <span data-count="unread"><b><a href="{% url 'organization_notifications' organization_id %}" style="color: inherit;">{{ dashboard.unread_notifications }}</a></b>Μη αναγνωσμένες</span>
+    </div>
+    <div></div>
+  </div>
+
+  {% if dashboard.radars is not None %}
+  <p class="product-workspace-note" data-radar-summary>
+    {% if dashboard.radars %}
+    Radars οργανισμού: <b>{{ dashboard.radars }}</b> ({{ dashboard.active_radars }} ενεργά) · <a href="{% url 'organization_radars' organization_id %}">Προβολή →</a>
+    {% else %}
+    <span data-empty="radars">Ο οργανισμός δεν έχει ακόμη Radars· χωρίς Radar δεν εντοπίζονται ευκαιρίες.</span>
+    {% endif %}
+  </p>
+  {% endif %}
+
+  <section class="product-workspace-section" id="top-opportunities">
+    <h2><span>ΕΝΕΡΓΕΣ ΕΥΚΑΙΡΙΕΣ</span><a href="{% url 'organization_opportunities' organization_id %}">Όλες →</a></h2>
+    {% for row in dashboard.top_opportunities %}
+    {% include "organizations/_opportunity_row.html" %}
+    {% empty %}
+    <p class="product-workspace-empty" data-empty="opportunities">Δεν υπάρχουν ενεργές ευκαιρίες. Οι ευκαιρίες εμφανίζονται όταν ένα ενεργό Radar του οργανισμού εντοπίσει εταιρεία που ταιριάζει.</p>
+    {% endfor %}
+  </section>
+
+  <section class="product-workspace-section" id="attention-tasks">
+    <h2><span>ΕΡΓΑΣΙΕΣ ΠΟΥ ΧΡΕΙΑΖΟΝΤΑΙ ΠΡΟΣΟΧΗ{% if dashboard.overdue_tasks %} · {{ dashboard.overdue_tasks }} ΕΚΠΡΟΘΕΣΜΕΣ{% endif %}</span><a href="{% url 'organization_tasks' organization_id %}">Όλες →</a></h2>
+    {% for task in dashboard.attention_tasks %}
+    {% include "organizations/_task_row.html" %}
+    {% empty %}
+    <p class="product-workspace-empty" data-empty="tasks">Δεν υπάρχουν ανοιχτές εργασίες. Οι εργασίες δημιουργούνται από τη σελίδα κάθε ευκαιρίας.</p>
+    {% endfor %}
+  </section>
+
+  <section class="product-workspace-section" id="recent-notifications">
+    <h2><span>ΠΡΟΣΦΑΤΕΣ ΕΙΔΟΠΟΙΗΣΕΙΣ</span><a href="{% url 'organization_notifications' organization_id %}">Όλες →</a></h2>
+    {% for entry in dashboard.recent_notifications %}
+    <div class="product-workspace-row" data-notification="{{ entry.notification_id }}" data-notification-state="{% if entry.read_at %}read{% else %}unread{% endif %}">
+      <div style="min-width: 0;">
+        <p style="margin: 0; font-family: ui-monospace, monospace; font-size: var(--type-meta); color: var(--product-muted);">{% if not entry.read_at %}● {% endif %}{{ entry.type_label }} · {{ entry.created_at|date:'d/m/Y H:i' }}</p>
+        <p style="margin: 3px 0 0; font-size: var(--type-small);">
+          {% if not entry.available %}
+          <span style="color: var(--product-muted);">Η σχετική ευκαιρία δεν είναι πλέον διαθέσιμη.</span>
+          {% elif entry.notification_type == 'task_due' %}
+          Προθεσμία {{ entry.due_on|date:'d/m/Y' }}: <span style="overflow-wrap: anywhere;">{{ entry.task_title }}</span> · <a href="{% url 'organization_company_opportunity' organization_id entry.company_id %}">{{ entry.company_name }}</a>
+          {% else %}
+          <a href="{% url 'organization_company_opportunity' organization_id entry.company_id %}">{{ entry.company_name }}</a>{% if entry.radar_name %} · {{ entry.radar_name }}{% endif %}
+          {% endif %}
+        </p>
+      </div>
+    </div>
+    {% empty %}
+    <p class="product-workspace-empty" data-empty="notifications">Δεν υπάρχουν ειδοποιήσεις.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endwith %}
+{% endblock %}

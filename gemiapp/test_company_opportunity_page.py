@@ -350,7 +350,11 @@ class SafetyTests(PageTestCase):
                           "mark_authorized_notification_read",
                           "complete_authorized_opportunity_task", "create_authorized_opportunity_task",
                           "get_authorized_company_opportunity_page", "save_authorized_opportunity",
-                          "set_authorized_opportunity_status"})
+                          "set_authorized_opportunity_status",
+                          # the customer workspace: navigation, dashboard and the three read-only lists
+                          "get_workspace_navigation", "get_authorized_workspace_dashboard",
+                          "get_authorized_workspace_opportunities", "get_authorized_workspace_tasks",
+                          "get_authorized_workspace_radars"})
         for forbidden in (".objects", ".save(", ".create(", ".update(", ".delete(", "organization_radar_matching",
                           "opportunity_scoring", "opportunity_score_breakdown", "opportunity_feed",
                           "get_opportunity_score_breakdown", "set_opportunity_status", "request.organization",
@@ -379,7 +383,12 @@ class SafetyTests(PageTestCase):
                                if "organization" in route and not getattr(callback, "__module__", "").startswith(
                                    "django.contrib.admin") and not route.startswith("admin/")]
         self.assertEqual([route for route, _ in organization_routes],
-                         ["organizations/<int:organization_id>/opportunities/company/<int:company_id>/",
+                         # the customer workspace: dashboard, opportunities (incl. Saved), open tasks, Radars (GET)
+                         ["organizations/<int:organization_id>/",
+                          "organizations/<int:organization_id>/opportunities/",
+                          "organizations/<int:organization_id>/tasks/",
+                          "organizations/<int:organization_id>/radars/",
+                          "organizations/<int:organization_id>/opportunities/company/<int:company_id>/",
                           "organizations/<int:organization_id>/opportunities/company/<int:company_id>/do-not-contact/",
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/save/",
                           "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/assign/",

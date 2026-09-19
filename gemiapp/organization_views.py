@@ -7,12 +7,19 @@ caller whether an organization, company or opportunity exists. The page is a GET
 D30 Save, D31 Assign, D32 status changes, D33 notes, D34 tasks and the company-level D35 Do Not Contact,
 CSRF-protected POSTs that redirect back to the page. D37 adds the member's own notifications page (GET, read-only)
 and its two self-scoped mark-read POSTs.
+
+The customer workspace makes all of this reachable from the normal UI: the organization's dashboard, its
+opportunity list (with the Saved view), its open tasks and its Radars -- four read-only GET pages -- and
+``workspace_navigation``, the template context processor behind the workspace links in the product navigation. The
+links are built from the user's own memberships, each carrying its explicit organization id; the processor is lazy,
+so a page that never renders the product navigation (or a signed-out visitor) runs no query.
 """
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.shortcuts import redirect, render
+from django.utils.functional import SimpleLazyObject
 from django.views.decorators.http import require_GET, require_POST
 
 from .organization_access import (
@@ -20,9 +27,88 @@ from .organization_access import (
     StatusChangeRefused, TaskRefused, add_authorized_opportunity_note, apply_authorized_company_do_not_contact,
     assign_authorized_opportunity, complete_authorized_opportunity_task, create_authorized_opportunity_task,
     get_authorized_company_opportunity_page, get_authorized_notifications, get_authorized_unread_notification_count,
-    mark_all_authorized_notifications_read, mark_authorized_notification_read, save_authorized_opportunity,
-    set_authorized_opportunity_status,
+    get_authorized_workspace_dashboard, get_authorized_workspace_opportunities, get_authorized_workspace_radars,
+    get_authorized_workspace_tasks, get_workspace_navigation, mark_all_authorized_notifications_read,
+    mark_authorized_notification_read, save_authorized_opportunity, set_authorized_opportunity_status,
 )
+
+# Which workspace section a route belongs to, for the navigation's active state.
+WORKSPACE_SECTIONS = {
+    "organization_dashboard": "dashboard",
+    "organization_opportunities": "opportunities",
+    "organization_company_opportunity": "opportunities",
+    "organization_tasks": "tasks",
+    "organization_radars": "radars",
+    "organization_notifications": "notifications",
+}
+
+
+def workspace_navigation(request):
+    """Template context processor: the signed-in user's organizations for the product navigation, and the active
+    workspace section. Evaluated only when a template reads ``workspace_nav``."""
+    match = getattr(request, "resolver_match", None)
+    route_organization_id = match.kwargs.get("organization_id") if match else None
+    section = WORKSPACE_SECTIONS.get(match.url_name, "") if match else ""
+    if section == "opportunities" and match.url_name == "organization_opportunities"             and request.GET.get("status") == "saved":
+        section = "saved"
+    user = getattr(request, "user", None)
+    return {"workspace_nav": SimpleLazyObject(lambda: get_workspace_navigation(user, route_organization_id)),
+            "workspace_section": section}
+
+
+def _optional_id(value):
+    """A positive whole number from a query string, None when absent; anything else is a 404."""
+    if value in (None, ""):
+        return None
+    if not (value.isascii() and value.isdigit()):
+        raise Http404()
+    return int(value)
+
+
+@login_required
+@require_GET
+def workspace_dashboard(request, organization_id):
+    """The organization's home screen: counts, top active opportunities, tasks needing attention, notifications."""
+    try:
+        dashboard = get_authorized_workspace_dashboard(request.user, organization_id)
+    except OrganizationAccessDenied:
+        raise Http404()
+    return render(request, "organizations/dashboard.html", {"dashboard": dashboard})
+
+
+@login_required
+@require_GET
+def workspace_opportunities(request, organization_id):
+    """The organization's opportunities (one card per company), by status view and optionally by Radar."""
+    try:
+        listing = get_authorized_workspace_opportunities(
+            request.user, organization_id, view=request.GET.get("status"),
+            radar_id=_optional_id(request.GET.get("radar")), cursor=request.GET.get("cursor") or None)
+    except OrganizationAccessDenied:
+        raise Http404()
+    return render(request, "organizations/opportunities.html", {"listing": listing})
+
+
+@login_required
+@require_GET
+def workspace_tasks(request, organization_id):
+    """The open tasks of the opportunities this member may see."""
+    try:
+        listing = get_authorized_workspace_tasks(request.user, organization_id)
+    except OrganizationAccessDenied:
+        raise Http404()
+    return render(request, "organizations/tasks.html", {"listing": listing})
+
+
+@login_required
+@require_GET
+def workspace_radars(request, organization_id):
+    """The organization's Radars (read-only), for roles that may read them."""
+    try:
+        listing = get_authorized_workspace_radars(request.user, organization_id)
+    except OrganizationAccessDenied:
+        raise Http404()
+    return render(request, "organizations/radars.html", {"listing": listing})
 
 
 @login_required

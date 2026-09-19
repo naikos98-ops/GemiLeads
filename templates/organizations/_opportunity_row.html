@@ -1,0 +1,19 @@
+{% comment %}
+  One company card of the workspace lists (WorkspaceOpportunity): the primary LIVE-backed opportunity's frozen
+  score, status, reason, Radar, assignee and latest event. Links to the company's opportunity page (D29).
+{% endcomment %}
+<div class="product-workspace-row" data-opportunity-company="{{ row.company_id }}">
+  <div style="min-width: 0;">
+    <a href="{% url 'organization_company_opportunity' organization_id row.company_id %}" style="font-size: var(--type-body); font-weight: 700; color: var(--product-ink); overflow-wrap: anywhere;">{{ row.company_name|default:row.gemi_number }}</a>
+    <p style="margin: 3px 0 0; font-family: ui-monospace, monospace; font-size: var(--type-meta); color: var(--product-muted);">
+      ΓΕΜΗ {{ row.gemi_number }} · Radar «{{ row.radar_name }}»{% if row.other_radar_count %} +{{ row.other_radar_count }}{% endif %}
+    </p>
+    <p style="margin: 4px 0 0; font-size: var(--type-small); color: var(--product-ink);">{{ row.reason_label }}</p>
+  </div>
+  <div style="text-align: right; font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">
+    <b style="display: block; font-family: Inter, sans-serif; font-size: var(--type-body); color: var(--product-ink);" data-score="{{ row.score }}">{{ row.score }}/100 · {{ row.score_class_label }}</b>
+    <span style="display: block; text-transform: uppercase; font-weight: 700;">{{ row.status_label }}</span>
+    {% if row.assignee_name %}<span style="display: block;">Υπεύθυνος: {{ row.assignee_name }}</span>{% endif %}
+    <span style="display: block;">{{ row.latest_signal_label }} · {{ row.latest_signal_detected_at|date:'d/m/Y' }}</span>
+  </div>
+</div>

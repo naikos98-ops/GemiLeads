@@ -75,6 +75,10 @@ Default page size 50, maximum 200.
 ``assigned_to_membership_id`` (D31) restricts the opportunities to one membership's assignments in the same
 SQL, before aggregation. Only ``organization_access`` passes it, for a sales user's feed.
 
+``latest_signal_mode`` restricts the opportunities to those whose current capture rests on a signal of that mode,
+in the same SQL and before aggregation, so a card's primary is chosen among those survivors only. The customer
+workspace passes LIVE (the D29 rule: SHADOW validation data never reaches a customer); omitted, nothing changes.
+
 Tenancy
 -------
 Every query is scoped by the explicit organization in SQL first: no user, session or current-organization context,
@@ -97,7 +101,7 @@ from django.db.models import Count, Exists, OuterRef, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from .company_signals import SIGNAL_TYPES
+from .company_signals import MODES as SIGNAL_MODES, SIGNAL_TYPES
 
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 200
@@ -238,12 +242,14 @@ def _validated_filters(organization, filters: FeedFilters) -> FeedFilters:
     return filters
 
 
-def _filtered(organization, filters: FeedFilters, assigned_to_membership_id=None):
+def _filtered(organization, filters: FeedFilters, assigned_to_membership_id=None, latest_signal_mode=None):
     """This organization's opportunities that survive every filter. One SQL expression, reused for the
     primary-selection subquery so a card's primary is always chosen among the survivors."""
     Opportunity, OpportunitySignal = _model("Opportunity"), _model("OpportunitySignal")
     Evidence = _model("OpportunityScoreEvidence")
     queryset = Opportunity.objects.filter(organization=organization)
+    if latest_signal_mode is not None:
+        queryset = queryset.filter(latest_signal__mode=latest_signal_mode)
     if assigned_to_membership_id is not None:
         # D31: a sales user's scope. Applied here, before aggregation, so a hidden sibling opportunity can never
         # enter a card, be chosen as its primary or be counted in its signals.
@@ -298,7 +304,8 @@ FEED_ORDER = ("-score", "-latest_signal__detected_at", "pk")
 
 
 def get_opportunity_feed(organization, filters: FeedFilters | None = None, *, limit: int = DEFAULT_PAGE_SIZE,
-                         cursor: str | None = None, assigned_to_membership_id: int | None = None) -> OpportunityFeedPage:
+                         cursor: str | None = None, assigned_to_membership_id: int | None = None,
+                         latest_signal_mode: str | None = None) -> OpportunityFeedPage:
     """One page of this organization's feed: one card per company, frozen captures only. Read-only."""
     Organization = _model("Organization")
     if not isinstance(organization, Organization) or organization.pk is None:
@@ -311,9 +318,12 @@ def get_opportunity_feed(organization, filters: FeedFilters | None = None, *, li
     if assigned_to_membership_id is not None and (
             isinstance(assigned_to_membership_id, bool) or not isinstance(assigned_to_membership_id, int)):
         raise FeedError("assigned_to_membership_id must be a membership id")
-    survivors = _filtered(organization, filters, assigned_to_membership_id)
+    if latest_signal_mode is not None and latest_signal_mode not in SIGNAL_MODES:
+        raise FeedError(f"latest_signal_mode is one of {SIGNAL_MODES}")
+    survivors = _filtered(organization, filters, assigned_to_membership_id, latest_signal_mode)
     # A primary is a survivor no other survivor of the same company outranks.
-    primaries = survivors.filter(~Exists(_filtered(organization, filters, assigned_to_membership_id).filter(
+    primaries = survivors.filter(~Exists(_filtered(organization, filters, assigned_to_membership_id,
+                                                   latest_signal_mode).filter(
         company_id=OuterRef("company_id")).filter(_outranked_by())))
     if after is not None:
         primaries = primaries.filter(_after(after))

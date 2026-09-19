@@ -159,6 +159,36 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — Customer workspace: dashboard & πλοήγηση (2026-09-19).** Οι ήδη υλοποιημένες λειτουργίες
+  οργανισμού γίνονται προσβάσιμες από το κανονικό UI, χωρίς αλλαγή backend αρχιτεκτονικής, billing, scoring, signals,
+  δημιουργίας ευκαιριών, tenant isolation ή migrations.
+  - **Νέα routes (GET μόνο, `organization_views`, πόρτα μόνο το `organization_access`, κάθε άρνηση ίδιο 404):**
+    `/organizations/<id>/` (`organization_dashboard`), `/organizations/<id>/opportunities/`
+    (`organization_opportunities`, `?status=` active/κάθε §39/all — «Αποθηκευμένες» = `?status=saved` —,
+    `?radar=`, `?cursor=`), `/organizations/<id>/tasks/` (`organization_tasks`), `/organizations/<id>/radars/`
+    (`organization_radars`, μόνο ρόλοι με `view_radars` — ο SALES_USER παίρνει 404).
+  - **G5 read models (`organization_access`, ενότητα «Customer workspace»):** `get_workspace_navigation`,
+    `get_authorized_workspace_dashboard`, `get_authorized_workspace_opportunities`, `get_authorized_workspace_tasks`,
+    `get_authorized_workspace_radars`. Ίδιο membership + capability, ίδιο SQL scope (ο SALES_USER μόνο τις δικές του
+    αναθέσεις) και, όπως στο D29, **μόνο LIVE-backed ευκαιρίες**. Μετρήσεις = εταιρείες (μία κάρτα C9 ανά εταιρεία).
+    Εργασίες = ανοιχτές εργασίες ορατών ευκαιριών (κανόνας ανάγνωσης D34). Όλα read-only, bounded queries.
+  - **C9:** νέο προαιρετικό `latest_signal_mode` στο `get_opportunity_feed` (ίδιο SQL, πριν τη συσσώρευση, άρα το
+    primary επιλέγεται μόνο ανάμεσα σε LIVE γραμμές). Χωρίς αυτό η συμπεριφορά είναι αμετάβλητη.
+  - **Πλοήγηση:** context processor `gemiapp.organization_views.workspace_navigation` (lazy· μηδέν queries για
+    ανώνυμους, ένα query μελών για συνδεδεμένους). Ομάδα «ΟΡΓΑΝΙΣΜΟΣ» στο rail (Πίνακας, Ευκαιρίες, Αποθηκευμένες,
+    Εργασίες, Radars όπου επιτρέπεται, Ειδοποιήσεις), «Οργανισμός» στο mobile nav, και μπάρα οργανισμού (όνομα +
+    ρόλος + tabs) σε κάθε σελίδα οργανισμού, συμπεριλαμβανομένων D29 και ειδοποιήσεων. Με πολλά memberships και
+    χωρίς οργανισμό στο route: λίστα οργανισμών, ποτέ «μαντεψιά». **Χρήστης χωρίς membership: καμία αλλαγή**.
+    Staff/superuser: καμία παράκαμψη. Ενεργή ενότητα με την εγκεκριμένη υπογραφή (inset amber rule).
+  - Το legacy «Radars» του rail δεν επισημαίνεται πλέον στη σελίδα Radars οργανισμού· το «← Πίσω» του D29 οδηγεί
+    στη λίστα ευκαιριών του οργανισμού. Το legacy `/dashboard/` (Signals) μένει η αρχική μετά το login.
+  - Guards που ενημερώθηκαν σκόπιμα: λίστα organization routes και imports του `organization_views` (D29), routes
+    εργασιών (D34), C3 guard για το `urls.py` (μόνο το route Radars του workspace), D37 guard για το nav.
+  - Οπτικός έλεγχος (desktop + mobile, owner + sales user) με προσωρινό fixture `WSFIX` στο αντίγραφο της dev βάσης,
+    που αφαιρέθηκε πλήρως· ο υπάρχων «TEST ORGANIZATION» δεν αγγίχτηκε.
+  - 31 νέα tests (`test_customer_workspace.py`)· **1.855 tests OK** με μία κανονική εκτέλεση (`--parallel 4`).
+    `G0_STATUS = BLOCKED_NO_STAGING`, `G1_STATUS = BLOCKED`, **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`**.
+
 - **Gemi Leads 2.0 — Release readiness G0/G1 (2026-09-19).** Πλήρης καταγραφή: `docs/RELEASE_READINESS.md`.
   - **`G0_STATUS = BLOCKED_NO_STAGING`**: δεν υπάρχει staging service, staging βάση ή staging GEMI key. Ένα τοπικό
     αντίγραφο της dev βάσης **δεν** είναι staging. **`G1_STATUS = BLOCKED`** (εξαρτάται από το G0).
@@ -1240,6 +1270,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Customer workspace — ανοιχτά:** δεν υπάρχει ακόμη customer UI για δημιουργία οργανισμού, πρόσκληση/διαχείριση
+  μελών, ρυθμίσεις/προφίλ/ICP οργανισμού, δημιουργία/επεξεργασία Radars οργανισμού, audit log (D36) και σήμανση
+  «viewed». Απόφαση προϊόντος: αν το `/dashboard/` (Signals) θα ανακατευθύνει τα μέλη στον πίνακα του οργανισμού.
 - **Gemi Leads 2.0 — επόμενη δουλειά: RELEASE READINESS** (όχι feature πακέτο). Η Phase D ολοκληρώθηκε· πρώτα οι
   πύλες G0/G1 που μπλοκάρουν τις production migrations 0032–0054 και την ενεργοποίηση του D37 schedule σε
   production, έπειτα το G4. **Επόμενο βήμα G0:** απομονωμένο staging (δες `docs/RELEASE_READINESS.md`). Ανοιχτές αποφάσεις προϊόντος: emitters/παραλήπτες για NEW_OPPORTUNITY, PRIORITY_SIGNAL,
@@ -1373,6 +1406,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-09-19 — Gemi Leads 2.0 customer workspace (dashboard & πλοήγηση).** Νέα: `templates/organizations/`
+  (`dashboard.html`, `opportunities.html`, `tasks.html`, `radars.html`, `_workspace_bar.html`, `_workspace_rail.html`,
+  `_opportunity_row.html`, `_task_row.html`), `gemiapp/test_customer_workspace.py`. Αλλαγές: `organization_access.py`
+  (workspace read models), `organization_views.py` (4 GET views + context processor), `urls.py`, `settings.py`
+  (context processor), `opportunity_feed.py` (`latest_signal_mode`), `base.html`, `company_opportunity.html`,
+  `notifications.html`, `product-ui.css`, guard tests. Επαλήθευση: `check`, `makemigrations --check`, 1.855 tests OK,
+  οπτικός έλεγχος desktop/mobile.
 - **2026-09-16 — Gemi Leads 2.0 B3 (ελαχιστοποιημένα snapshots εταιρειών).** Νέα: `CompanySnapshot`
   (`gemiapp/models.py`), migration `0041_company_snapshot.py`, `gemiapp/company_snapshots.py` (κανονική
   κατάσταση, state hash, writer), `gemiapp/test_company_snapshots.py`. Αλλαγές: `admin.py` (read-only).

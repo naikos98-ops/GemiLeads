@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% comment %}
+  Gemi Leads 2.0 — the organization's opportunities: one card per company (C9), LIVE-backed only, inside this
+  membership's visibility (a sales user sees only their assignments). Filters are GET parameters (status view and,
+  for roles that may read Radars, one of the organization's own Radars). Read-only; every card opens its company
+  page (D29), where the actions are.
+{% endcomment %}
+{% block title %}{{ listing.view_label }} · Ευκαιρίες · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block content %}
+{% include "organizations/_workspace_bar.html" %}
+{% with organization_id=listing.workspace.organization_id %}
+<div class="product-workspace">
+  <div class="product-pagehead">
+    <div>
+      <p class="product-eyebrow">ΕΥΚΑΙΡΙΕΣ ΟΡΓΑΝΙΣΜΟΥ</p>
+      <h1>{% if listing.view == 'saved' %}Αποθηκευμένες ευκαιρίες{% else %}Ευκαιρίες{% endif %}</h1>
+    </div>
+    <div></div>
+    <div></div>
+  </div>
+
+  <form method="get" class="product-workspace-filters">
+    <label>ΚΑΤΑΣΤΑΣΗ
+      <select name="status">
+        {% for value, label in listing.views %}
+        <option value="{{ value }}" {% if listing.view == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% if listing.radar_options %}
+    <label>RADAR
+      <select name="radar">
+        <option value="">Όλα τα Radars</option>
+        {% for radar_id, name in listing.radar_options %}
+        <option value="{{ radar_id }}" {% if listing.radar_id == radar_id %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <button type="submit" class="product-ink-button">Εφαρμογή</button>
+  </form>
+
+  <section class="product-workspace-section" id="opportunities">
+    <h2><span>{{ listing.view_label|upper }} · ΤΑΞΙΝΟΜΗΣΗ: SCORE, ΜΕΤΑ ΤΟ ΠΙΟ ΠΡΟΣΦΑΤΟ ΓΕΓΟΝΟΣ</span></h2>
+    {% for row in listing.rows %}
+    {% include "organizations/_opportunity_row.html" %}
+    {% empty %}
+    <p class="product-workspace-empty" data-empty="{% if listing.view == 'saved' %}saved{% else %}opportunities{% endif %}">
+      {% if listing.view == 'saved' %}
+      Δεν υπάρχουν αποθηκευμένες ευκαιρίες. Μια ευκαιρία αποθηκεύεται από τη σελίδα της.
+      {% elif listing.radar_id or listing.view != 'active' %}
+      Καμία ευκαιρία με αυτά τα φίλτρα.
+      {% else %}
+      Δεν υπάρχουν ενεργές ευκαιρίες. Οι ευκαιρίες εμφανίζονται όταν ένα ενεργό Radar του οργανισμού εντοπίσει εταιρεία που ταιριάζει.
+      {% endif %}
+    </p>
+    {% endfor %}
+    {% if listing.next_cursor %}
+    <p class="product-workspace-note">
+      <a href="?status={{ listing.view }}{% if listing.radar_id %}&amp;radar={{ listing.radar_id }}{% endif %}&amp;cursor={{ listing.next_cursor|urlencode }}" data-next-page>Επόμενες →</a>
+    </p>
+    {% endif %}
+  </section>
+</div>
+{% endwith %}
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% comment %}
+  Gemi Leads 2.0 — the organization's Radars (C3), read-only, for roles that may read them: state, score threshold,
+  how many criteria of each kind they hold, and how many companies they have found (LIVE-backed opportunities).
+  There is no customer-facing Radar editing yet; nothing here pretends otherwise.
+{% endcomment %}
+{% block title %}Radars οργανισμού · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block content %}
+{% include "organizations/_workspace_bar.html" %}
+{% with organization_id=listing.workspace.organization_id %}
+<div class="product-workspace">
+  <div class="product-pagehead">
+    <div>
+      <p class="product-eyebrow">ΚΡΙΤΗΡΙΑ ΟΡΓΑΝΙΣΜΟΥ</p>
+      <h1>Radars</h1>
+    </div>
+    <div></div>
+    <div></div>
+  </div>
+  <section class="product-workspace-section" id="radars">
+    <h2><span>RADARS ΤΟΥ ΟΡΓΑΝΙΣΜΟΥ</span></h2>
+    {% for radar in listing.radars %}
+    <div class="product-workspace-row" data-radar="{{ radar.radar_id }}">
+      <div style="min-width: 0;">
+        <p style="margin: 0; font-size: var(--type-body); font-weight: 700; overflow-wrap: anywhere;">{{ radar.name }}</p>
+        <p style="margin: 3px 0 0; font-family: ui-monospace, monospace; font-size: var(--type-meta); color: var(--product-muted);">
+          {{ radar.kads }} ΚΑΔ · {{ radar.regions }} περιοχές · {{ radar.legal_forms }} νομικές μορφές · {{ radar.signal_types }} τύποι γεγονότων · {{ radar.exclusions }} αποκλεισμοί
+          {% if radar.score_threshold is not None %} · ελάχιστο score {{ radar.score_threshold }}{% endif %}
+        </p>
+      </div>
+      <div style="text-align: right; font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">
+        <span style="display: block; font-weight: 700; text-transform: uppercase;">{% if radar.active %}Ενεργό{% else %}Ανενεργό{% endif %}</span>
+        <a href="{% url 'organization_opportunities' organization_id %}?status=all&amp;radar={{ radar.radar_id }}">{{ radar.opportunities }} εταιρείες →</a>
+      </div>
+    </div>
+    {% empty %}
+    <p class="product-workspace-empty" data-empty="radars">Ο οργανισμός δεν έχει ακόμη Radars. Χωρίς Radar δεν εντοπίζονται ευκαιρίες.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endwith %}
+{% endblock %}

@@ -83,7 +83,7 @@ from .contact_suppressions import (  # the canonical D35 identity and lookup, re
 from .opportunities import get_opportunity_score_breakdown
 from .company_signals import LIVE
 from .opportunity_feed import (
-    DEFAULT_PAGE_SIZE, FEED_ORDER, MAX_PAGE_SIZE, FeedFilters, OpportunityFeedPage, get_opportunity_feed,
+    DEFAULT_PAGE_SIZE, FEED_ORDER, MAX_PAGE_SIZE, FeedError, FeedFilters, OpportunityFeedPage, get_opportunity_feed,
 )
 
 
@@ -251,6 +251,11 @@ def get_authorized_opportunity_feed(user, organization, filters: FeedFilters | N
     """The C9 feed as this membership may see it. C9 itself is unchanged and still requires an explicit
     organization; this layer decides whether and how much of it a member may read."""
     context = get_organization_access_context(user, organization)
+    return _feed_for(context, organization, filters, limit=limit, cursor=cursor)
+
+
+def _feed_for(context: OrganizationAccessContext, organization, filters, *, limit, cursor, latest_signal_mode=None):
+    """The C9 feed inside this membership's visibility. ``latest_signal_mode`` is passed through to C9 unchanged."""
     filters = filters or FeedFilters()
     if not isinstance(filters, FeedFilters):
         raise OrganizationAccessDenied()
@@ -260,11 +265,13 @@ def get_authorized_opportunity_feed(user, organization, filters: FeedFilters | N
         if owned != len(set(filters.radar_ids)):
             raise OrganizationAccessDenied()
     if can(context, Capability.VIEW_ALL_OPPORTUNITIES):
-        return get_opportunity_feed(organization, filters, limit=limit, cursor=cursor)
+        return get_opportunity_feed(organization, filters, limit=limit, cursor=cursor,
+                                    latest_signal_mode=latest_signal_mode)
     if can(context, Capability.VIEW_ASSIGNED_OPPORTUNITIES):
         # Only this membership's assignments, restricted inside C9's SQL before cards are aggregated.
         return get_opportunity_feed(organization, filters, limit=limit, cursor=cursor,
-                                    assigned_to_membership_id=context.membership_id)
+                                    assigned_to_membership_id=context.membership_id,
+                                    latest_signal_mode=latest_signal_mode)
     raise OrganizationAccessDenied()
 
 
@@ -1392,7 +1399,10 @@ def get_authorized_notifications(user, organization_id, *, limit: int = NOTIFICA
     notifications with their typed references, and which of their opportunities are still visible (LIVE, G5 scope)."""
     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= NOTIFICATIONS_PAGE_LIMIT:
         raise OrganizationAccessDenied()
-    context = _member_context(user, organization_id)
+    return _notification_entries(_member_context(user, organization_id), limit)
+
+
+def _notification_entries(context: OrganizationAccessContext, limit: int) -> tuple:
     rows = list(_own_notifications(context).order_by("-created_at", "-pk")
                 .values_list("pk", "notification_type", "created_at", "read_at", "due_on", "opportunity_id",
                              "opportunity__company_id", "opportunity__company__name", "opportunity__radar__name",
@@ -1435,3 +1445,307 @@ def mark_all_authorized_notifications_read(user, organization_id) -> Notificatio
     unread = _own_notifications(context).filter(read_at__isnull=True)
     changed = unread.update(read_at=timezone.now()) if unread.exists() else 0  # nothing unread: no write
     return NotificationReadResult(organization_id=context.organization_id, changed=changed)
+
+
+# --- Customer workspace: navigation, dashboard and lists ---------------------------------------------------
+#
+# The normal customer UI of the Organization architecture. Every entry point here is a read-only GET helper built
+# only from the pieces above: the organization comes from the route and is authorized against the membership
+# (navigation reads the user's own memberships, and every link it offers carries its explicit organization id --
+# nothing here picks a tenant for a request); visibility is the same SQL scope (a sales user sees only their own
+# assignments); and, exactly as on the D29 page, only opportunities whose current capture rests on a LIVE signal
+# ever reach a customer. Opportunity counts are companies -- one C9 card per company -- like the lists they open.
+
+ROLE_LABELS = {OWNER: "Ιδιοκτήτης", ADMIN: "Διαχειριστής", SALES_MANAGER: "Διευθυντής πωλήσεων",
+               SALES_USER: "Πωλητής", VIEWER: "Μόνο ανάγνωση"}
+# Every §39 status that is not terminal: still being worked.
+ACTIVE_OPPORTUNITY_STATUSES = ("new", "viewed", SAVED, ASSIGNED, "contacted", "interested", "follow_up")
+ACTIVE_VIEW, ALL_VIEW = "active", "all"
+WORKSPACE_PREVIEW_LIMIT = 5
+WORKSPACE_TASK_LIMIT = 100
+
+
+@dataclass(frozen=True)
+class Workspace:
+    organization_id: int
+    name: str
+    role_label: str
+    can_view_radars: bool
+
+
+@dataclass(frozen=True)
+class WorkspaceNavigation:
+    workspaces: tuple = ()
+    current: Workspace | None = None
+    current_is_route: bool = False   # ``current`` is the organization named by the route (not merely the only one)
+
+    @property
+    def home(self) -> Workspace | None:
+        """Where a single workspace entry point leads (mobile navigation): the current one, else the first."""
+        return self.current or (self.workspaces[0] if self.workspaces else None)
+
+
+@dataclass(frozen=True)
+class WorkspaceOpportunity:
+    """One company card of the workspace lists, from its primary LIVE-backed opportunity."""
+
+    company_id: int
+    company_name: str
+    gemi_number: str
+    score: int
+    score_class: str
+    score_class_label: str
+    status: str
+    status_label: str
+    reason_label: str
+    radar_name: str
+    other_radar_count: int
+    assignee_name: str             # "" when the primary opportunity is not assigned
+    latest_signal_label: str
+    latest_signal_detected_at: object
+
+
+@dataclass(frozen=True)
+class WorkspaceTask:
+    task_id: int
+    title: str                     # the members' own plain text, escaped when rendered
+    due_on: object
+    overdue: bool
+    due_today: bool
+    company_id: int
+    company_name: str
+    radar_name: str
+    assignee_name: str
+
+
+@dataclass(frozen=True)
+class WorkspaceDashboard:
+    workspace: Workspace
+    active_opportunities: int
+    new_opportunities: int
+    saved_opportunities: int
+    open_tasks: int
+    overdue_tasks: int
+    unread_notifications: int
+    radars: int | None             # None when the role may not read Radars
+    active_radars: int | None
+    top_opportunities: tuple       # WorkspaceOpportunity, active ones, in C9 feed order
+    attention_tasks: tuple         # WorkspaceTask, open ones, earliest due date first
+    recent_notifications: tuple    # NotificationEntry, newest first
+
+
+@dataclass(frozen=True)
+class WorkspaceOpportunityList:
+    workspace: Workspace
+    view: str
+    view_label: str
+    views: tuple                   # (value, label) choices of the status filter
+    radar_id: int | None
+    radar_options: tuple           # (id, name) of the organization's Radars; empty when the role may not read them
+    rows: tuple
+    next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class WorkspaceTaskList:
+    workspace: Workspace
+    tasks: tuple
+    truncated: bool
+
+
+@dataclass(frozen=True)
+class WorkspaceRadar:
+    radar_id: int
+    name: str
+    active: bool
+    score_threshold: int | None
+    kads: int
+    regions: int
+    legal_forms: int
+    signal_types: int
+    exclusions: int
+    opportunities: int             # companies with a visible LIVE-backed opportunity found by this Radar
+
+
+@dataclass(frozen=True)
+class WorkspaceRadarList:
+    workspace: Workspace
+    radars: tuple
+
+
+def get_workspace_navigation(user, current_organization_id=None) -> WorkspaceNavigation:
+    """The organizations this user is a member of, for the navigation. One query over the user's own memberships;
+    a signed-out or inactive user has none. ``current`` is the route's organization when the user is its member,
+    otherwise the user's only organization; with several and none named by the route there is no current one."""
+    User = apps.get_model("auth", "User")
+    if not isinstance(user, User) or user.pk is None or not user.is_active:
+        return WorkspaceNavigation()
+    workspaces = []
+    for membership_id, organization_id, name, role in (
+            _model("OrganizationMember").objects.filter(user_id=user.pk, role__in=tuple(ROLE_CAPABILITIES))
+            .order_by("organization__name", "organization_id")
+            .values_list("pk", "organization_id", "organization__name", "role")):
+        context = OrganizationAccessContext(organization_id=organization_id, user_id=user.pk,
+                                            membership_id=membership_id, role=role, _issuer=_ISSUER)
+        workspaces.append(Workspace(organization_id=organization_id, name=name, role_label=ROLE_LABELS[role],
+                                    can_view_radars=can(context, Capability.VIEW_RADARS)))
+    current = next((entry for entry in workspaces if entry.organization_id == current_organization_id), None)
+    on_route = current is not None
+    if current is None and len(workspaces) == 1:
+        current = workspaces[0]
+    return WorkspaceNavigation(workspaces=tuple(workspaces), current=current, current_is_route=on_route)
+
+
+def _workspace_entry(user, organization_id):
+    """(context, organization, workspace) for a member of the route's organization, or the single refusal."""
+    organization = _organization_by_id(organization_id)
+    context = require(get_organization_access_context(user, organization), Capability.VIEW_ORGANIZATION)
+    return context, organization, Workspace(organization_id=organization.pk, name=organization.name,
+                                            role_label=ROLE_LABELS[context.role],
+                                            can_view_radars=can(context, Capability.VIEW_RADARS))
+
+
+def _live_opportunities(context: OrganizationAccessContext):
+    """The opportunities this membership may see whose current capture rests on a LIVE signal (the D29 rule)."""
+    return organization_opportunities_for(context).filter(latest_signal__mode=LIVE)
+
+
+def _open_tasks(context: OrganizationAccessContext):
+    """Open tasks of the opportunities this membership may see (D34: tasks are read with their opportunity)."""
+    return _model("OpportunityTask").objects.filter(organization_id=context.organization_id,
+                                                    completed_at__isnull=True,
+                                                    opportunity__in=_live_opportunities(context))
+
+
+def _workspace_tasks(context: OrganizationAccessContext, limit: int, today):
+    rows = list(_open_tasks(context).order_by("due_on", "created_at", "pk")
+                .values_list("pk", "title", "due_on", "opportunity__company_id", "opportunity__company__name",
+                             "opportunity__radar__name", "assigned_to_id", "assigned_to__user__first_name",
+                             "assigned_to__user__last_name")[:limit + 1])
+    tasks = tuple(
+        WorkspaceTask(task_id=pk, title=title, due_on=due_on, overdue=task_is_overdue(None, due_on, today),
+                      due_today=due_on == today, company_id=company_id, company_name=company_name,
+                      radar_name=radar_name,
+                      assignee_name=(member_display_name(first, last, assignee) if assignee is not None
+                                     else TASK_UNASSIGNED_LABEL))
+        for pk, title, due_on, company_id, company_name, radar_name, assignee, first, last in rows[:limit])
+    return tasks, len(rows) > limit
+
+
+def _workspace_opportunities(context: OrganizationAccessContext, organization, filters: FeedFilters, *, limit,
+                             cursor):
+    """One page of LIVE-backed C9 cards inside this membership's scope, with the company's name and the primary
+    opportunity's assignee. A malformed cursor or filter is refused like everything else."""
+    from .company_opportunity_page import REASON_LABELS, SCORE_CLASS_LABELS, SIGNAL_LABELS, STATUS_LABELS
+
+    try:
+        page = _feed_for(context, organization, filters, limit=limit, cursor=cursor, latest_signal_mode=LIVE)
+    except FeedError:
+        raise OrganizationAccessDenied() from None
+    if not page.cards:
+        return (), None
+    names = dict(_model("Company").objects.filter(pk__in=[card.company_id for card in page.cards])
+                 .values_list("pk", "name"))
+    assignees = {pk: (member, first, last) for pk, member, first, last in
+                 organization_opportunities_for(context)
+                 .filter(pk__in=[card.primary_opportunity_id for card in page.cards])
+                 .values_list("pk", "assigned_to_id", "assigned_to__user__first_name", "assigned_to__user__last_name")}
+    rows = []
+    for card in page.cards:
+        primary = card.opportunities[0]
+        member, first, last = assignees.get(card.primary_opportunity_id, (None, "", ""))
+        rows.append(WorkspaceOpportunity(
+            company_id=card.company_id, company_name=names.get(card.company_id, ""),
+            gemi_number=card.company_gemi_number, score=card.score, score_class=card.score_class,
+            score_class_label=SCORE_CLASS_LABELS.get(card.score_class, card.score_class), status=card.status,
+            status_label=STATUS_LABELS.get(card.status, card.status),
+            reason_label=REASON_LABELS.get(card.primary_reason_code, "—") if card.primary_reason_code else "—",
+            radar_name=primary.radar_name, other_radar_count=card.opportunity_count - 1,
+            assignee_name=member_display_name(first, last, member) if member is not None else "",
+            latest_signal_label=SIGNAL_LABELS.get(primary.latest_signal_type, primary.latest_signal_type),
+            latest_signal_detected_at=card.primary_signal_detected_at))
+    return tuple(rows), page.next_cursor
+
+
+def get_authorized_workspace_dashboard(user, organization_id) -> WorkspaceDashboard:
+    """The organization's home screen as this membership may see it. Read-only, a bounded number of queries."""
+    context, organization, workspace = _workspace_entry(user, organization_id)
+    companies = _live_opportunities(context).aggregate(
+        active=Count("company_id", distinct=True, filter=Q(status__in=ACTIVE_OPPORTUNITY_STATUSES)),
+        new=Count("company_id", distinct=True, filter=Q(status="new")),
+        saved=Count("company_id", distinct=True, filter=Q(status=SAVED)))
+    today = timezone.localdate()
+    tasks = _open_tasks(context).aggregate(open=Count("pk"), overdue=Count("pk", filter=Q(due_on__lt=today)))
+    radars = active_radars = None
+    if workspace.can_view_radars:
+        counted = organization_radars_for(context).aggregate(total=Count("pk"), active=Count("pk", filter=Q(active=True)))
+        radars, active_radars = counted["total"], counted["active"]
+    top, _ = _workspace_opportunities(context, organization, FeedFilters(statuses=ACTIVE_OPPORTUNITY_STATUSES),
+                                      limit=WORKSPACE_PREVIEW_LIMIT, cursor=None)
+    attention, _ = _workspace_tasks(context, WORKSPACE_PREVIEW_LIMIT, today)
+    return WorkspaceDashboard(
+        workspace=workspace, active_opportunities=companies["active"], new_opportunities=companies["new"],
+        saved_opportunities=companies["saved"], open_tasks=tasks["open"], overdue_tasks=tasks["overdue"],
+        unread_notifications=_unread_notification_count(context), radars=radars, active_radars=active_radars,
+        top_opportunities=top, attention_tasks=attention,
+        recent_notifications=_notification_entries(context, WORKSPACE_PREVIEW_LIMIT))
+
+
+def opportunity_list_views() -> tuple:
+    """The status filter of the opportunity list: active (default), every §39 status, all."""
+    from .company_opportunity_page import STATUS_LABELS
+
+    return ((ACTIVE_VIEW, "Ενεργές"), *STATUS_LABELS.items(), (ALL_VIEW, "Όλες"))
+
+
+def get_authorized_workspace_opportunities(user, organization_id, *, view=None, radar_id=None,
+                                           cursor=None) -> WorkspaceOpportunityList:
+    """The organization's opportunities as this membership may see them: LIVE-backed C9 cards, one per company,
+    filtered by status view and optionally by one of the organization's own Radars. Unknown views fall back to the
+    active ones; a foreign or missing Radar is the single refusal."""
+    context, organization, workspace = _workspace_entry(user, organization_id)
+    views = opportunity_list_views()
+    labels = dict(views)
+    view = view if view in labels else ACTIVE_VIEW
+    statuses = (ACTIVE_OPPORTUNITY_STATUSES if view == ACTIVE_VIEW else () if view == ALL_VIEW else (view,))
+    radar_ids = (_object_id(radar_id),) if radar_id is not None else ()
+    radar_options = (tuple(organization_radars_for(context).order_by("name", "pk").values_list("pk", "name"))
+                     if workspace.can_view_radars else ())
+    rows, next_cursor = _workspace_opportunities(context, organization,
+                                                 FeedFilters(statuses=statuses, radar_ids=radar_ids),
+                                                 limit=DEFAULT_PAGE_SIZE, cursor=cursor)
+    return WorkspaceOpportunityList(workspace=workspace, view=view, view_label=labels[view], views=views,
+                                    radar_id=radar_id, radar_options=radar_options, rows=rows,
+                                    next_cursor=next_cursor)
+
+
+def get_authorized_workspace_tasks(user, organization_id) -> WorkspaceTaskList:
+    """The open tasks of the opportunities this membership may see, earliest due date first (at most 100)."""
+    context, _, workspace = _workspace_entry(user, organization_id)
+    tasks, truncated = _workspace_tasks(context, WORKSPACE_TASK_LIMIT, timezone.localdate())
+    return WorkspaceTaskList(workspace=workspace, tasks=tasks, truncated=truncated)
+
+
+def get_authorized_workspace_radars(user, organization_id) -> WorkspaceRadarList:
+    """The organization's Radars with their criteria counts, for roles that may read them. Read-only."""
+    context, _, workspace = _workspace_entry(user, organization_id)
+    radars = list(organization_radars_for(context).order_by("-active", "name", "pk")
+                  .values_list("pk", "name", "active", "score_threshold"))
+    ids = [row[0] for row in radars]
+
+    def per_radar(queryset, counted="pk", distinct=False):
+        if not ids:
+            return {}
+        return dict(queryset.filter(radar_id__in=ids).order_by().values("radar_id")
+                    .annotate(n=Count(counted, distinct=distinct)).values_list("radar_id", "n"))
+
+    counts = {name: per_radar(_model(model).objects) for name, model in (
+        ("kads", "OrganizationRadarKad"), ("regions", "OrganizationRadarRegion"),
+        ("legal_forms", "OrganizationRadarLegalForm"), ("signal_types", "OrganizationRadarSignalType"),
+        ("exclusions", "OrganizationRadarExclusion"))}
+    opportunities = per_radar(_live_opportunities(context), counted="company_id", distinct=True)
+    return WorkspaceRadarList(workspace=workspace, radars=tuple(
+        WorkspaceRadar(radar_id=pk, name=name, active=active, score_threshold=threshold,
+                       opportunities=opportunities.get(pk, 0),
+                       **{key: values.get(pk, 0) for key, values in counts.items()})
+        for pk, name, active, threshold in radars))

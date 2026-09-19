@@ -107,6 +107,9 @@ TEMPLATES = [{
         "django.contrib.messages.context_processors.messages",
         "gemiapp.context_processors.global_stats",
         "gemiapp.context_processors.social_login_providers",
+        # Gemi Leads 2.0: the signed-in user's organization workspaces for the navigation (lazy; no query unless
+        # the product navigation is rendered).
+        "gemiapp.organization_views.workspace_navigation",
     ]},
 }]
 WSGI_APPLICATION = "config.wsgi.application"

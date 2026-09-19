@@ -1,0 +1,15 @@
+{% comment %}
+  One open task (WorkspaceTask). The title is the members' own plain text, auto-escaped. Completing a task stays on
+  the company's opportunity page (D34), where the member's rights on it are decided.
+{% endcomment %}
+<div class="product-workspace-row" data-task="{{ task.task_id }}"{% if task.overdue %} data-task-overdue{% endif %}>
+  <div style="min-width: 0;">
+    <p style="margin: 0; font-size: var(--type-body); font-weight: 600; overflow-wrap: anywhere; white-space: pre-wrap;">{{ task.title }}</p>
+    <p style="margin: 3px 0 0; font-family: ui-monospace, monospace; font-size: var(--type-meta); color: var(--product-muted);">
+      <a href="{% url 'organization_company_opportunity' organization_id task.company_id %}">{{ task.company_name }}</a> · Radar «{{ task.radar_name }}» · Υπεύθυνος: {{ task.assignee_name }}
+    </p>
+  </div>
+  <div style="text-align: right; font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 700; {% if task.overdue %}color: #775215;{% else %}color: var(--product-muted);{% endif %}">
+    {% if task.overdue %}ΕΚΠΡΟΘΕΣΜΗ · {% elif task.due_today %}ΣΗΜΕΡΑ · {% endif %}{{ task.due_on|date:'d/m/Y' }}
+  </div>
+</div>

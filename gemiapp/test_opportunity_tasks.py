@@ -479,8 +479,10 @@ class PageTests(TaskTestCase):
         for role in ("admin", "viewer"):
             html = self.get(self.members[role]).content.decode()
             self.assertIn("της Μαρίας", html, role)
-            for control in ("data-task-form-for", "data-task-complete-for", "/tasks/"):
+            for control in ("data-task-form-for", "data-task-complete-for"):
                 self.assertNotIn(control, html, (role, control))
+            # No task create/complete endpoint at all (the workspace navigation's read-only /tasks/ page link is fine).
+            self.assertFalse(re.findall(r"/opportunities/\d+/tasks/", html), role)
 
     def test_a_sales_user_learns_nothing_about_sibling_tasks(self):
         sibling = self.live_opportunity(self.full_radar("Radar Κρυφό Νίκου", legal_forms=()))
@@ -602,7 +604,9 @@ class InvarianceTests(TaskTestCase):
                     yield prefix + str(pattern.pattern)
 
         routes = [route for route in flatten(get_resolver().url_patterns) if "task" in route and "organization" in route]
-        self.assertEqual(routes, ["organizations/<int:organization_id>/opportunities/<int:opportunity_id>/tasks/",
+        # The workspace's read-only list of open tasks (GET only), then the two D34 mutations.
+        self.assertEqual(routes, ["organizations/<int:organization_id>/tasks/",
+                                  "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/tasks/",
                                   "organizations/<int:organization_id>/opportunities/<int:opportunity_id>/tasks/"
                                   "<int:task_id>/complete/"])
         code = inspect.getsource(g5) + inspect.getsource(organization_views)
@@ -612,6 +616,7 @@ class InvarianceTests(TaskTestCase):
         task_id = self.task().task_id
         self.complete(task_id)
         self.client.force_login(self.owner)
+        self.assertEqual(self.client.post(reverse("organization_tasks", args=[self.org.pk])).status_code, 405)
         for suffix in ("edit/", "delete/", "reopen/", "assign/"):
             self.assertEqual(self.client.post(self.task_url() + f"{task_id}/{suffix}").status_code, 404, suffix)
         self.assertEqual(self.client.delete(self.complete_url(task_id)).status_code, 405)

@@ -383,6 +383,10 @@ class LegacyParityTests(RadarTestCase):
                      "gemiapp/ingestion/monitoring.py", "gemiapp/ingestion/refresh.py", "gemiapp/company_timeline.py",
                      "gemiapp/snapshot_change_signals.py", "gemiapp/organization_icp.py"):
             source = open(path, encoding="utf-8").read()
+            if path == "gemiapp/urls.py":
+                # Since the customer workspace the URL conf routes one read-only Radars page -- to
+                # organization_views, which reads Radars only through organization_access. No other mention.
+                source = source.replace('organization_views.workspace_radars, name="organization_radars"', "")
             self.assertNotIn("OrganizationRadar", source, path)
             self.assertNotIn("organization_radar", source, path)
         self.assertFalse([m for m in settings.MIDDLEWARE if "organization" in m.lower() or "radar" in m.lower()])

@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% comment %}
+  Gemi Leads 2.0 — the open tasks of the opportunities this member may see (D34 read rule), earliest due date first,
+  at most 100. Read-only: creating and completing tasks stays on each company's opportunity page.
+{% endcomment %}
+{% block title %}Εργασίες · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+
+{% block content %}
+{% include "organizations/_workspace_bar.html" %}
+{% with organization_id=listing.workspace.organization_id %}
+<div class="product-workspace">
+  <div class="product-pagehead">
+    <div>
+      <p class="product-eyebrow">ΕΡΓΑΣΙΕΣ ΟΡΓΑΝΙΣΜΟΥ</p>
+      <h1>Ανοιχτές εργασίες</h1>
+    </div>
+    <div></div>
+    <div></div>
+  </div>
+  <section class="product-workspace-section" id="tasks">
+    <h2><span>ΠΡΩΤΑ Η ΠΙΟ ΚΟΝΤΙΝΗ ΠΡΟΘΕΣΜΙΑ</span></h2>
+    {% for task in listing.tasks %}
+    {% include "organizations/_task_row.html" %}
+    {% empty %}
+    <p class="product-workspace-empty" data-empty="tasks">Δεν υπάρχουν ανοιχτές εργασίες. Οι εργασίες δημιουργούνται από τη σελίδα κάθε ευκαιρίας.</p>
+    {% endfor %}
+    {% if listing.truncated %}
+    <p class="product-workspace-note" data-truncated>Εμφανίζονται οι 100 πιο επείγουσες ανοιχτές εργασίες.</p>
+    {% endif %}
+  </section>
+</div>
+{% endwith %}
+{% endblock %}

@@ -1,0 +1,25 @@
+{% comment %}
+  Gemi Leads 2.0 — the organization workspace group of the desktop product rail. Only rendered for a user with at
+  least one organization membership (base.html checks); every link carries its explicit organization id. The rail's
+  "selected" signature marks the active section only on that organization's own pages. With several memberships
+  and no organization named by the route, the group lists the organizations instead of guessing one.
+{% endcomment %}
+<div class="product-rail-workspace" data-rail-workspace>
+  {% with ws=workspace_nav.current here=workspace_nav.current_is_route %}
+  {% if ws %}
+  <p><span>ΟΡΓΑΝΙΣΜΟΣ</span><b>{{ ws.name }}</b></p>
+  <a href="{% url 'organization_dashboard' ws.organization_id %}" {% if here and workspace_section == 'dashboard' %}aria-current="page"{% endif %}>Πίνακας</a>
+  <a href="{% url 'organization_opportunities' ws.organization_id %}" {% if here and workspace_section == 'opportunities' %}aria-current="page"{% endif %}>Ευκαιρίες</a>
+  <a href="{% url 'organization_opportunities' ws.organization_id %}?status=saved" {% if here and workspace_section == 'saved' %}aria-current="page"{% endif %}>Αποθηκευμένες</a>
+  <a href="{% url 'organization_tasks' ws.organization_id %}" {% if here and workspace_section == 'tasks' %}aria-current="page"{% endif %}>Εργασίες</a>
+  {% if ws.can_view_radars %}<a href="{% url 'organization_radars' ws.organization_id %}" {% if here and workspace_section == 'radars' %}aria-current="page"{% endif %}>Radars</a>{% endif %}
+  <a href="{% url 'organization_notifications' ws.organization_id %}" {% if here and workspace_section == 'notifications' %}aria-current="page"{% endif %}>Ειδοποιήσεις</a>
+  {% if workspace_nav.workspaces|length > 1 %}<p><span>ΑΛΛΟΙ ΟΡΓΑΝΙΣΜΟΙ</span></p>{% endif %}
+  {% else %}
+  <p><span>ΟΡΓΑΝΙΣΜΟΙ</span></p>
+  {% endif %}
+  {% for other in workspace_nav.workspaces %}{% if not ws or other.organization_id != ws.organization_id %}
+  <a href="{% url 'organization_dashboard' other.organization_id %}" data-workspace-switch="{{ other.organization_id }}">{{ other.name }}</a>
+  {% endif %}{% endfor %}
+  {% endwith %}
+</div>

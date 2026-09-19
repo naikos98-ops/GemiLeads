@@ -9,6 +9,7 @@
 {% block robots %}noindex, nofollow{% endblock %}
 
 {% block content %}
+{% include "organizations/_workspace_bar.html" %}
 <div class="product-workspace">
   <section class="product-history" id="notifications">
     <p>ΕΙΔΟΠΟΙΗΣΕΙΣ{% if unread %} ({{ unread }} μη αναγνωσμένες){% endif %}</p>
