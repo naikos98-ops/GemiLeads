@@ -141,6 +141,19 @@ class PageOpportunity:
     can_assign: bool = False
     # D32: the (status, label) targets this member may move the row to; empty means no status control at all.
     status_targets: tuple = ()
+    # D33: this opportunity's notes (PageNote, newest first, within the page bound) and whether this member may add one.
+    notes: tuple = ()
+    can_add_note: bool = False
+
+
+@dataclass(frozen=True)
+class PageNote:
+    """One user-authored note as displayed: plain text, the author's display name (or a former-member label)."""
+
+    note_id: int
+    body: str
+    created_at: datetime
+    author_display_name: str
 
 
 @dataclass(frozen=True)
@@ -183,6 +196,7 @@ class CompanyOpportunityPage:
     timeline: tuple                 # TimelineItem, LIVE only, newest first
     timeline_truncated: bool
     assignees: tuple = ()           # D31: (membership_id, display name) of assignable sales users, or empty
+    notes_truncated: bool = False   # D33: more notes exist than the page shows
 
 
 def _model(name):
@@ -207,8 +221,9 @@ def _age(seconds: int) -> str:
 
 def build_company_opportunity_page(*, organization, rows, live_signal_counts: dict, save_actions: dict | None = None,
                                   assign_actions: dict | None = None, assignees: tuple = (),
-                                  assignments: dict | None = None,
-                                  status_actions: dict | None = None) -> CompanyOpportunityPage:
+                                  assignments: dict | None = None, status_actions: dict | None = None,
+                                  notes: dict | None = None, notes_truncated: bool = False,
+                                  note_actions: dict | None = None) -> CompanyOpportunityPage:
     """Assemble the page from already-authorized, LIVE-backed opportunities of one company, primary first."""
     primary_row = rows[0]
     company = primary_row.company
@@ -312,6 +327,9 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
         assigned_at=((assignments or {}).get(row.pk) or (None, None))[1],
         can_assign=bool((assign_actions or {}).get(row.pk)),
         status_targets=tuple((target, STATUS_LABELS[target]) for target in (status_actions or {}).get(row.pk, ())),
+        notes=tuple(PageNote(note_id=note_id, body=body, created_at=created_at, author_display_name=author)
+                    for note_id, body, created_at, author in (notes or {}).get(row.pk, ())),
+        can_add_note=bool((note_actions or {}).get(row.pk)),
     ) for index, row in enumerate(rows))
 
     timeline = tuple(TimelineItem(
@@ -331,6 +349,7 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
         scored_as_of=frozen.as_of, breakdown=breakdown, current=current, timeline=timeline,
         timeline_truncated=timeline_page.next_cursor is not None,
         assignees=tuple((assignee.membership_id, assignee.display_name) for assignee in assignees),
+        notes_truncated=notes_truncated,
     )
 
 

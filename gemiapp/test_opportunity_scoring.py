@@ -49,7 +49,8 @@ STALE = T0 + timedelta(days=40)  # beyond every freshness band
 FRESH = T0 + timedelta(hours=2)
 SECOND = timedelta(seconds=1)
 C8_PERSISTENCE = ("Opportunity", "OpportunitySignal", "OpportunityScoreComponent",
-                  "OpportunityScoreEvidence")  # C8 owns these; earlier packages must add none
+                  "OpportunityScoreEvidence",  # C8 owns these; earlier packages must add none
+                  "OpportunityNote")  # D33's user-authored notes: workflow data, never written by this engine
 
 
 class ScoringTestCase(MatchingTestCase):

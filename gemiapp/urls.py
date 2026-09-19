@@ -32,6 +32,8 @@ urlpatterns = [
          organization_views.assign_opportunity, name="organization_assign_opportunity"),
     path("organizations/<int:organization_id>/opportunities/<int:opportunity_id>/status/",
          organization_views.change_opportunity_status, name="organization_opportunity_status"),
+    path("organizations/<int:organization_id>/opportunities/<int:opportunity_id>/notes/",
+         organization_views.add_opportunity_note, name="organization_add_opportunity_note"),
     path("api/kads/", views.kad_search, name="kad_search"),
     path("export/", views.export_csv, name="export_csv"),
     path("verify/<uidb64>/<token>/", views.verify_email, name="verify_email"),

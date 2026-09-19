@@ -34,6 +34,7 @@ from .models import (
     Opportunity,
     OpportunityScoreComponent,
     OpportunityScoreEvidence,
+    OpportunityNote,
     OpportunitySignal,
     Organization,
     OrganizationICP,
@@ -611,6 +612,18 @@ class OpportunityAdmin(OrganizationReadOnlyAdmin):
     list_filter = ("score_class", "status")
     list_select_related = ("organization", "radar", "company")
     date_hierarchy = "created_at"
+
+
+@admin.register(OpportunityNote)
+class OpportunityNoteAdmin(OrganizationReadOnlyAdmin):
+    """Inspection only (D33). Notes are append-only customer content written by gemiapp.organization_access."""
+
+    list_display = ("organization", "opportunity", "author", "created_at")
+    list_select_related = ("organization", "opportunity", "author")
+    date_hierarchy = "created_at"
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(OpportunitySignal)

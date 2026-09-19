@@ -1,7 +1,8 @@
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models.functions import Lower
+from django.db.models.functions import Length, Lower
+from django.db.models.lookups import GreaterThan, LessThanOrEqual
 from django.utils import timezone
 
 # The signal taxonomy lives in one module (gemiapp.company_signals) and is imported here for the field
@@ -2058,6 +2059,49 @@ class OpportunityScoreEvidence(models.Model):
 
     def __str__(self):
         return f"{self.kind} · component #{self.component_id}"
+
+
+OPPORTUNITY_NOTE_MAX_LENGTH = 4000  # D33 v1; the blueprint sets no limit
+
+
+class OpportunityNote(models.Model):
+    """D33 (§41 «opportunity_notes»): one user-authored, internal CRM note on one C8 opportunity.
+
+    A note is explicit customer content -- not a signal, a timeline event, an audit entry, a task or a status -- and
+    is append-only in v1: no edit, no delete. It belongs to exactly one opportunity (so a company watched by three
+    Radars can carry different notes on each) and carries its organization explicitly (§22), which the writer
+    always takes from that opportunity. The author is the exact *membership* that wrote it: removing the member
+    keeps the note and clears the author, and a user re-added later is a new membership that reclaims nothing. The
+    body is stored as typed, plain text; nothing is ever copied into it from GEMI data, contacts or persons.
+
+    Written only through gemiapp.organization_access, which also enforces what the database cannot: the note's
+    organization equals its opportunity's, and the author is a member of that same organization.
+    """
+
+    BODY_MAX_LENGTH = OPPORTUNITY_NOTE_MAX_LENGTH
+
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="opportunity_notes")
+    opportunity = models.ForeignKey(Opportunity, on_delete=models.CASCADE, related_name="notes")
+    author = models.ForeignKey(OrganizationMember, on_delete=models.SET_NULL, null=True, blank=True,
+                               related_name="opportunity_notes")
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Opportunity note"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            # The writer trims and validates; the database still refuses an empty or oversized body.
+            models.CheckConstraint(condition=GreaterThan(Length("body"), 0), name="opportunity_note_body_not_empty"),
+            models.CheckConstraint(condition=LessThanOrEqual(Length("body"), OPPORTUNITY_NOTE_MAX_LENGTH),
+                                   name="opportunity_note_body_max_length"),
+        ]
+        indexes = [
+            models.Index(fields=["organization", "opportunity", "-created_at"], name="opportunity_note_read_idx"),
+        ]
+
+    def __str__(self):
+        return f"note #{self.pk} · opportunity #{self.opportunity_id}"
 
 
 from django.db.models.signals import post_save

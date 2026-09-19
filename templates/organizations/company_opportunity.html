@@ -2,8 +2,8 @@
 {% comment %}
   D29 / blueprint §36 — company opportunity page. Renders only the immutable, already-authorized page value from
   gemiapp.organization_access: no queryset, no request user, no contact data. The mutations are D30 Save, D31
-  Assign and D32 status, POST forms per opportunity row, rendered only when the membership may perform them on that
-  row. Everything is
+  Assign, D32 status and D33 notes, POST forms per opportunity row, rendered only when the membership may perform them
+  on that row. Notes are the members' own plain text, shown auto-escaped with pre-wrap. Everything is
   auto-escaped. The frozen C8 explanation («Γιατί αυτή η ευκαιρία») is historical; «Τρέχοντα στοιχεία» is the
   latest canonical snapshot — deliberately different things.
 {% endcomment %}
@@ -164,13 +164,34 @@
                 <button type="submit" class="product-text-button">Ενημέρωση κατάστασης</button>
               </form>
               {% endif %}
+              {% if opportunity.notes or opportunity.can_add_note %}
+              <div data-notes-for="{{ opportunity.opportunity_id }}" style="margin-top: 10px;">
+                <span style="font-size: var(--type-small); font-weight: 700; color: var(--product-muted);">ΣΗΜΕΙΩΣΕΙΣ</span>
+                {% for note in opportunity.notes %}
+                <div data-note="{{ note.note_id }}" style="margin-top: 6px;">
+                  <p style="white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--type-small);">{{ note.body }}</p>
+                  <span style="font-size: var(--type-small); color: var(--product-muted);">{{ note.author_display_name }} · {{ note.created_at|date:'d/m/Y H:i' }}</span>
+                </div>
+                {% endfor %}
+                {% if opportunity.can_add_note %}
+                <form method="post" action="{% url 'organization_add_opportunity_note' page.organization_id opportunity.opportunity_id %}" data-note-form-for="{{ opportunity.opportunity_id }}" style="margin-top: 6px;">
+                  {% csrf_token %}
+                  <textarea name="body" rows="3" maxlength="4000" required aria-label="Νέα σημείωση" style="width: 100%;"></textarea>
+                  <button type="submit" class="product-text-button">Προσθήκη σημείωσης</button>
+                </form>
+                {% endif %}
+              </div>
+              {% endif %}
             </dd>
           </div>
           {% endfor %}
         </dl>
+        {% if page.notes_truncated %}
+        <p data-notes-truncated style="font-size: var(--type-small); color: var(--product-muted);">Εμφανίζονται οι 50 πιο πρόσφατες σημειώσεις.</p>
+        {% endif %}
       </section>
-      {% comment %}D30 Save, D31 Assign and D32 status are the only actions, per opportunity row above. Notes, tasks
-      and Do Not Contact arrive with their own Phase D packages; none is rendered here.{% endcomment %}
+      {% comment %}D30 Save, D31 Assign, D32 status and D33 notes are the only actions, per opportunity row above.
+      Tasks and Do Not Contact arrive with their own Phase D packages; none is rendered here.{% endcomment %}
     </aside>
   </div>
 </div>

@@ -4,7 +4,7 @@ Every view here reaches organization-owned data **only** through ``gemiapp.organ
 organization comes from the route and is authorized there against the logged-in user's membership, never from a
 session, middleware or the user. Every refusal becomes the same 404, whatever its reason, so a route never tells a
 caller whether an organization, company or opportunity exists. The page is a GET-only read; the only mutations are
-D30 Save, D31 Assign and D32 status changes, CSRF-protected POSTs that redirect back to the page.
+D30 Save, D31 Assign, D32 status changes and D33 notes, CSRF-protected POSTs that redirect back to the page.
 """
 
 from django.contrib import messages
@@ -14,9 +14,9 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
 from .organization_access import (
-    AssignmentRefused, OpportunityTransitionRefused, OrganizationAccessDenied, StatusChangeRefused,
-    assign_authorized_opportunity, get_authorized_company_opportunity_page, save_authorized_opportunity,
-    set_authorized_opportunity_status,
+    AssignmentRefused, NoteRefused, OpportunityTransitionRefused, OrganizationAccessDenied, StatusChangeRefused,
+    add_authorized_opportunity_note, assign_authorized_opportunity, get_authorized_company_opportunity_page,
+    save_authorized_opportunity, set_authorized_opportunity_status,
 )
 
 
@@ -94,5 +94,27 @@ def change_opportunity_status(request, organization_id, opportunity_id):
     else:
         if result.changed:
             messages.success(request, "Η κατάσταση της ευκαιρίας ενημερώθηκε.")
+    return redirect("organization_company_opportunity", organization_id=result.organization_id,
+                    company_id=result.company_id)
+
+
+@login_required
+@require_POST
+def add_opportunity_note(request, organization_id, opportunity_id):
+    """D33: append one note to one explicit opportunity, then back to its company page.
+
+    Only ``body`` is read from the form; organization, opportunity and author come from the authorized context. The
+    destination is derived from the authorized opportunity, never from the request.
+    """
+    try:
+        result = add_authorized_opportunity_note(request.user, organization_id, opportunity_id,
+                                                 request.POST.get("body"))
+    except OrganizationAccessDenied:
+        raise Http404()
+    except NoteRefused as refused:
+        messages.error(request, str(refused))
+        result = refused.result
+    else:
+        messages.success(request, "Η σημείωση προστέθηκε.")
     return redirect("organization_company_opportunity", organization_id=result.organization_id,
                     company_id=result.company_id)

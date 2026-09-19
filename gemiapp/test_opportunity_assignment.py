@@ -79,8 +79,9 @@ class SchemaTests(AssignTestCase):
         self.assertEqual(field.remote_field.on_delete.__name__, "SET_NULL")
         self.assertTrue(Opportunity._meta.get_field("assigned_at").null)
         loader = MigrationLoader(None, ignore_no_migrations=True)
-        self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0049_opportunity_assignment")
+        # D31 owns 0049; D33's 0050 (notes) follows it and depends on it.
+        self.assertEqual(loader.disk_migrations[("gemiapp", "0050_opportunity_note")].dependencies,
+                         [("gemiapp", "0049_opportunity_assignment")])
         migration = loader.disk_migrations[("gemiapp", "0049_opportunity_assignment")]
         self.assertEqual(sorted((type(op).__name__, op.name) for op in migration.operations),
                          [("AddField", "assigned_at"), ("AddField", "assigned_to")])

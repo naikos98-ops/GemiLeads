@@ -54,7 +54,8 @@ ADDRESS_SENTINEL = "ΟΔΟΣ ΦΡΟΥΡΟΣ 4821"
 PRIVATE = (PHONE_SENTINEL, CONTACT_SENTINEL, PERSON_SENTINEL, ADDRESS_SENTINEL, "099994821")
 _keys = itertools.count(1)
 C8_PERSISTENCE = ("Opportunity", "OpportunitySignal", "OpportunityScoreComponent",
-                  "OpportunityScoreEvidence")  # C8 owns these; earlier packages must add none
+                  "OpportunityScoreEvidence",  # C8 owns these; earlier packages must add none
+                  "OpportunityNote")  # D33's user-authored notes: workflow data, never written by this engine
 
 
 def make_company(gemi_number="400100"):

@@ -144,6 +144,44 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — D33: Notes (2026-09-19).** Εσωτερικές CRM σημειώσεις ανά ευκαιρία C8 (§41 «opportunity_notes»).
+  Migration `0050_opportunity_note` (ένα `CreateModel`, κανένα backfill), μοντέλο `OpportunityNote`,
+  `organization_access.add_authorized_opportunity_note`, view `organization_views.add_opportunity_note`.
+  - Το D32 δεσμεύτηκε (`664cc69`).
+  - **Ανήκει σε μία ευκαιρία** (όχι σε εταιρεία/card/Radar/signal) και φέρει ρητά `organization` (§22), που ο writer
+    παίρνει πάντα από την ευκαιρία. **Author = `OrganizationMember`** (`SET_NULL`): διαγραφή μέλους → η σημείωση
+    μένει με `author = NULL` («Πρώην μέλος»)· επανένταξη = νέα membership που δεν ξαναπαίρνει την υπογραφή.
+    Organization/Opportunity `CASCADE`. Κανένα snapshot ονόματος/email.
+  - **Append-only v1:** καμία επεξεργασία, διαγραφή, soft delete, mentions, pin, ιδιωτικές σημειώσεις· καμία dedupe
+    (ίδιο κείμενο δύο φορές = δύο σημειώσεις). Admin μόνο ανάγνωση (ούτε delete).
+  - **Κείμενο:** plain text, `\r\n`→`\n`, trim άκρων, εσωτερικές γραμμές διατηρούνται, **1–4000 χαρακτήρες** μετά
+    το trim (και DB CHECK), NUL απορρίπτεται. Autoescape + `white-space: pre-wrap`, κανένα `|safe`. Τίποτα δεν
+    αντιγράφεται αυτόματα από raw_data/επαφές/πρόσωπα· ό,τι γράψει ο χρήστης αποθηκεύεται όπως γράφτηκε.
+  - **Δικαίωμα `add_opportunity_note`:** OWNER, SALES_MANAGER, SALES_USER (μόνο σε ευκαιρίες με
+    `assigned_to_id == membership_id`)· ADMIN/VIEWER **μόνο ανάγνωση**. Ανάγνωση = όποιος βλέπει την ευκαιρία·
+    κανένα ξεχωριστό path «όλες οι σημειώσεις». LIVE μόνο· SHADOW/ξένη/ανύπαρκτη/μη ανατεθειμένη → ίδιο 404.
+    **Επιτρέπονται και σε τελικές ευκαιρίες** (WON/LOST/NOT_RELEVANT/DO_NOT_CONTACT).
+  - `POST /organizations/<organization_id>/opportunities/<opportunity_id>/notes/`
+    (`organization_add_opportunity_note`) με πεδίο `body`: login, POST, CSRF, `transaction.atomic` +
+    `select_for_update(of=("self",))` στην ευκαιρία, redirect στη σελίδα D29 (το `next=` αγνοείται).
+  - Σελίδα D29: σημειώσεις κάτω από τη **δική τους** γραμμή Radar, νεότερες πρώτα (`-created_at, -id`), με
+    όνομα συντάκτη («Πωλητής #id» / «Πρώην μέλος», ποτέ email)· **50 πιο πρόσφατες** σε όλη τη σελίδα με
+    ουδέτερη ειδοποίηση περικοπής· ένα query (15 συνολικά για 3 ευκαιρίες, ανεξάρτητα από το πλήθος).
+  - Καμία επίδραση σε status, ανάθεση, score/breakdown, B6 timeline, C9 feed. Κανένα audit log (**βήμα 36**),
+    καμία ειδοποίηση (**βήμα 37**).
+  - Κύκλος migration στο αντίγραφο της dev βάσης: forward → 0 σημειώσεις → fixture → parity → reverse → reapply
+    (ξανά 0), όλα PASS (αλλάζουν μόνο `auth_permission`/`django_content_type`, όπως σε κάθε `CreateModel`).
+  - **Race διαγραφής μέλους:** μέσα στη μία συναλλαγή κλειδώνεται πρώτα η ευκαιρία και μετά η **ακριβής**
+    membership (ίδιο id/οργανισμός/χρήστης/ρόλος) με `select_for_update`· αν λείπει ή άλλαξε → ίδιο 404, ποτέ
+    σημείωση με `author=NULL`· FK σφάλμα στο commit → επίσης 404, όχι 500. Σειρά κλειδωμάτων ευκαιρία → μέλος, ίδια
+    με τον collector `SET_NULL` του Django. Υπόλοιπο: μια ταυτόχρονη διαγραφή μέλους (σήμερα μόνο από staff admin ή
+    cascade) μπορεί να αποτύχει στο δικό της commit αν η σημείωση γράφτηκε ενδιάμεσα — μελλοντική υπηρεσία
+    αφαίρεσης μελών θα χρειαστεί ρητό σχεδιασμό κλειδωμάτων (ή DB-level ON DELETE SET NULL).
+  - 33 νέα tests· **1.689 tests OK** (δύο συνεχόμενες πλήρεις εκτελέσεις). `G5_STATUS =
+    PASSED_FOR_CURRENT_ORGANIZATION_SURFACE`· `G4_STATUS = NOT_PASSED`· **`PRODUCTION_MIGRATION_STATUS =
+    BLOCKED_BY_G0_G1`.**
+
+
 - **Gemi Leads 2.0 — D32: Statuses (2026-09-18).** Οι γενικές καταστάσεις πωλήσεων του §39 ανά ευκαιρία C8.
   `organization_access.set_authorized_opportunity_status`, view `organization_views.change_opportunity_status`.
   **Χωρίς migration** (τελευταία παραμένει η `0049_opportunity_assignment`).
@@ -992,9 +1030,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 33 — Notes** (§41 του `docs/GEMI_LEADS_2_BLUEPRINT.md`:
-  `opportunity_notes`, προσωπικές/team σημειώσεις, πάντα tenant-isolated)· αναμένει έγκριση του D32. Το reopen
-  τελικών καταστάσεων και το DO_NOT_CONTACT (βήμα 35) μένουν ανοιχτές αποφάσεις προϊόντος.
+- **Gemi Leads 2.0 — επόμενο πακέτο: Phase D, βήμα 34 — Tasks** (§42 του `docs/GEMI_LEADS_2_BLUEPRINT.md`:
+  «Call tomorrow / Follow up Friday / Check again next week», πίνακας `tasks`, όχι full project management)·
+  αναμένει έγκριση του D33. Το reopen τελικών καταστάσεων, το DO_NOT_CONTACT (βήμα 35) και η επεξεργασία/διαγραφή
+  σημειώσεων μένουν ανοιχτές αποφάσεις προϊόντος.
+- **Release gate για το D33:** η `0050_opportunity_note` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D31:** η `0049_opportunity_assignment` **δεν** εφαρμόζεται σε production πριν τα G0/G1.
 - **Release gate για το D29:** καμία migration· το route είναι πίσω από login και G5, αλλά δεν υπάρχει ακόμη κανένας
   σύνδεσμος πλοήγησης προς αυτό και καμία παραγωγή ευκαιριών/LIVE signals, οπότε στην πράξη δεν εμφανίζει τίποτα.

@@ -55,7 +55,8 @@ from .test_organization_radar_matching import (
 )
 
 C8_PERSISTENCE = ("Opportunity", "OpportunitySignal", "OpportunityScoreComponent",
-                  "OpportunityScoreEvidence")  # C8 owns these; earlier packages must add none
+                  "OpportunityScoreEvidence",  # C8 owns these; earlier packages must add none
+                  "OpportunityNote")  # D33's user-authored notes: workflow data, never written by this engine
 
 
 class BreakdownTestCase(ScoringTestCase):

@@ -69,7 +69,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from django.apps import apps
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count
 from django.utils import timezone
 
@@ -104,10 +104,12 @@ class Capability:
     # D32: the general sales statuses. Granted to sales users too, but always applied through the same visibility
     # scope, so a sales user can only ever reach the opportunities assigned to their own membership.
     UPDATE_OPPORTUNITY_STATUS = "update_opportunity_status"
+    # D33: writing a note. Reading notes needs no capability of its own: they are read with their opportunity.
+    ADD_OPPORTUNITY_NOTE = "add_opportunity_note"
 
     ALL = (VIEW_ORGANIZATION, VIEW_ORGANIZATION_SETTINGS, MANAGE_ORGANIZATION, MANAGE_MEMBERS, VIEW_RADARS,
            MANAGE_RADARS, VIEW_ALL_OPPORTUNITIES, VIEW_ASSIGNED_OPPORTUNITIES, MANAGE_OPPORTUNITY_WORKFLOW,
-           ASSIGN_OPPORTUNITIES, UPDATE_OPPORTUNITY_STATUS)
+           ASSIGN_OPPORTUNITIES, UPDATE_OPPORTUNITY_STATUS, ADD_OPPORTUNITY_NOTE)
 
 
 OWNER, ADMIN, SALES_MANAGER, SALES_USER, VIEWER = "owner", "admin", "sales_manager", "sales_user", "viewer"
@@ -121,9 +123,9 @@ ROLE_CAPABILITIES = {
     ADMIN: _READ_ORGANIZATION | {Capability.MANAGE_ORGANIZATION, Capability.MANAGE_MEMBERS,
                                  Capability.MANAGE_RADARS},
     SALES_MANAGER: _READ_ORGANIZATION | {Capability.MANAGE_OPPORTUNITY_WORKFLOW, Capability.ASSIGN_OPPORTUNITIES,
-                                         Capability.UPDATE_OPPORTUNITY_STATUS},
+                                         Capability.UPDATE_OPPORTUNITY_STATUS, Capability.ADD_OPPORTUNITY_NOTE},
     SALES_USER: frozenset({Capability.VIEW_ORGANIZATION, Capability.VIEW_ASSIGNED_OPPORTUNITIES,
-                           Capability.UPDATE_OPPORTUNITY_STATUS}),
+                           Capability.UPDATE_OPPORTUNITY_STATUS, Capability.ADD_OPPORTUNITY_NOTE}),
     VIEWER: _READ_ORGANIZATION,
 }
 # Capabilities whose scope is the membership's own assignments (satisfiable since D31).
@@ -323,9 +325,13 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
     # D32: every row here is already inside this membership's visibility scope (a sales user's are all their own).
     updating = can(context, Capability.UPDATE_OPPORTUNITY_STATUS)
     status_actions = {row.pk: status_targets_for(row.status) if updating else () for row in rows}
+    # D33: the notes of exactly these authorized, LIVE-backed rows -- one bounded query, never one per row.
+    notes, notes_truncated = _page_notes(context, [row.pk for row in rows])
+    note_actions = {row.pk: can(context, Capability.ADD_OPPORTUNITY_NOTE) for row in rows}
     return build_company_opportunity_page(organization=organization, rows=rows, live_signal_counts=live_signal_counts,
                                           save_actions=save_actions, assign_actions=assign_actions,
-                                          assignees=assignees, assignments=assignments, status_actions=status_actions)
+                                          assignees=assignees, assignments=assignments, status_actions=status_actions,
+                                          notes=notes, notes_truncated=notes_truncated, note_actions=note_actions)
 
 
 def _organization_by_id(organization_id):
@@ -608,3 +614,119 @@ def set_authorized_opportunity_status(user, organization_id, opportunity_id, tar
         row.status = target
         row.save(update_fields=["status", "updated_at"])
     return result(target, True)
+
+
+# --- D33: Notes -------------------------------------------------------------------------------------
+#
+# §41: «opportunity_notes», «Προσωπικές/team notes», «Πάντα tenant-isolated»; §62: no customer ever sees another's
+# notes. A note is written on one explicit opportunity by the exact membership in the authorized context, and read
+# only together with an opportunity that membership may already read -- no separate "all notes" path exists.
+# Append-only: no edit, no delete, no dedupe (the same text twice is two entries). Adding a note changes no status,
+# assignment, score, feed or timeline, writes no audit entry (item 36) and notifies nobody (item 37).
+
+NOTE_MAX_LENGTH = 4000
+NOTES_PAGE_LIMIT = 50
+FORMER_MEMBER_LABEL = "Πρώην μέλος"
+
+
+@dataclass(frozen=True)
+class NoteResult:
+    organization_id: int
+    company_id: int
+    opportunity_id: int
+    note_id: int | None
+    author_membership_id: int | None
+
+
+class NoteRefused(Exception):
+    """The opportunity is visible and writable for this member, but the body is not a valid note. Nothing stored."""
+
+    MESSAGES = {
+        "blank": "Η σημείωση δεν μπορεί να είναι κενή.",
+        "too_long": f"Η σημείωση ξεπερνά το όριο των {NOTE_MAX_LENGTH} χαρακτήρων.",
+        "invalid": "Η σημείωση περιέχει χαρακτήρες που δεν επιτρέπονται.",
+    }
+
+    def __init__(self, reason: str, result: NoteResult):
+        super().__init__(self.MESSAGES[reason])
+        self.reason = reason
+        self.result = result
+
+
+def normalize_note_body(value):
+    """(body, None) for a valid note, or (None, reason). Plain text: line endings become «\n», the ends are
+    trimmed, inner lines and spacing are kept as typed. NUL cannot be stored by PostgreSQL, so it is refused."""
+    if not isinstance(value, str):
+        return None, "blank"
+    body = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not body:
+        return None, "blank"
+    if "\x00" in body:
+        return None, "invalid"
+    if len(body) > NOTE_MAX_LENGTH:
+        return None, "too_long"
+    return body, None
+
+
+def add_authorized_opportunity_note(user, organization_id, opportunity_id, body) -> NoteResult:
+    """D33: append one note to one customer-visible opportunity, authored by this very membership.
+
+    Access is decided first and like every Phase D action: a nonexistent or foreign organization, a non-member, a
+    role without ``add_opportunity_note``, another tenant's, a nonexistent or SHADOW-backed opportunity and -- for
+    a sales user -- one not assigned to this membership are all the same ``OrganizationAccessDenied``. Only then is
+    the body judged (``NoteRefused``). Organization, opportunity and author all come from the authorized context and
+    row, never from the request.
+
+    Membership deletion race: the context was resolved before the transaction, so the author is never taken from
+    it blindly. Inside the one transaction the opportunity is locked first and then the *exact* acting membership
+    (same id, organization, user and role) is re-read ``FOR UPDATE``; a membership that is gone or changed is the
+    same ``OrganizationAccessDenied``, never a note with ``author=NULL``. Order -- opportunity, then membership --
+    is the order every Phase D service locks in and the order Django's ``SET_NULL`` collector touches rows when a
+    membership is deleted (referencing rows first, the member row last), so the two cannot deadlock. Either the
+    note commits while the membership is locked and a later deletion clears its author, or the deletion commits
+    first and the note is denied. As defence in depth, a foreign-key failure at commit (PostgreSQL checks these
+    constraints when the transaction ends) is also turned into the same denial rather than a server error. SQLite
+    serialises writers, so its tests prove the behaviour, not the row locks.
+    """
+    organization = _organization_by_id(organization_id)
+    context = require(get_organization_access_context(user, organization), Capability.ADD_OPPORTUNITY_NOTE)
+    try:
+        with transaction.atomic():
+            row = (organization_opportunities_for(context)
+                   .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
+                   .select_for_update(of=("self",)).only("pk", "organization_id", "company_id").first())
+            if row is None or row.organization_id != context.organization_id:
+                raise OrganizationAccessDenied()
+            author = (_model("OrganizationMember").objects.select_for_update()
+                      .filter(pk=context.membership_id, organization_id=context.organization_id,
+                              user_id=context.user_id, role=context.role)
+                      .values_list("pk", flat=True).first())
+            if author is None:
+                raise OrganizationAccessDenied()  # removed or changed since the context was resolved
+            text, reason = normalize_note_body(body)
+            if reason is not None:
+                raise NoteRefused(reason, NoteResult(organization_id=row.organization_id, company_id=row.company_id,
+                                                     opportunity_id=row.pk, note_id=None, author_membership_id=None))
+            note = _model("OpportunityNote").objects.create(organization_id=row.organization_id,
+                                                            opportunity_id=row.pk, author_id=author, body=text)
+    except IntegrityError:
+        raise OrganizationAccessDenied()
+    return NoteResult(organization_id=row.organization_id, company_id=row.company_id, opportunity_id=row.pk,
+                      note_id=note.pk, author_membership_id=author)
+
+
+def _page_notes(context: OrganizationAccessContext, opportunity_ids):
+    """The newest ``NOTES_PAGE_LIMIT`` notes across these already-authorized opportunities, grouped by opportunity:
+    ({opportunity_id: ((note_id, body, created_at, author display name), ...)}, truncated). One query."""
+    if not opportunity_ids:
+        return {}, False
+    rows = list(_model("OpportunityNote").objects
+                .filter(organization_id=context.organization_id, opportunity_id__in=opportunity_ids)
+                .order_by("-created_at", "-pk")
+                .values_list("pk", "opportunity_id", "body", "created_at", "author_id", "author__user__first_name",
+                             "author__user__last_name")[:NOTES_PAGE_LIMIT + 1])
+    grouped = {}
+    for pk, opportunity_id, text, created_at, author_id, first, last in rows[:NOTES_PAGE_LIMIT]:
+        author = member_display_name(first, last, author_id) if author_id is not None else FORMER_MEMBER_LABEL
+        grouped.setdefault(opportunity_id, []).append((pk, text, created_at, author))
+    return {key: tuple(value) for key, value in grouped.items()}, len(rows) > NOTES_PAGE_LIMIT

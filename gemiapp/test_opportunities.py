@@ -78,8 +78,10 @@ class SchemaTests(TestCase):
     def test_the_migration_is_additive_and_is_the_first_opportunity_migration(self):
         loader = MigrationLoader(None, ignore_no_migrations=True)
         names = sorted(name for app, name in loader.disk_migrations if app == "gemiapp")
-        # 0048 created the opportunity tables; D31's 0049 only adds the assignment pair (pinned in its own tests).
-        self.assertEqual(names[-2:], ["0048_opportunity", "0049_opportunity_assignment"])
+        # 0048 created the opportunity tables; D31's 0049 adds the assignment pair and D33's 0050 the notes table
+        # (each pinned in its own tests).
+        self.assertEqual(names[names.index("0048_opportunity"):],
+                         ["0048_opportunity", "0049_opportunity_assignment", "0050_opportunity_note"])
         migration = loader.disk_migrations[("gemiapp", "0048_opportunity")]
         allowed = {"CreateModel", "AddIndex", "AddConstraint", "AddField"}
         self.assertTrue({type(op).__name__ for op in migration.operations} <= allowed)
