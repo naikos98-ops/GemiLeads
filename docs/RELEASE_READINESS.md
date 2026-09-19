@@ -42,7 +42,7 @@ Derived acceptance criteria:
 2. Legacy aggregates (users, subscriptions, radars, matches, leads, digests, suppressions, companies, legacy
    company activities) are identical before and after the forward run.
 3. Reverse 0054 → 0031 succeeds, and legacy aggregates are again identical.
-4. The D37 schedule rollback procedure below is executed and leaves no schedule that errors.
+4. The D37 schedule follows its lifecycle (below): 0 rows below 0054, exactly 1 at 0054.
 5. Re-forward to 0054 leaves exactly one row per `SCHEDULES` entry.
 
 ## Staging environment contract (`config/environment.py`)
@@ -76,23 +76,31 @@ All 23 migrations are reversible. Reversal notes:
   the old unique constraint. Legacy-visible rows survive.
 * Every other migration creates new 2.0 tables; reversing drops them and their data.
 
-## D37 schedule rollback procedure
+## D37 schedule lifecycle
 
-`post_migrate` registers every `SCHEDULES` entry and never removes rows. Rolling back below 0054 (or deploying code
-older than 0054) therefore leaves the `Task Due Notifications` schedule in `django_q_schedule`.
+The `Task Due Notifications` schedule is schema-aware (`requires_schema` in `gemiapp/apps.py`): the `post_migrate`
+registration keeps **exactly one** row while the notification table exists and **none** while it does not. A
+rollback below 0054 therefore removes the row automatically; reapplying 0054 registers exactly one again. The
+three legacy schedules are registered exactly as before. No manual row deletion is needed.
 
-Since this release the task checks for its table first and returns `{"skipped": "notification_schema_missing"}`
-with a warning, so a leftover row produces a daily logged skip, not a failing task. Still, remove the row on any
-rollback below 0054:
+Defence in depth: the task itself still checks for its table and returns
+`{"skipped": "notification_schema_missing"}` with a warning, which covers a row that survives some other way (for
+example code older than this fix deployed on a 0054 schema that is then rolled back without running `migrate`).
 
-1. Stop the worker (`qcluster`).
-2. `python manage.py migrate gemiapp 0053` (or lower).
-3. `python manage.py shell -c "from django_q.models import Schedule; Schedule.objects.filter(func='gemiapp.tasks.generate_task_due_notifications_task').delete()"`
-4. If code older than 0054 is deployed, `post_migrate` will not re-create the row. If 0054 code stays deployed, the
-   next `migrate` re-registers it; that is harmless because of the schema guard.
-5. Start the worker.
+Operationally, still stop the worker (`qcluster`) around any rollback so no task runs against a half-migrated schema.
 
-Re-applying 0054 re-registers exactly one row (`cron 0 8 * * *`, Europe/Athens).
+Verified on a throwaway PostgreSQL 17 cluster (empty database, 2026-09-19):
+
+| State | Notification table | D37 rows | Total rows |
+| --- | --- | --- | --- |
+| gemiapp 0053 | no | 0 | 3 |
+| forward to 0054 | yes | 1 | 4 |
+| registration run twice more | yes | 1 | 4 |
+| reverse to 0053 | no | 0 | 3 |
+| reverse to 0031, then `migrate` again at 0031 | no | 0 | 3 |
+| reapply 0054 | yes | 1 | 4 |
+
+Legacy rows kept their id, cron and next_run in every state; no function had duplicate rows.
 
 ## Local PostgreSQL rehearsal (not G0/G1)
 
@@ -107,8 +115,8 @@ nothing about production volume, which is still unknown.
 | Restore into an isolated temporary DB | `pg_restore` exit 0 in 12 s; `check` clean; `migrate --check` clean; legacy aggregates identical; temporary DB dropped |
 | Reverse `gemiapp` 0054 → 0031 | exit 0, 8 s, 23 migrations unapplied; 2.0 tables gone; legacy aggregates identical |
 | Forward 0031 → 0054 | exit 0, 6 s, 23 migrations applied; `migrate --check` clean; legacy aggregates identical |
-| Schedules after reverse to 0031 | 4 rows — **the D37 row is re-registered by `post_migrate` even at 0031** (the hazard the procedure above removes) |
-| Schema guard at 0053 | task returns `{"skipped": "notification_schema_missing"}` with a warning; procedure step 3 removes the row; reapply → exactly 1 D37 row, 4 total |
+| Schedules after reverse to 0031 | 4 rows — **the D37 row was re-registered by `post_migrate` even at 0031** (fixed since: see D37 schedule lifecycle) |
+| Schema guard at 0053 | task returns `{"skipped": "notification_schema_missing"}` with a warning; reapply → exactly 1 D37 row, 4 total |
 
 Legacy aggregates compared: row count and an md5 digest over the 0031-era columns of `auth_user`,
 `usersubscription`, `customerradar`, `radarmatch`, `usercompanylead`, `digestpreference`, `digestdelivery`,

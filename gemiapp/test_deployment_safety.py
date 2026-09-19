@@ -84,3 +84,82 @@ class TaskDueScheduleGuardTests(TestCase):
 
         self.assertTrue(notification_schema_ready())
         self.assertEqual(tasks.generate_task_due_notifications_task()["created"], 0)
+
+
+D37_FUNC = "gemiapp.tasks.generate_task_due_notifications_task"
+LEGACY_FUNCS = {"gemiapp.tasks.run_daily_pipeline_task", "gemiapp.tasks.run_intraday_pipeline_task",
+                "gemiapp.tasks.drain_pending_outreach_task"}
+
+
+class TaskDueScheduleLifecycleTests(TestCase):
+    """The D37 schedule row exists exactly while its table does: one row at 0054+, none below it (after a rollback,
+    post_migrate removes it). The three legacy schedules are registered exactly as before in every state."""
+
+    def setUp(self):
+        from django_q.models import Schedule
+
+        Schedule.objects.all().delete()
+
+    def register(self, *, table_exists):
+        from django.db import connection
+
+        from gemiapp.apps import setup_daily_pipeline_schedule
+        from gemiapp.models import OrganizationNotification
+
+        tables = [name for name in connection.introspection.table_names()
+                  if table_exists or name != OrganizationNotification._meta.db_table]
+        with patch.object(connection.introspection, "table_names", return_value=tables):
+            setup_daily_pipeline_schedule(None)
+
+    def d37_count(self):
+        from django_q.models import Schedule
+
+        return Schedule.objects.filter(func=D37_FUNC).count()
+
+    def legacy_rows(self):
+        from django_q.models import Schedule
+
+        return {row["func"]: row for row in Schedule.objects.filter(func__in=LEGACY_FUNCS).values(
+            "id", "func", "name", "schedule_type", "cron", "repeats", "next_run")}
+
+    def test_pre_0054_schema_registers_no_task_due_schedule_and_every_legacy_one(self):
+        self.register(table_exists=False)
+        self.assertEqual(self.d37_count(), 0)
+        self.assertEqual(set(self.legacy_rows()), LEGACY_FUNCS)
+
+    def test_0054_schema_registers_exactly_one_and_repeated_registration_keeps_one(self):
+        self.register(table_exists=True)
+        self.assertEqual(self.d37_count(), 1)
+        for _ in range(3):
+            self.register(table_exists=True)
+        self.assertEqual(self.d37_count(), 1)
+
+    def test_a_duplicate_task_due_row_is_repaired_to_one(self):
+        from django_q.models import Schedule
+
+        self.register(table_exists=True)
+        Schedule.objects.create(func=D37_FUNC, schedule_type=Schedule.CRON, cron="0 8 * * *", repeats=-1)
+        self.register(table_exists=True)
+        self.assertEqual(self.d37_count(), 1)
+
+    def test_rollback_below_0054_removes_the_row_and_reapply_restores_exactly_one(self):
+        from django_q.models import Schedule
+
+        self.register(table_exists=True)
+        Schedule.objects.create(func=D37_FUNC, schedule_type=Schedule.CRON, cron="0 8 * * *", repeats=-1)
+        legacy = self.legacy_rows()
+        self.register(table_exists=False)  # post_migrate after migrate gemiapp 0053 / 0031
+        self.assertEqual(self.d37_count(), 0)
+        self.register(table_exists=False)  # repeated post_migrate below 0054
+        self.assertEqual(self.d37_count(), 0)
+        self.assertEqual(self.legacy_rows(), legacy, "legacy schedule rows must be untouched by the rollback")
+        self.register(table_exists=True)  # reapply 0054
+        self.assertEqual(self.d37_count(), 1)
+        self.assertEqual(self.legacy_rows(), legacy)
+        self.assertEqual(Schedule.objects.count(), 4)
+
+    def test_the_real_schema_at_head_registers_it(self):
+        from gemiapp.apps import setup_daily_pipeline_schedule
+
+        setup_daily_pipeline_schedule(None)
+        self.assertEqual(self.d37_count(), 1)

@@ -170,11 +170,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     `GEMI_STAGING_API_KEY` (το `GEMI_API_KEY` αγνοείται)· χωρίς αυτό `GEMI_COLLECTOR_ENABLED = False` και το
     `GemiClient.get` αρνείται κάθε αίτημα πριν σταλεί· email = `STAGING_EMAIL_BACKEND` ή console· Brevo key μόνο από
     `STAGING_BREVO_API_KEY`· outreach πάντα off· live Stripe key (`sk_live_`/`rk_live_`) → δεν ξεκινά.
-  - **D37 schedule rollback:** το `post_migrate` ξαναγράφει τη γραμμή του D37 ακόμη και στην 0031. Το
-    `generate_task_due_notifications_task` ελέγχει πλέον αν υπάρχει ο πίνακας και επιστρέφει
-    `{"skipped": "notification_schema_missing"}` με warning αντί να αποτυγχάνει. Διαδικασία rollback κάτω από 0054:
-    σταμάτα τον worker → migrate → διέγραψε τη γραμμή `func='gemiapp.tasks.generate_task_due_notifications_task'` →
-    ξεκίνα τον worker.
+  - **D37 schedule lifecycle:** η καταχώριση στο `post_migrate` είναι schema-aware (`requires_schema` →
+    `gemiapp.notifications.notification_schema_ready`, introspection): **ακριβώς μία** γραμμή όσο υπάρχει ο πίνακας
+    ειδοποιήσεων, **καμία** όταν δεν υπάρχει (rollback κάτω από 0054 → αφαιρείται αυτόματα). Τα τρία legacy schedules
+    καταχωρίζονται ακριβώς όπως πριν. Επιπλέον το ίδιο το task ελέγχει τον πίνακα και επιστρέφει
+    `{"skipped": "notification_schema_missing"}` (defence in depth). Γύρω από rollback σταματά ο worker.
+    Το `apps.py` δεν αναφέρει organizations (G5 guard) — γι' αυτό το entry δείχνει στο `gemiapp.notifications`.
   - **Τοπική PostgreSQL πρόβα (όχι G0/G1):** throwaway PostgreSQL 17 στο 127.0.0.1, φορτωμένο από το dev αντίγραφο.
     Backup/restore σε απομονωμένη βάση, reverse 0054 → 0031, forward 0031 → 0054: όλα exit 0, legacy aggregates
     (counts + md5) ίδια σε κάθε βήμα. Cluster, dump και backup καταστράφηκαν.

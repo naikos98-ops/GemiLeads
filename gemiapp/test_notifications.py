@@ -252,7 +252,10 @@ class TaskDueTests(NotificationTestCase):
 
         entries = [e for e in SCHEDULES if "notification" in e["func"]]
         self.assertEqual(entries, [{"func": "gemiapp.tasks.generate_task_due_notifications_task",
-                                    "name": "Task Due Notifications", "cron": "0 8 * * *"}])
+                                    "name": "Task Due Notifications", "cron": "0 8 * * *",
+                                    "requires_schema": "gemiapp.notifications.notification_schema_ready"}])
+        # Only the D37 entry is schema-aware; the legacy schedules register exactly as before.
+        self.assertEqual([e["func"] for e in SCHEDULES if "requires_schema" in e], [entries[0]["func"]])
         self.assertEqual(settings.TIME_ZONE, "Europe/Athens")
         self.due_task(0, actor=self.maria_user)
         self.assertEqual(tasks.generate_task_due_notifications_task()["created"], 1)
