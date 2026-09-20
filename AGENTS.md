@@ -1748,6 +1748,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - **Διόρθωση τεκμηρίωσης billing:** το README, το AI_SUMMARY και αυτό το αρχείο γράφουν ότι οι
   πληρωμές είναι κλειστές (beta), ενώ η production σελίδα pricing δείχνει ενεργό checkout
   (`render.yaml`, commit `e158012`). Μέχρι να επιβεβαιωθεί, το billing θεωρείται LIVE.
+- **Εκκρεμής αρχιτεκτονική απαίτηση — layer επαφών εταιρείας:** το hotfix τηλεφώνου είναι προσωρινή γέφυρα
+  (read-through από `raw_data`). Πρέπει να αντικατασταθεί από **ξεχωριστό, ελαχιστοποιημένο layer επαφών
+  εταιρείας** (contact points) με ρητή πηγή, χρόνο επαλήθευσης, διατήρηση και σημασιολογία ιδιωτικότητας.
+  Τα στοιχεία επικοινωνίας **δεν** μπαίνουν σε snapshots, σήματα, timeline, organization profile, ICP ή Radar
+  (Gemi Leads 2.0), και το raw GEMI payload δεν εκτίθεται ποτέ. Το τηλέφωνο ατομικής επιχείρησης μπορεί να
+  είναι προσωπικό δεδομένο.
 
 *(Όλα τα βήματα παραγωγής, Stripe integration, Email & Domain, Landing Page, Paid Subscription Logic και Superadmin Control Center έχουν ολοκληρωθεί. Η εφαρμογή είναι σε beta: το billing παραμένει σκόπιμα κλειστό. Το cold outreach είναι επίσης σκόπιμα παγωμένο και δεν αποτελεί εκκρεμότητα επανενεργοποίησης.)*
 
