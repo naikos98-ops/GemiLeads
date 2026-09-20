@@ -167,7 +167,7 @@
       input.setAttribute('aria-expanded', state ? 'true' : 'false');
       if (!state) { results.replaceChildren(); activeIndex = -1; }
     };
-    const closeResults = () => setOpen(false);
+    const closeResults = () => { controller?.abort(); setOpen(false); };
     const message = text => {
       const line = document.createElement('p');
       line.className = 'product-picker-empty'; line.textContent = text;
@@ -256,8 +256,11 @@
     const openResults = () => { if (!isOpen) load(input.value); };
 
     input.addEventListener('focus', openResults);
-    field?.addEventListener('click', openResults);
-    toggle?.addEventListener('click', () => {
+    // Anywhere in the field opens the list -- except the chevron, which toggles it. Without this the chevron's
+    // close would bubble straight into the opener and the dropdown would reopen within the same click.
+    field?.addEventListener('click', event => { if (!toggle?.contains(event.target)) openResults(); });
+    toggle?.addEventListener('click', event => {
+      event.stopPropagation();
       if (isOpen) { closeResults(); return; }
       input.focus();                      // focusing opens it; force it only if the field was focused already
       openResults();

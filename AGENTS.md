@@ -159,6 +159,30 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — Organization Radar: διόρθωση του chevron του dropdown (2026-09-21). UX μόνο.**
+  - **Το bug (από production):** με το dropdown ανοιχτό, κλικ στο chevron δεν έκανε φαινομενικά τίποτα. Ο
+    handler του chevron **έκλεινε** τη λίστα, αλλά το ίδιο κλικ συνέχιζε να ανεβαίνει στον γονέα
+    (`field?.addEventListener('click', openResults)`) που την **ξανάνοιγε** αμέσως — μέσα στο ίδιο κλικ.
+  - **Η διόρθωση:** το κλικ του chevron κάνει `stopPropagation()`, **και** ο opener του field αγνοεί κλικ που
+    προέρχονται από το chevron (`if (!toggle?.contains(event.target))`). Δύο φράχτες, γιατί ο ένας από τους
+    δύο θα έσπαγε σιωπηλά αν κάποιος αναδιατάξει τους listeners. Ό,τι άλλο μένει ως έχει: input/focus
+    ανοίγουν, Escape και κλικ έξω κλείνουν, η επιλογή κρατάει τη λίστα ανοιχτή.
+  - **Δεύτερο bug της ίδιας οικογένειας, που βρέθηκε γράφοντας το test:** μια απάντηση αναζήτησης που
+    ερχόταν **αφού** ο πελάτης είχε κλείσει τη λίστα την ξανάνοιγε. Το `closeResults()` κάνει πλέον
+    `controller?.abort()`, άρα το κλείσιμο ακυρώνει και το request που τρέχει.
+  - **Νέο είδος test: `gemiapp/jstests/picker_dropdown.mjs`.** Και τα δύο bugs είναι bugs **διάδοσης
+    γεγονότων** — δύο listeners που μιλάνε μεταξύ τους — και είναι **αόρατα** σε test που απλώς διαβάζει τον
+    κώδικα. Οπότε το script τρέχει **πραγματικά**, πάνω σε ένα DOM τόσο μικρό όσο χρειάζεται ο picker
+    (attribute selectors, capture-then-bubble dispatch με `stopPropagation`, dataset, classList, focus):
+    χωρίς browser, χωρίς jsdom, **χωρίς νέα npm εξάρτηση**. Τρέχει μέσα από το
+    `test_organization_radar_ui.PickerDropdownTests` (skip όπου δεν υπάρχει node) και το Python test απαιτεί
+    να **ονομαστεί** κάθε έλεγχος που πέρασε, ώστε ένα harness που σταμάτησε να τρέχει μια περίπτωση να μην
+    περνάει σιωπηλά. Επαληθεύτηκε ότι **κόβει**: με τον παλιό κώδικα πέφτει το «open -> click chevron ->
+    closed», με bubble-phase listener πέφτουν τα checks της επιλογής, χωρίς abort πέφτει το late-response.
+  - **Καμία αλλαγή σε backend/search/matcher**, καμία migration, καμία αλλαγή στην αναπαράσταση που
+    ποστάρεται. **2.052 tests OK**. Επαληθεύτηκε και σε πραγματικό browser με **αληθινά κλικ ποντικιού**
+    στο chevron: κλειστό → ανοιχτό → κλειστό.
+
 - **Gemi Leads 2.0 — Organization Radar: τα κριτήρια έγιναν κανονικά dropdown (2026-09-20). UX μόνο.**
   - **Το πρόβλημα:** τα αναζητήσιμα multi-select της ίδιας μέρας άνοιγαν **μόνο** αφού πληκτρολογήσεις δύο
     χαρακτήρες. Ένα κενό πλαίσιο αναζήτησης δεν λέει τι υπάρχει μέσα: ο πελάτης δεν ξέρει καν ότι υπάρχει
@@ -1834,6 +1858,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-21 — Radar picker chevron toggle (bugfix).** Αλλαγές: `static/js/app.js` (stopPropagation στο
+  chevron, ο field opener αγνοεί κλικ του chevron, abort on close), νέο `gemiapp/jstests/picker_dropdown.mjs`,
+  `gemiapp/test_organization_radar_ui.py` (`PickerDropdownTests` + static έλεγχος του toggle). Επαλήθευση:
+  `check`, `makemigrations --check`, 2.052 tests OK, έλεγχος σε browser· **καμία migration**.
 
 - **2026-09-20 — Organization Radar criteria pickers: dropdown (UX).** Αλλαγές:
   `gemiapp/reference_search.py` (`browse_reference`, `reference_options`), `gemiapp/views.py` (το endpoint

@@ -7,6 +7,8 @@ in Greek. Saving a Radar is configuration only: no signal, opportunity, notifica
 """
 
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 from django.contrib.messages import get_messages
@@ -387,9 +389,10 @@ class PickerScriptTests(SimpleTestCase):
 
     def test_the_dropdown_opens_on_focus_click_and_the_chevron(self):
         for binding in ("input.addEventListener('focus', openResults)",
-                        "field?.addEventListener('click', openResults)",
+                        "field?.addEventListener('click'",
                         "toggle?.addEventListener('click'"):
-            self.assertIn(binding, self.SCRIPT, binding)
+            # assertTrue, not assertIn: a failure here should name the binding, not print the whole script.
+            self.assertTrue(binding in self.SCRIPT, binding)
 
     def test_the_dropdown_closes_on_escape_and_on_an_outside_click(self):
         self.assertIn("event.key === 'Escape'", self.SCRIPT)
@@ -402,6 +405,13 @@ class PickerScriptTests(SimpleTestCase):
     def test_an_already_chosen_row_is_not_offered_again(self):
         self.assertIn("shown.filter(item => !taken.has(item.value))", self.SCRIPT)
 
+    def test_the_chevron_toggles_rather_than_only_opening(self):
+        """Reported from production: clicking the chevron of an open dropdown did nothing, because the close
+        bubbled into the field's opener and reopened it in the same click. The chevron stops its click, and
+        the field's opener ignores clicks that came from it."""
+        self.assertIn("event.stopPropagation();", self.SCRIPT)
+        self.assertIn("if (!toggle?.contains(event.target)) openResults();", self.SCRIPT)
+
     def test_choosing_an_option_is_not_mistaken_for_a_click_outside(self):
         """Found in the browser: picking an option replaces the list, so by the time a bubble-phase document
         listener runs the clicked node is detached and `contains` reads it as a click outside -- which closed
@@ -410,3 +420,42 @@ class PickerScriptTests(SimpleTestCase):
 
     def test_an_empty_result_says_so_in_greek(self):
         self.assertIn("Δεν βρέθηκαν αποτελέσματα", self.SCRIPT)
+
+
+class PickerDropdownTests(SimpleTestCase):
+    """Runs the real static/js/app.js against the small DOM in gemiapp/jstests/picker_dropdown.mjs.
+
+    What it covers cannot be seen by a test that only reads the source: the chevron closing the dropdown only
+    for the same click to reach the field's opener and reopen it, choosing an option reading as a click
+    outside, a late search response reopening a list the customer closed. Every one of those is two listeners
+    talking to each other, so the script has to actually run. Node is required; where there is none the check
+    is skipped rather than quietly passing, and the harness names each case it ran.
+    """
+
+    HARNESS = Path(__file__).resolve().parent / "jstests" / "picker_dropdown.mjs"
+    REQUIRED = (
+        "the dropdown starts closed",
+        "closed -> click chevron -> open",
+        "open -> click chevron -> closed",
+        "closed -> click chevron -> open again",
+        "clicking the text input opens it",
+        "clicking elsewhere in the field leaves it open",
+        "focusing the input opens it",
+        "Escape closes it",
+        "a click outside closes it",
+        "choosing an option keeps the dropdown open",
+        "the chosen row is not offered again",
+        "removing the chip offers the row again",
+        "a late response does not reopen a closed dropdown",
+    )
+
+    def test_the_dropdown_behaves_when_the_script_actually_runs(self):
+        node = shutil.which("node")
+        if node is None:
+            self.skipTest("node is not installed, so the picker script cannot be executed here")
+        result = subprocess.run([node, str(self.HARNESS)], capture_output=True, text=True, encoding="utf-8",
+                                timeout=120)
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for case in self.REQUIRED:          # a harness that stopped running a case must not pass quietly
+            self.assertIn(f"ok {case}", result.stdout, case)
