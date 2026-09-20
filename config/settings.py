@@ -386,6 +386,11 @@ GEMI_REQUEST_TIMEOUT_SECONDS = int(os.environ.get("GEMI_REQUEST_TIMEOUT_SECONDS"
 # Total attempts per request, the first included, when it fails with 429, a transient 5xx or a
 # network error.
 GEMI_MAX_ATTEMPTS = int(os.environ.get("GEMI_MAX_ATTEMPTS", "4"))
+# G6: record one row of operational metadata per outbound GEMI attempt (gemiapp.ingestion.request_metrics),
+# so the real consumption of the shared 7/minute allowance can be reported. On by default -- measuring is the
+# point -- and a kill switch if the writes ever need to stop. No request content is stored: no key, no
+# parameters, no payload, no company identifier. Failure to record never affects a request.
+GEMI_REQUEST_METRICS_ENABLED = os.environ.get("GEMI_REQUEST_METRICS_ENABLED", "1") == "1"
 # Minimised GEMI source records (gemiapp.ingestion.source_records). Off by default: while off, no
 # GemiSourceRecord is written and the importer behaves exactly as before. Turning it on makes
 # provenance mandatory -- a response whose record cannot be written fails the import. Do not enable in

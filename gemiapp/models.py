@@ -794,6 +794,72 @@ class GemiSourceRecord(models.Model):
         return f"{self.family} {self.endpoint} @ {self.fetched_at:%Y-%m-%d %H:%M} ({self.payload_hash[:12]})"
 
 
+class GemiRequestAttempt(models.Model):
+    """One outbound attempt against the ΓΕΜΗ API -- operational metadata only (G6).
+
+    Written by gemiapp.ingestion.request_metrics from the single request path in GemiClient, once per
+    **attempt**: a logical call that retries writes one row per retry, because each retry consumes its own
+    slot of the shared allowance. Rows whose outcome is a ``budget_*`` class never reached the transport and
+    never consumed a slot -- they are recorded so that "we gave up waiting" is visible, and excluded from
+    every rate calculation.
+
+    Deliberately holds no request content: no API key, no query parameters, no payload, no company
+    identifier, no customer data. ``endpoint`` is normalised (every numeric path segment becomes ``{id}``),
+    so a row cannot carry a ΓΕΜΗ number. System data, not tenant data: append-only, with no user or
+    organisation link, and nothing here is ever shown to a customer.
+    """
+
+    class Lane(models.IntegerChoices):
+        # Mirrors gemiapp.ingestion.rate_budget.GemiLane, stored as its value.
+        DISCOVERY = 1, "DISCOVERY"
+        DIGEST_IMPORT = 2, "DIGEST_IMPORT"
+        MONITORED_REFRESH = 3, "MONITORED_REFRESH"
+        DOCUMENTS = 4, "DOCUMENTS"
+
+    class Outcome(models.TextChoices):
+        SUCCESS = "success", "2xx"
+        RATE_LIMITED = "rate_limited", "429"
+        SERVER_ERROR = "server_error", "5xx"
+        CLIENT_ERROR = "client_error", "4xx other than 429"
+        TRANSPORT_ERROR = "transport_error", "No HTTP response (timeout, DNS, refused)"
+        BUDGET_TIMEOUT = "budget_timeout", "No slot within max_wait -- nothing was sent"
+        BUDGET_UNAVAILABLE = "budget_unavailable", "Shared budget store failed -- nothing was sent"
+
+    # The outcomes that mean the attempt reached the transport and therefore consumed a request slot.
+    SENT_OUTCOMES = (Outcome.SUCCESS, Outcome.RATE_LIMITED, Outcome.SERVER_ERROR, Outcome.CLIENT_ERROR,
+                     Outcome.TRANSPORT_ERROR)
+
+    occurred_at = models.DateTimeField(db_index=True)
+    lane = models.PositiveSmallIntegerField(choices=Lane.choices)
+    # 1-based within one logical call; anything above 1 is a retry of the same call.
+    attempt = models.PositiveSmallIntegerField()
+    outcome = models.CharField(max_length=24, choices=Outcome.choices)
+    http_status = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Time this attempt spent inside GemiRateBudget.acquire() before it was allowed to proceed.
+    budget_wait_ms = models.PositiveIntegerField(default=0)
+    endpoint = models.CharField(max_length=64, blank=True)
+
+    class Meta:
+        ordering = ["-occurred_at"]
+        verbose_name = "GEMI request attempt"
+        verbose_name_plural = "GEMI request attempts"
+        indexes = [
+            # The report's window scan: every attempt in the last N hours, in time order.
+            models.Index(fields=["occurred_at", "outcome"], name="gemireq_occurred_outcome_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_lane_display()} {self.endpoint} {self.outcome} @ {self.occurred_at:%Y-%m-%d %H:%M:%S}"
+
+    @property
+    def is_retry(self) -> bool:
+        return self.attempt > 1
+
+    @property
+    def consumed_slot(self) -> bool:
+        return self.outcome in self.SENT_OUTCOMES
+
+
 class GemiReferenceEntry(models.Model):
     """Fields shared by the local GEMI reference tables (filled by gemiapp.ingestion.reference_data).
 

@@ -10,7 +10,10 @@ Every GEMI call goes through ``GemiClient.get()`` or ``GemiClient.search_compani
   matches with 404 and an empty body) and a 404 anywhere else as GemiNotFoundError;
 * reduces the three error formats the API returns -- gateway JSON objects, upstream JSON arrays and
   HTML stack traces from request validation -- to one short message;
-* keeps the API key out of every message, log line and exception chain.
+* keeps the API key out of every message, log line and exception chain;
+* records one G6 observation per **attempt** (gemiapp.ingestion.request_metrics), so what the shared
+  allowance is actually spent on can be measured. Retries are separate observations because each one
+  spends its own slot; recording is fail-open and never delays or blocks a request.
 
 Observed API behaviour is documented in docs/GEMI_API_CAPABILITY_REPORT.md.
 """
@@ -39,6 +42,8 @@ from .errors import (
     GemiApiError,
     GemiAuthenticationError,
     GemiBadRequestError,
+    GemiBudgetTimeoutError,
+    GemiBudgetUnavailableError,
     GemiConfigurationError,
     GemiNotFoundError,
     GemiResponseFormatError,
@@ -46,6 +51,7 @@ from .errors import (
     GemiRetryExhaustedError,
 )
 from .rate_budget import GemiLane, GemiRateBudget
+from . import request_metrics
 from .schemas import ResponseFamily, validate_response
 
 logger = logging.getLogger(__name__)
@@ -328,10 +334,11 @@ class GemiClient:
         failure, status = UNREACHABLE_MESSAGE, None
 
         for attempt in range(1, self._max_attempts + 1):
-            self._budget.acquire(lane, max_wait=wait_limit)
+            waited = self._acquire_slot(lane, wait_limit, attempt, path)
             try:
                 response = self._transport(url, headers, self._timeout)
             except GemiTransportError as exc:
+                self._observe(lane, attempt, path, request_metrics.TRANSPORT_ERROR, None, waited)
                 failure, status = UNREACHABLE_MESSAGE, None
                 delay = self._backoff(attempt)
                 logger.warning(
@@ -339,6 +346,8 @@ class GemiClient:
                     path, "timeout" if exc.timed_out else "network error", exc.kind, attempt, self._max_attempts,
                 )
             else:
+                self._observe(lane, attempt, path, request_metrics.classify_status(response.status),
+                              response.status, waited)
                 response_headers = {str(key).lower(): str(value) for key, value in response.headers.items()}
                 reset_in = _exhausted_window_seconds(response_headers)
                 if reset_in is not None:
@@ -378,6 +387,33 @@ class GemiClient:
 
         logger.error("GEMI %s: giving up after %s attempts (%s).", path, self._max_attempts, failure)
         raise GemiRetryExhaustedError(failure, status=status, attempts=self._max_attempts)
+
+    def _acquire_slot(self, lane: GemiLane, wait_limit: float, attempt: int, path: str) -> float:
+        """Wait for a request slot and return how long that took.
+
+        A budget failure is observed as an attempt that never reached the transport -- it consumed no slot --
+        and then re-raised unchanged, so the budget keeps failing closed exactly as before.
+        """
+        started = self._clock()
+        try:
+            self._budget.acquire(lane, max_wait=wait_limit)
+        except GemiBudgetTimeoutError:
+            self._observe(lane, attempt, path, request_metrics.BUDGET_TIMEOUT, None, self._clock() - started)
+            raise
+        except GemiBudgetUnavailableError:
+            self._observe(lane, attempt, path, request_metrics.BUDGET_UNAVAILABLE, None, self._clock() - started)
+            raise
+        return self._clock() - started
+
+    def _observe(self, lane: GemiLane, attempt: int, path: str, outcome: str, status: int | None,
+                 waited: float) -> None:
+        """One G6 observation. Metadata only, and it can never break the request: record_attempt swallows
+        its own failures, and this adds nothing that could raise."""
+        request_metrics.record_attempt(
+            lane=lane, attempt=attempt, endpoint=path, outcome=outcome, http_status=status,
+            budget_wait_seconds=waited,
+            occurred_at=datetime.fromtimestamp(self._clock(), tz=dt_timezone.utc),
+        )
 
     @staticmethod
     def _validate(family: ResponseFamily, payload: Any, path: str, request_id: str, lane: GemiLane) -> None:

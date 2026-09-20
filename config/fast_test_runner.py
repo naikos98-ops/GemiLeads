@@ -42,11 +42,22 @@ def silence_operator_alerts():
     settings.ADMINS = []
 
 
+def disable_request_metrics():
+    """G6 request metrics are off for the suite by default. They write a row per outbound GEMI attempt, and
+    most client tests are ``SimpleTestCase`` with no database -- the write would only exercise the fail-open
+    path and fill the output with its error line. The tests that measure the instrumentation turn it on with
+    ``override_settings(GEMI_REQUEST_METRICS_ENABLED=True)``; production keeps it on."""
+    from django.conf import settings
+
+    settings.GEMI_REQUEST_METRICS_ENABLED = False
+
+
 def _process_setup(*args):
     """Runs first in every spawned ``--parallel`` worker (before ``django.setup()``)."""
     _process_setup_stub(*args)
     use_fast_test_hashers()
     silence_operator_alerts()
+    disable_request_metrics()
 
 
 class FastHasherParallelTestSuite(ParallelTestSuite):
@@ -60,3 +71,4 @@ class FastHasherTestRunner(DiscoverRunner):
         super().setup_test_environment(**kwargs)
         use_fast_test_hashers()
         silence_operator_alerts()
+        disable_request_metrics()
