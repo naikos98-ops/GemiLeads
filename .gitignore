@@ -46,6 +46,12 @@ static/css/app.css
 # Contains user data and password hashes: never commit.
 backups/
 
+# Database dumps and SQL exports. A production dump is real customer data: it lives outside the
+# repository tree, and these patterns make sure a stray one can never be staged by `git add -A`.
+*.dump
+*.sql
+*.sql.gz
+
 # Forensic recovery scratch (Gemini-state patch, verification scripts, intermediate captures).
 # Kept on disk for rollback until the consolidation is merged and deployed; never committed.
 .recovery/

@@ -159,6 +159,45 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — Pre-dark-deployment closure (2026-09-20).** Πλήρης καταγραφή: `docs/RELEASE_READINESS.md`,
+  που πλέον ταξινομεί **κάθε** ισχυρισμό ως **[A] repository-recorded**, **[B] externally observed** ή **[C] open**.
+  - **`G0_STATUS = PASSED_WITH_DOCUMENTED_SCOPE`.** Αφαιρέθηκε το παράγωγο κριτήριο «ξεχωριστό staging **web +
+    worker service**»: το `AGENTS.md` ζητά staging **βάση**, ξεχωριστό GEMI key για staging και γνωστό όγκο
+    production — όχι δεύτερη υπηρεσία. Το πρακτικό staging είναι **τοπικές διεργασίες εφαρμογής → ξεχωριστή staging
+    PostgreSQL** (Supabase, `GEMI_LEADS_ENVIRONMENT=staging`, όλα τα staging guards ενεργά). Ό,τι **δεν**
+    δοκιμάζεται έτσι (Render build/boot/env wiring) καταγράφεται ρητά με τα υποκατάστατα που εκτελέστηκαν.
+  - **`G1_STATUS = PARTIAL` — σκόπιμα ΔΕΝ δηλώνεται passed.** Forward 0031→0054, rollback 0054→0031, reapply και
+    κύκλος D37 `0→1→0→1`: όλα πέρασαν στο staging **[B]**. Το snapshot parity (counts + md5, read-only 2026-09-20)
+    δείχνει `gemiapp_company` = **4.903** και legacy-visible `gemiapp_companyactivity` = **33.391**, **ίδια με την
+    production baseline** — καμία legacy γραμμή δεν δημιουργήθηκε ή χάθηκε από την αλυσίδα 2.0, και **0** γραμμές
+    `legacy_listed = false`. **Όμως** δεν υπάρχει digest **πριν** το forward σε αυτή τη βάση, άρα το κριτήριο
+    «ίδια aggregates πριν/μετά» δεν τεκμηριώνεται. Καμία parity απόδειξη δεν κατασκευάστηκε.
+  - **Production volume (authorized read-only) [B]:** PostgreSQL 17.6, `gemiapp` στην 0031, 0032–0054 μη
+    εφαρμοσμένες, κανένας πίνακας 2.0, `Company` = **4.903**, `CompanyActivity` = **33.391**, 3 django-q schedules,
+    D37 = 0. Αυτό ορίζει και το μόνο πραγματικό lock risk: η `0035` χτίζει δύο partial unique indexes πάνω σε
+    33.391 γραμμές (μη-concurrent, `ACCESS EXCLUSIVE` όσο τρέχει).
+  - **Τοπική πρόβα εφαρμογής πάνω στο staging [B]:** `check` καθαρό· `check --deploy` με τους διακόπτες του
+    `render.yaml` (`DJANGO_DEBUG=0`, μακρύ secret, πραγματικά allowed hosts) **καθαρό** — οι 6 προειδοποιήσεις με
+    το τοπικό `.env` οφείλονται αποκλειστικά στο `DEBUG=1`· `config.wsgi.application` φορτώνει· η εφαρμογή σερβίρει
+    `GET /` 200, `/accounts/login/` 200, `/dashboard/` 302. **Ο `qcluster` δεν μπορεί να τρέξει σε Windows**
+    (το django-q2 απαιτεί `multiprocessing` start method `fork`)· αντ' αυτού επαληθεύτηκε ότι και οι 4 `func` του
+    `apps.SCHEDULES` φορτώνουν και ότι ο schema guard του D37 δίνει True στην 0054. Μετά την πρόβα: 4 schedules,
+    **D37 ακριβώς 1**, ουρά άθικτη, `importrun` αμετάβλητο. **Κανένα GEMI job, κανένα αίτημα ΓΕΜΗ** (ο scheduler
+    απενεργοποιήθηκε πριν το boot· και τα 4 staging schedules ήταν past due).
+  - **Build rehearsal [A]:** `npm ci` (73 πακέτα), `npm run build:css` (`app.css` 27.296 bytes), `collectstatic`
+    (1 copied, 134 unmodified, 372 post-processed). Το `pip install` παραλείφθηκε σκόπιμα (θα άλλαζε το venv).
+  - **Data safety:** στο `.gitignore` προστέθηκαν `*.dump`, `*.sql`, `*.sql.gz`. Κανένα dump/SQL δεν είναι tracked
+    σε κανένα branch· τα δύο τοπικά production dumps παραμένουν untracked και **δεν** διαγράφηκαν/μετακινήθηκαν.
+    Προσοχή: οι κανόνες προστατεύουν ένα checkout μόνο όταν το branch που τους φέρει είναι checked out εκεί.
+  - **Sentry (πύλη A2) — ο ΕΝΑΣ χειροκίνητος blocker.** Ο κώδικας υποστηρίζει `SENTRY_DSN` (sentry-sdk 2.0.0,
+    `DjangoIntegration`, default logging integration → ERROR = event) **[A]**· το `render.yaml` το δηλώνει
+    `sync: false` **[A]**. Αν είναι όντως ορισμένο στο production και αν υπάρχει alert rule για ERROR των
+    `gemiapp.ingestion.client` / `gemiapp.services` **δεν επαληθεύεται από το repo** **[C]**. Κρίσιμο: από την 0054
+    το `GemiClient._validate` ξαναρίχνει σε παραβίαση συμβολαίου, άρα αλλαγή schema του ΓΕΜΗ **σταματά τον ημερήσιο
+    import και το digest**· και επειδή δεν ορίζεται `LOGGING`, οι INFO γραμμές του `gemiapp` δεν φτάνουν στα logs.
+  - **`G6_STATUS = NOT_MEASURED`** (δεν είναι dark-deploy blocker: κανένα 2.0 job δεν είναι προγραμματισμένο).
+    **`G4_STATUS = NOT_PASSED`**, LIVE **απαγορευμένη**, καμία merge, κανένα deploy, καμία production migration.
+
 - **Gemi Leads 2.0 — ο ντετερμινιστικός κύκλος SHADOW του G4 (2026-09-20).** Μία εντολή operator, μία σειρά, μία
   ελέγξιμη αναφορά: `gemiapp/g4_shadow_cycle.py` + `python manage.py run_g4_shadow_cycle`.
   - **Σειρά φάσεων (η σειρά είναι το συμβόλαιο):** `precheck` → `discovery` → `materialisation` →
@@ -424,6 +463,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     (counts + md5) ίδια σε κάθε βήμα. Cluster, dump και backup καταστράφηκαν.
   - **`PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`.** Επόμενο βήμα: απομονωμένο staging (Render service +
     δική του PostgreSQL, `GEMI_LEADS_ENVIRONMENT=staging`, κανένα production secret).
+  - *(Αναθεώρηση 2026-09-20: το staging υπάρχει ως ξεχωριστή Supabase PostgreSQL με τοπικές διεργασίες εφαρμογής·
+    το κριτήριο «ξεχωριστό Render web+worker service» αφαιρέθηκε ως μη προβλεπόμενο από το `AGENTS.md`.
+    `G0_STATUS = PASSED_WITH_DOCUMENTED_SCOPE`, `G1_STATUS = PARTIAL`. Βλ. «Pre-dark-deployment closure».)*
 
 - **Gemi Leads 2.0 — Phase D ΟΛΟΚΛΗΡΩΘΗΚΕ (`PHASE_D_STATUS = COMPLETE`, 2026-09-19).** Τα βήματα 29–37 είναι
   δεσμευμένα/επαληθευμένα. Αυτό **δεν** σημαίνει production-ready: `G0`/`G1` μπλοκάρουν τις production migrations
@@ -1640,6 +1682,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-20 — Pre-dark-deployment closure (τεκμηρίωση + data safety).** Αλλαγές: `docs/RELEASE_READINESS.md`
+  (ταξινόμηση τεκμηρίων A/B/C, αφαίρεση του κριτηρίου web+worker service, production volume 4.903/33.391, staging
+  parity snapshot με digests, τοπική πρόβα εφαρμογής, build rehearsal, Sentry ως ο ένας χειροκίνητος blocker),
+  `.gitignore` (`*.dump`, `*.sql`, `*.sql.gz`). Καμία αλλαγή κώδικα, καμία migration, κανένα αίτημα ΓΕΜΗ, καμία
+  εγγραφή στο staging, κανένα deploy, καμία merge.
 
 - **2026-09-20 — Deterministic G4 shadow cycle.** Νέα: `gemiapp/g4_shadow_cycle.py`,
   `manage.py run_g4_shadow_cycle`, `gemiapp/test_g4_shadow_cycle.py` (23 tests). Αλλαγή:
