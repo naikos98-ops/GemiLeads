@@ -19,7 +19,11 @@ matching. ``mode="shadow"`` (the default) fetches, validates, classifies and rec
 discovery tables: no Company or CompanyActivity row is created or changed, no monitoring row is touched, no
 Signal exists, no digest changes. ``mode="ingest"`` persists newly discovered companies through the existing
 importer path (``company_defaults`` + ``update_or_create`` + ``sync_company_activities``), and is refused
-unless GEMI_DISCOVERY_V2_ENABLED is on; it is off, and nothing schedules it.
+unless GEMI_DISCOVERY_V2_ENABLED is on; it is off, and nothing schedules it. Ingest **never writes over a
+company that already exists locally**: a record can now be newly discovered while its row is already stored
+(see "What counts as newly discovered"), and rewriting that row would let the future cutover path overwrite
+legacy-imported data with a discovery payload. Such a record is skipped by the writer and keeps its
+observation.
 
 Data model
 ----------
@@ -47,8 +51,9 @@ Algorithm
 1. Require an initialised cursor (see Bootstrap); without one the run stops immediately rather than guessing.
 2. Page ``/companies`` with ``resultsSortBy=-arGemi``, ``resultsSize=page_size`` through the shared
    GemiClient in the Discovery lane, from the newest identifier downwards.
-3. For each record: normalise the identifier, detect duplicates, check ordering, look up whether the company
-   exists locally (by ``gemi_number``, never by incorporation date), and classify new ones.
+3. For each record: normalise the identifier, detect duplicates, check ordering, compare the identifier with
+   the run-start frontier, look up whether the company exists locally (by ``gemi_number``, never by
+   incorporation date), and classify (see "What counts as newly discovered").
 4. Stop when the overlap policy is satisfied: at least ``overlap_known_records`` already-known records seen
    **after** the first record at or below the frontier, and at least ``min_overlap_pages`` pages fetched. The
    overlap is what catches irregular ordering and late appearance; stopping at the first known record would
@@ -64,6 +69,44 @@ identifier is greater than the previous one (within a page, or across a page bou
 are **blocking**: the run is marked ``anomaly``, the cursor keeps its previous value and its status becomes
 ``anomaly`` for investigation. Invalid identifiers and duplicates are recorded and counted but do not block,
 because one malformed record is not evidence that the whole ordering assumption failed.
+
+What counts as newly discovered
+-------------------------------
+Newness is a fact about **Discovery's own frontier**, not about when another pipeline happened to write a
+Company row:
+
+* identifier **above the frontier captured at the start of the run** -> newly discovered, whatever the local
+  ``Company`` table currently holds;
+* identifier **at or below that frontier** -> the local-existence rule: already stored locally means
+  ``known``, otherwise newly discovered (this is what still finds records the legacy importer never stored).
+
+This removes a race, and the race was losing signals. Newness used to be decided purely by whether a
+``Company`` row existed at the moment the page was scanned, so the very same GEMI record was recorded as
+``known`` or as newly discovered depending on whether the legacy importer (scheduled seven times a day) had
+already run. A record recorded as ``known`` is not eligible evidence for B2, and nothing keeps the payload, so
+that first sighting was unrecoverable: silently, the NEW_COMPANY producer saw almost nothing.
+
+The frontier makes the decision race-free because of how it is established and moved. Bootstrap writes the
+highest identifier **that exists locally**, and a run advances it only to the highest identifier it actually
+examined, only when the run succeeded. So every identifier at or below the frontier was either local at
+bootstrap or examined by a successful run, and nothing above it can be an already-established company. The
+comparison is made **per record** against that single run-start value -- never a sticky "we are past the
+frontier now" flag -- so an out-of-order record is judged by its own identifier, and the ordering guardrails
+above keep measuring the disorder itself.
+
+``company_existed`` still records, unchanged, whether the row was already in ``Company`` when the page was
+scanned. For an above-frontier record it is now **diagnostic evidence rather than the classification**:
+
+    classification != ``known`` and ``company_existed`` is True
+
+means "Discovery identified a newly seen identifier although the legacy importer had already stored the
+company" -- exactly the sighting the old rule discarded. The run counts them as
+``rediscovered_local_records``. Nothing hides or overwrites the fact.
+
+Two things deliberately do **not** follow this rule, because they are about local data, not about newness:
+the overlap stop condition and ``highest_known_gemi_number`` keep counting local existence (the bootstrap
+frontier has to be an identifier that really is stored locally). ``known_records`` keeps counting the
+observations classified ``known``, so ``examined = known + new`` still holds.
 
 Late publications
 -----------------
@@ -96,6 +139,15 @@ because in shadow mode the legacy importer stores a company before v2 would, and
 not read as a miss. LEGACY_ONLY therefore means Discovery v2 never reached that company, which is the miss
 signal the shadow gate looks for. V2_ONLY uses only newly discovered records, each classified as
 ``late_publication``, ``invalid_incorporation_date`` or ``legacy_filter_miss``.
+
+Still pending after this: a company with no local row
+------------------------------------------------------
+A newly discovered company that the legacy importer never stored has no ``Company`` row, and B1/B3 anchor
+every signal and snapshot to one. B2 therefore leaves it as ``pending_no_company``: no signal, no placeholder
+company, no import, with the observation as the durable pending evidence. That is unchanged and deliberate --
+late publications are exactly this case, and they are a **measured G4 gap**, not something this module
+resolves. Resolving it means creating ``Company`` rows outside the legacy importer, which is the gated
+cutover decision.
 
 Cutover gate
 ------------
@@ -141,8 +193,10 @@ BOOTSTRAP = "bootstrap"
 NEW_INCORPORATION = "new_incorporation"
 LATE_PUBLICATION = "late_publication"
 INVALID_DATE = "invalid_date"
-# Recorded for records the scan saw that already exist locally, so the legacy comparison can tell a company
-# Discovery v2 saw from one it never reached. Bounded by the page limit, not by the size of the registry.
+# Recorded for a record at or below the run-start frontier that already exists locally, so the legacy
+# comparison can tell a company Discovery v2 saw from one it never reached. Above the frontier a record is
+# newly discovered even when it is already stored locally, and ``company_existed`` carries that fact instead.
+# Bounded by the page limit, not by the size of the registry.
 KNOWN = "known"
 
 STOP_OVERLAP_SATISFIED = "overlap_satisfied"
@@ -213,6 +267,9 @@ class DiscoveryResult:
     records_examined: int = 0
     known_records: int = 0
     new_records: int = 0
+    # Newly discovered above the frontier although the row was already stored locally: the sightings the old
+    # local-existence rule silently dropped. A subset of new_records, never of known_records.
+    rediscovered_local_records: int = 0
     late_publication_records: int = 0
     invalid_date_records: int = 0
     duplicate_records: int = 0
@@ -245,8 +302,8 @@ class DiscoveryResult:
             f"{prefix}mode={self.mode} status={self.status} stop_reason={self.stop_reason} pages={self.pages_fetched} "
             f"run_id={self.run_id}",
             f"{prefix}records examined={self.records_examined} known={self.known_records} new={self.new_records} "
-            f"late_publication={self.late_publication_records} invalid_date={self.invalid_date_records} "
-            f"ingested={self.ingested_records}",
+            f"(already local={self.rediscovered_local_records}) late_publication={self.late_publication_records} "
+            f"invalid_date={self.invalid_date_records} ingested={self.ingested_records}",
             f"{prefix}guardrails duplicates={self.duplicate_records} invalid_identifiers={self.invalid_identifier_records} "
             f"anomalies={len(self.anomalies)} blocking={len(self.blocking_anomalies)} overlap_known={self.overlap_known_records}",
             f"{prefix}frontier previous={self.previous_high_water_mark or 'none'} highest_seen={self.highest_gemi_number or 'none'} "
@@ -290,7 +347,9 @@ def _scan(client, *, policy: DiscoveryPolicy, max_pages: int, frontier: int | No
     offset = 0
     previous_number: int | None = None
     seen: set[str] = set()
-    beyond_frontier = True
+    # How many records at or below the frontier the scan has reached. Counted, not a sticky "we are past the
+    # frontier" flag: every newness decision below is made per record against ``frontier`` itself.
+    at_or_below_frontier = 0
     for page_index in range(max_pages):
         payload = _fetch_page(client, offset=offset, policy=policy)
         items = payload.get("searchResults") or []
@@ -325,14 +384,21 @@ def _scan(client, *, policy: DiscoveryPolicy, max_pages: int, frontier: int | No
             result.records_examined += 1
             if not result.highest_gemi_number or number > int(result.highest_gemi_number):
                 result.highest_gemi_number = text
-            if frontier is not None and number <= frontier:
-                beyond_frontier = False
-            if text in known:
-                result.known_records += 1
+            # Per record, against the frontier as it was when the run started. Both are False during a
+            # bootstrap (no frontier yet), which leaves that scan's semantics exactly as they were.
+            above_frontier = frontier is not None and number > frontier
+            within_frontier = frontier is not None and number <= frontier
+            exists_locally = text in known
+            if within_frontier:
+                at_or_below_frontier += 1
+            if exists_locally:
+                # Local existence, not newness: the bootstrap frontier must be an identifier really stored here.
                 if not result.highest_known_gemi_number or number > int(result.highest_known_gemi_number):
                     result.highest_known_gemi_number = text
-                if not beyond_frontier:
+                if within_frontier:
                     result.overlap_known_records += 1
+            if exists_locally and not above_frontier:
+                result.known_records += 1
                 _, known_value, known_quality = _classify(item, as_of=as_of)
                 result.observations.append({
                     "gemi_number": text, "classification": KNOWN, "incorporation_date": known_value,
@@ -341,11 +407,12 @@ def _scan(client, *, policy: DiscoveryPolicy, max_pages: int, frontier: int | No
                 continue
             classification, value, quality = _classify(item, as_of=as_of)
             result.new_records += 1
+            result.rediscovered_local_records += int(exists_locally)
             result.late_publication_records += int(classification == LATE_PUBLICATION)
             result.invalid_date_records += int(classification == INVALID_DATE)
             result.observations.append({
                 "gemi_number": text, "classification": classification, "incorporation_date": value,
-                "incorporation_date_quality": quality, "company_existed": False, "page_index": page_index,
+                "incorporation_date_quality": quality, "company_existed": exists_locally, "page_index": page_index,
             })
             page_new.append((item, text))
 
@@ -354,7 +421,7 @@ def _scan(client, *, policy: DiscoveryPolicy, max_pages: int, frontier: int | No
         if result.blocking_anomalies:
             result.stop_reason = STOP_ANOMALY
             return
-        if frontier is not None and not beyond_frontier and result.overlap_known_records >= policy.overlap_known_records \
+        if frontier is not None and at_or_below_frontier and result.overlap_known_records >= policy.overlap_known_records \
                 and result.pages_fetched >= policy.min_overlap_pages:
             result.stop_reason = STOP_OVERLAP_SATISFIED
             return
@@ -367,13 +434,25 @@ def _scan(client, *, policy: DiscoveryPolicy, max_pages: int, frontier: int | No
 
 
 def _ingest(records: list[tuple[dict, str]]) -> int:
-    """Persist newly discovered companies through the existing importer path."""
+    """Persist newly discovered companies through the existing importer path, creating only.
+
+    A record above the frontier is newly discovered even when its ``Company`` row already exists, so this
+    writer -- the one place discovery touches customer-facing data -- refuses to write over a row that is
+    already stored, whatever the caller passes. Rewriting it would replace legacy-imported data with a
+    discovery payload the moment the cutover path is switched on; skipping it costs nothing, because the
+    observation is already recorded either way.
+    """
     from ..services import company_defaults, sync_company_activities
 
     Company = apps.get_model("gemiapp", "Company")
+    numbers = [gemi_number for _, gemi_number in records]
+    already_local = set(Company.objects.filter(gemi_number__in=numbers).values_list("gemi_number", flat=True))
     ingested = 0
     with transaction.atomic():
         for item, gemi_number in records:
+            if gemi_number in already_local:
+                logger.info("Discovery ingest kept the stored company %s: never written over.", gemi_number)
+                continue
             company, _ = Company.objects.update_or_create(gemi_number=gemi_number, defaults=company_defaults(item))
             sync_company_activities(company, item.get("activities"))
             ingested += 1

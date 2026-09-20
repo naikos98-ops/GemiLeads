@@ -11,10 +11,17 @@ the event's effective date.
 Eligible evidence
 -----------------
 A ``GemiDiscoveryObservation`` is a candidate when its classification is one of the newly-discovered
-classes -- ``new_incorporation``, ``late_publication`` or ``invalid_date`` -- which A10 writes only for
-records that were not already stored locally. ``known`` observations, which A10 records for the
-already-local rows a scan pages through so the legacy comparison can tell "seen" from "never reached", are
-never candidates.
+classes -- ``new_incorporation``, ``late_publication`` or ``invalid_date``. A10 writes those for every
+record beyond its run-start frontier, and, at or below the frontier, for records not stored locally.
+``known`` observations, which A10 records for the already-local rows a scan pages through at or below the
+frontier so the legacy comparison can tell "seen" from "never reached", are never candidates.
+
+Whether a ``Company`` row happened to exist when the scan ran is therefore **not** what makes evidence
+eligible, and this producer never reads that flag: A10 owns the newness decision, B2 materialises it. The
+common case is now a company the legacy importer had already stored -- the observation carries
+``company_existed=True`` as diagnostic evidence -- which is exactly where the detection-time baseline below
+comes from. Before A10 classified by frontier, such a sighting was recorded as ``known`` and lost, so this
+producer almost never ran at all.
 
 Evidence from every run mode counts, bootstrap included: a bootstrap scan's backlog rows are genuine first
 sightings. Evidence from a run that later failed or hit an ordering anomaly also counts: those guardrails
@@ -81,11 +88,16 @@ never substituted for it, and nothing is clamped.
 
 Company materialisation
 -----------------------
-In shadow mode Discovery v2 stores nothing, so a newly discovered company usually does not exist in
-``Company`` yet. A signal must belong to a real company (B1), so such a candidate stays **unmaterialised**:
+In shadow mode Discovery v2 stores nothing, so a newly discovered company may not exist in ``Company`` yet.
+A signal must belong to a real company (B1), so such a candidate stays **unmaterialised**:
 no signal, no placeholder company, no import, and the observation remains the durable pending evidence.
 When the company later arrives through the approved importer, the next run materialises exactly one signal,
 still stamped with the original discovery time.
+
+A late publication never arrives that way -- the legacy importer selects by incorporation date and can never
+reach it -- so it stays ``pending_no_company`` indefinitely. That is deliberate and unresolved here: it is a
+**measured G4 gap**, counted as ``unmaterialised (no Company yet)`` in the report, and closing it means
+creating ``Company`` rows outside the legacy importer, which is the gated cutover decision.
 
 Mode
 ----
@@ -129,7 +141,8 @@ from .ingestion.schemas import ResponseFamily, validate_response
 
 logger = logging.getLogger(__name__)
 
-# A10 classifications that mean "newly discovered", i.e. not already stored locally.
+# A10 classifications that mean "Discovery v2 saw this identifier for the first time" (beyond its frontier,
+# or missing locally at or below it). Not a statement about whether a Company row exists.
 ELIGIBLE_CLASSIFICATIONS = (NEW_INCORPORATION, LATE_PUBLICATION, INVALID_DATE)
 # One first-observation event per company: the key never varies.
 EVENT_KEY = {"event": "first_observed"}
