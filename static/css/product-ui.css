@@ -546,6 +546,221 @@ body.product-body {
   color: var(--product-ink);
 }
 
+/* --- Organization Radar criteria pickers ---------------------------------------------------------------
+   A searchable multi-select per criterion (templates/includes/reference_picker.html). The panels are wide
+   and tall on purpose: the previous controls were narrow boxes that made choosing a KAD out of ~19.000 a
+   guessing game. Same primitives as the rest of the product surface -- paper, ink rule, amber selection. */
+.product-radar-events {
+  margin: 0;
+  padding: 16px 28px;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.product-radar-events legend {
+  padding: 0 0 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 600;
+  color: var(--product-muted);
+}
+.product-radar-events .product-radar-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: Inter, sans-serif;
+  font-size: var(--type-small);
+  font-weight: 500;
+  color: var(--product-ink);
+}
+.product-picker-grid {
+  padding: 16px 28px 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+.product-picker {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  background: var(--product-white);
+  border: 1px solid var(--product-line);
+}
+.product-picker-head {
+  display: grid;
+  gap: 4px;
+}
+.product-picker-head label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 600;
+  color: var(--product-muted);
+}
+.product-picker-head small {
+  font-family: Inter, sans-serif;
+  font-size: var(--type-small);
+  font-weight: 400;
+  color: var(--product-muted);
+}
+.product-picker-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid var(--product-line);
+  background: var(--product-paper);
+}
+.product-picker-field:focus-within {
+  border-color: var(--product-green);
+  box-shadow: inset 3px 0 var(--product-amber);
+}
+.product-picker-field svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--product-muted);
+}
+.product-picker-field input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 11px 0;
+  font-family: Inter, sans-serif;
+  font-size: var(--type-body);
+  color: var(--product-ink);
+  outline: none;
+}
+.product-picker-spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 2px solid var(--product-amber-soft);
+  border-top-color: var(--product-amber);
+  border-radius: 50%;
+  animation: product-picker-spin 0.7s linear infinite;
+}
+@keyframes product-picker-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .product-picker-spinner { animation: none; } }
+.product-picker-results {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--product-line);
+  background: var(--product-white);
+}
+.product-picker-option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--product-line);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-family: Inter, sans-serif;
+  font-size: var(--type-small);
+  color: var(--product-ink);
+}
+.product-picker-option:last-child { border-bottom: 0; }
+.product-picker-option:hover,
+.product-picker-option.is-active {
+  background: var(--product-paper);
+  box-shadow: inset 3px 0 var(--product-amber);
+}
+.product-picker-option em,
+.product-picker-chip em {
+  flex: none;
+  font-style: normal;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  color: var(--product-muted);
+}
+.product-picker-empty {
+  margin: 0;
+  padding: 16px 12px;
+  text-align: center;
+  font-family: Inter, sans-serif;
+  font-size: var(--type-small);
+  color: var(--product-muted);
+}
+.product-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 8px;
+  background: var(--product-paper);
+  border: 1px solid var(--product-line);
+}
+.product-picker-chips:empty { display: none; }
+.product-picker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 6px 8px 6px 10px;
+  background: var(--product-white);
+  border: 1px solid var(--product-line);
+  box-shadow: inset 3px 0 var(--product-green);
+  font-family: Inter, sans-serif;
+  font-size: var(--type-small);
+  color: var(--product-ink);
+}
+.product-picker-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.product-picker-chip button {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: var(--product-paper);
+  color: var(--product-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.product-picker-chip button:hover {
+  background: var(--product-amber-soft);
+  color: var(--product-ink);
+}
+.product-picker-status {
+  margin: 0;
+  font-family: Inter, sans-serif;
+  font-size: var(--type-label);
+  color: var(--product-muted);
+}
+.product-picker-status:empty { display: none; }
+.product-picker-fallback label {
+  display: grid;
+  gap: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 600;
+  color: var(--product-muted);
+}
+.product-picker-fallback select,
+.product-picker-fallback textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border: 1px solid var(--product-line);
+  background: var(--product-white);
+  color: var(--product-ink);
+  font-family: Inter, sans-serif;
+  font-size: var(--type-body);
+}
+
 /* MAIN CONTENT CONTAINER */
 .product-main {
   margin-left: var(--product-rail-width);
@@ -1452,6 +1667,8 @@ body.product-body {
   .product-workspace-bar,
   .product-workspace-errors,
   .product-radar-fields,
+  .product-radar-events,
+  .product-picker-grid,
   .product-workspace-section h2,
   .product-workspace-row,
   .product-workspace-empty,
@@ -1460,6 +1677,12 @@ body.product-body {
     padding-left: 16px;
     padding-right: 16px;
   }
+
+  /* One picker per row, and shorter panels so the page stays scrollable on a phone. */
+  .product-picker-grid { grid-template-columns: 1fr; gap: 16px; }
+  .product-picker { padding: 12px; }
+  .product-picker-results { max-height: 240px; }
+  .product-picker-chips { max-height: 200px; }
 
   .product-workspace-row {
     flex-direction: column;

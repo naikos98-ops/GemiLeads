@@ -9,7 +9,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from django.contrib.auth.views import LoginView, PasswordResetView
 from django.contrib.auth.models import User
 from django.contrib.auth.tokens import default_token_generator
@@ -25,6 +25,7 @@ from django_ratelimit.decorators import ratelimit
 from .forms import CustomerRadarForm, DigestPreferenceForm, LeadNotesForm, LeadStatusForm, SignupForm
 from .ingestion.kad_catalogue import kad_picker_queryset
 from .kad import normalize_kad_code, normalize_kad_search
+from .reference_search import KINDS, search_reference
 from .models import (
     ActivityCode,
     Company,
@@ -885,6 +886,24 @@ def kad_search(request):
         {"code": item.code, "normalized_code": item.normalized_code, "description": item.description}
         for item in results
     ]})
+
+
+@login_required
+@require_GET
+def reference_search(request):
+    """Searchable GEMI reference rows for the Radar criteria pickers (KAD, prefecture, municipality,
+    legal type).
+
+    Platform metadata, identical for every customer, so the only requirement is a signed-in user. Nothing
+    here reads tenant data -- who may *write* a Radar stays the decision of the authorization layer, which
+    this module deliberately never touches, and the G5 guard keeps it that way. Results are bounded by
+    gemiapp.reference_search; ``value`` is exactly what the Radar form posts for that row.
+    """
+    kind = request.GET.get("kind", "")
+    if kind not in KINDS:
+        return JsonResponse({"results": [], "error": "unknown kind"}, status=400)
+    hits = search_reference(kind, request.GET.get("q", ""))
+    return JsonResponse({"results": [hit.as_dict() for hit in hits]})
 
 
 @login_required

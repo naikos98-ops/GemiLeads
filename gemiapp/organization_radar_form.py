@@ -6,6 +6,14 @@ C3 domain rule ``validate_radar_definition`` -- the same rule ``create_organizat
 ``replace_organization_radar`` apply again when writing. Nothing here writes, authorizes or reads an organization:
 the customer views pass the value to ``organization_access``, which decides who may write it.
 
+Chips, not raw controls
+-----------------------
+``RadarForm.selections`` carries, for every criteria field, the values currently chosen **with the label the
+catalogue gives them**, so the form can show "47191002 — ΛΙΑΝΙΚΟ ΕΜΠΟΡΙΟ" instead of a bare code or a primary
+key. It is presentation only: the posted representation is unchanged -- a KAD field still posts one
+``"<code> <version>"`` line per selection and every other field still posts reference primary keys -- so
+``parse_radar_form`` and the stored definition are exactly what they were before the pickers existed.
+
 Only criteria the matcher supports are exposed: name, active, minimum score (0-100), exact KADs (code + version),
 prefectures and municipalities, legal forms, the implemented signal types, and exclusions on KAD, prefecture,
 municipality and legal form. Every reference is resolved to a present row; an unknown, malformed or retired
@@ -89,11 +97,17 @@ def radar_form_choices() -> RadarFormChoices:
 
 @dataclass
 class RadarForm:
-    """The form's values (as strings/lists, for re-rendering), its errors and, when valid, the definition."""
+    """The form's values (as strings/lists, for re-rendering), its errors and, when valid, the definition.
+
+    ``selections`` mirrors ``values`` for the criteria fields, resolved to catalogue labels for display. It is
+    filled on both paths -- a stored definition and a rejected post -- so the chips a customer picked survive a
+    validation error instead of silently emptying the form.
+    """
 
     values: dict
     errors: list = field(default_factory=list)
     definition: RadarDefinition | None = None
+    selections: dict = field(default_factory=dict)
 
     @property
     def is_valid(self) -> bool:
@@ -104,15 +118,75 @@ def _kad_line(kad) -> str:
     return f"{kad.source_id} {kad.kad_version}".strip()
 
 
+def _version_label(version: str) -> str:
+    return version.replace("kad_", "ΚΑΔ ") if version else ""
+
+
+def _kad_selection(text: str) -> tuple:
+    """The chips for a KAD text field: every stored line, labelled from the catalogue. One query."""
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    if not lines:
+        return ()
+    parsed = [(line, line.split()) for line in lines]
+    codes = {parts[0] for _, parts in parsed if parts}
+    described = {}
+    for source_id, version, description in _model("GemiKad").objects.filter(
+            source_id__in=codes, is_present=True).values_list("source_id", "kad_version", "description"):
+        described[(source_id, version)] = (description or "").strip()
+        described.setdefault(source_id, (description or "").strip())
+    chips = []
+    for line, parts in parsed:
+        code = parts[0] if parts else line
+        version = parts[1] if len(parts) > 1 else ""
+        description = described.get((code, version), described.get(code, ""))
+        chips.append({"value": line, "label": f"{code} — {description}" if description else code,
+                      "detail": _version_label(version)})
+    return tuple(chips)
+
+
+def _reference_selection(model_name: str, ids: list, *, parents: dict | None = None) -> tuple:
+    """The chips for a reference field: the posted primary keys, labelled, in the posted order. One query."""
+    wanted = [value for value in (ids or []) if isinstance(value, str) and value.isascii() and value.isdigit()]
+    if not wanted:
+        return ()
+    rows = {}
+    fields = ["pk", "source_id", "description"] + (["source_prefecture_id"] if parents is not None else [])
+    for row in _model(model_name).objects.filter(pk__in={int(v) for v in wanted}).values(*fields):
+        label = (row["description"] or "").strip() or row["source_id"]
+        detail = (parents or {}).get(row.get("source_prefecture_id"), "") if parents is not None else ""
+        rows[str(row["pk"])] = {"value": str(row["pk"]), "label": label, "detail": detail}
+    return tuple(rows[value] for value in wanted if value in rows)
+
+
+def _prefecture_names() -> dict:
+    return {source_id: (description or "").strip() for source_id, description
+            in _model("GemiPrefecture").objects.values_list("source_id", "description")}
+
+
+def radar_form_selections(values: dict) -> dict:
+    """Every criteria field's current selection, labelled for display. Reads reference data only."""
+    parents = _prefecture_names()
+    selections = {"kads": _kad_selection(values.get("kads", "")),
+                  "excluded_kads": _kad_selection(values.get("excluded_kads", ""))}
+    for name, model_name in (("prefectures", "GemiPrefecture"), ("municipalities", "GemiMunicipality"),
+                             ("legal_forms", "GemiLegalType"), ("excluded_prefectures", "GemiPrefecture"),
+                             ("excluded_municipalities", "GemiMunicipality"),
+                             ("excluded_legal_forms", "GemiLegalType")):
+        selections[name] = _reference_selection(
+            model_name, values.get(name) or [],
+            parents=parents if model_name == "GemiMunicipality" else None)
+    return selections
+
+
 def initial_radar_form(definition: RadarDefinition | None) -> RadarForm:
     """The form pre-filled with a stored definition (edit) or empty (create; new Radars start inactive)."""
     if definition is None:
-        return RadarForm(values={**{name: "" for name in TEXT_FIELDS}, **{name: [] for name in LIST_FIELDS},
-                                 "active": False})
+        empty = {**{name: "" for name in TEXT_FIELDS}, **{name: [] for name in LIST_FIELDS}, "active": False}
+        return RadarForm(values=empty, selections=radar_form_selections(empty))
     Prefecture, Municipality, Kad = _model("GemiPrefecture"), _model("GemiMunicipality"), _model("GemiKad")
     Legal = _model("GemiLegalType")
     excluded = definition.exclusions
-    return RadarForm(values={
+    values = {
         "name": definition.name, "active": definition.active,
         "score_threshold": "" if definition.score_threshold is None else str(definition.score_threshold),
         "kads": "\n".join(_kad_line(kad) for kad in definition.kads),
@@ -124,7 +198,8 @@ def initial_radar_form(definition: RadarDefinition | None) -> RadarForm:
         "excluded_prefectures": [str(r.pk) for r in excluded if isinstance(r, Prefecture)],
         "excluded_municipalities": [str(r.pk) for r in excluded if isinstance(r, Municipality)],
         "excluded_legal_forms": [str(r.pk) for r in excluded if isinstance(r, Legal)],
-    })
+    }
+    return RadarForm(values=values, selections=radar_form_selections(values))
 
 
 def _kads(text: str, errors: list, what: str) -> list:
@@ -175,7 +250,7 @@ def parse_radar_form(post) -> RadarForm:
     values = {name: (post.get(name) or "") for name in TEXT_FIELDS}
     values.update({name: post.getlist(name) for name in LIST_FIELDS})
     values["active"] = post.get("active") == "1"
-    form = RadarForm(values=values)
+    form = RadarForm(values=values, selections=radar_form_selections(values))
     errors = form.errors
 
     threshold_text = values["score_threshold"].strip()

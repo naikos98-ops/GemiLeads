@@ -1,0 +1,65 @@
+{% comment %}
+  Searchable multi-select over the canonical GEMI reference data (KAD, prefecture, municipality, legal type),
+  for the Organization Radar criteria. Results come from `reference_search`, which is bounded, so the ~19.000
+  KAD rows are never rendered into the page.
+
+  Progressive enhancement, on purpose: the plain control this replaces is still rendered below, and it is what
+  posts when JavaScript does not run -- exactly today's behaviour. On init the script hides it, disables it so
+  nothing can post twice, and takes over with chips.
+
+  The posted representation never changes. `emit="lines"` keeps one `<code> <version>` line per selection in
+  the original textarea; otherwise one reference primary key is posted per chip, the value the
+  `<select multiple>` posted before.
+
+  Context: kind, input_name, label, placeholder, selected (value/label/detail), emit, help, max_items,
+  text_value (emit=lines), options (otherwise), chosen (posted ids, for the fallback select).
+{% endcomment %}
+<div class="product-picker" data-reference-picker
+     data-kind="{{ kind }}"
+     data-input-name="{{ input_name }}"
+     data-emit="{{ emit|default:'values' }}"
+     data-max-items="{{ max_items|default:'50' }}"
+     data-search-url="{% url 'reference_search' %}">
+  <div class="product-picker-head">
+    <label for="picker-{{ input_name }}">{{ label }}</label>
+    {% if help %}<small>{{ help }}</small>{% endif %}
+  </div>
+
+  <div class="product-picker-field">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+    <input id="picker-{{ input_name }}" data-picker-search type="search" autocomplete="off" role="combobox"
+           aria-autocomplete="list" aria-expanded="false" aria-controls="picker-{{ input_name }}-results"
+           placeholder="{{ placeholder|default:'Αναζήτηση…' }}">
+    <span data-picker-spinner class="product-picker-spinner" hidden aria-hidden="true"></span>
+  </div>
+
+  <div id="picker-{{ input_name }}-results" data-picker-results role="listbox" class="product-picker-results" hidden></div>
+
+  <div data-picker-selected class="product-picker-chips" aria-live="polite">
+    {% for item in selected %}
+    <span class="product-picker-chip" data-picker-chip data-value="{{ item.value }}">
+      <span class="product-picker-chip-label">{{ item.label }}</span>
+      {% if item.detail %}<em>{{ item.detail }}</em>{% endif %}
+      <button type="button" data-picker-remove aria-label="Αφαίρεση: {{ item.label }}">×</button>
+      {% if emit != 'lines' %}<input type="hidden" name="{{ input_name }}" value="{{ item.value }}" data-picker-value disabled>{% endif %}
+    </span>
+    {% endfor %}
+  </div>
+
+  <p data-picker-status class="product-picker-status" aria-live="polite"></p>
+
+  {# What posts without JavaScript. The script hides and disables it, and drives the chips instead. #}
+  <div data-picker-fallback class="product-picker-fallback">
+    {% if emit == 'lines' %}
+    <label>{{ label }} — ένας ανά γραμμή
+      <textarea name="{{ input_name }}" data-picker-lines rows="4" placeholder="62010000&#10;62010000 kad_2026">{{ text_value }}</textarea>
+    </label>
+    {% else %}
+    <label>{{ label }}
+      <select name="{{ input_name }}" data-picker-select multiple size="6">
+        {% for pk, option_label in options %}<option value="{{ pk }}" {% if pk|stringformat:"s" in chosen %}selected{% endif %}>{{ option_label }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+  </div>
+</div>

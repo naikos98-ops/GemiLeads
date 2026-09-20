@@ -59,6 +59,8 @@ urlpatterns = [
     path("organizations/<int:organization_id>/notifications/<int:notification_id>/read/",
          organization_views.mark_notification_read, name="organization_notification_read"),
     path("api/kads/", views.kad_search, name="kad_search"),
+    # Gemi Leads 2.0: canonical GEMI reference rows for the Organization Radar criteria pickers.
+    path("api/reference/", views.reference_search, name="reference_search"),
     path("export/", views.export_csv, name="export_csv"),
     path("verify/<uidb64>/<token>/", views.verify_email, name="verify_email"),
     path("resend-verification/", views.resend_verification, name="resend_verification"),

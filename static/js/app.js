@@ -121,6 +121,122 @@
     });
     document.addEventListener('click', event => { if (!root.contains(event.target)) closeResults(); });
   });
+  // Searchable multi-select over the canonical GEMI reference data, used by the Organization Radar criteria
+  // (templates/includes/reference_picker.html). Progressive enhancement: the plain textarea / <select multiple>
+  // is what posts without JavaScript, so here it is hidden AND disabled -- a disabled control is not submitted --
+  // and the chips take over. The posted representation is unchanged: `lines` keeps the newline text the server
+  // already parses, otherwise one hidden input per chip carries the reference primary key.
+  const initReferencePickers = () => document.querySelectorAll('[data-reference-picker]').forEach(root => {
+    const input = root.querySelector('[data-picker-search]');
+    const results = root.querySelector('[data-picker-results]');
+    const chips = root.querySelector('[data-picker-selected]');
+    const status = root.querySelector('[data-picker-status]');
+    const spinner = root.querySelector('[data-picker-spinner]');
+    const fallback = root.querySelector('[data-picker-fallback]');
+    const lines = root.querySelector('[data-picker-lines]');
+    const select = root.querySelector('[data-picker-select]');
+    const { kind, inputName, emit, searchUrl } = root.dataset;
+    const maxItems = Number(root.dataset.maxItems || 50);
+    if (!input || !results || !chips) return;
+    let timer, controller, activeIndex = -1;
+
+    // Take over from the no-JavaScript control.
+    if (fallback) fallback.hidden = true;
+    if (select) select.disabled = true;
+    chips.querySelectorAll('[data-picker-value]').forEach(hidden => { hidden.disabled = false; });
+
+    const chosen = () => [...chips.querySelectorAll('[data-picker-chip]')];
+    const values = () => new Set(chosen().map(chip => chip.dataset.value));
+    const sync = () => {
+      if (emit === 'lines' && lines) lines.value = chosen().map(chip => chip.dataset.value).join('\n');
+      const count = chosen().length;
+      status.textContent = count ? `${count} επιλεγμένα` : '';
+    };
+    const closeResults = () => {
+      results.hidden = true; results.replaceChildren(); activeIndex = -1;
+      input.setAttribute('aria-expanded', 'false');
+    };
+    const options = () => [...results.querySelectorAll('[role="option"]')];
+    const setActive = index => {
+      const items = options(); if (!items.length) return;
+      activeIndex = (index + items.length) % items.length;
+      items.forEach((item, i) => {
+        item.classList.toggle('is-active', i === activeIndex);
+        item.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
+      });
+      items[activeIndex].scrollIntoView({ block: 'nearest' });
+    };
+    const addChip = item => {
+      if (values().has(item.value)) { status.textContent = 'Είναι ήδη επιλεγμένο.'; return; }
+      if (chosen().length >= maxItems) { status.textContent = `Μπορείς να επιλέξεις έως ${maxItems}.`; return; }
+      const chip = document.createElement('span');
+      chip.className = 'product-picker-chip'; chip.dataset.pickerChip = ''; chip.dataset.value = item.value;
+      const label = document.createElement('span');
+      label.className = 'product-picker-chip-label'; label.textContent = item.label;
+      chip.append(label);
+      if (item.detail) { const tag = document.createElement('em'); tag.textContent = item.detail; chip.append(tag); }
+      const remove = document.createElement('button');
+      remove.type = 'button'; remove.dataset.pickerRemove = '';
+      remove.setAttribute('aria-label', `Αφαίρεση: ${item.label}`); remove.textContent = '×';
+      chip.append(remove);
+      if (emit !== 'lines') {
+        const hidden = document.createElement('input');
+        hidden.type = 'hidden'; hidden.name = inputName; hidden.value = item.value; hidden.dataset.pickerValue = '';
+        chip.append(hidden);
+      }
+      chips.append(chip); input.value = ''; closeResults(); sync(); input.focus();
+    };
+    const render = items => {
+      results.replaceChildren();
+      const available = items.filter(item => !values().has(item.value));
+      if (!available.length) {
+        const empty = document.createElement('p');
+        empty.className = 'product-picker-empty'; empty.textContent = 'Δεν βρέθηκε κάτι άλλο.';
+        results.append(empty);
+      } else available.forEach(item => {
+        const button = document.createElement('button');
+        button.type = 'button'; button.setAttribute('role', 'option'); button.setAttribute('aria-selected', 'false');
+        button.className = 'product-picker-option';
+        const label = document.createElement('span'); label.textContent = item.label;
+        button.append(label);
+        if (item.detail) { const tag = document.createElement('em'); tag.textContent = item.detail; button.append(tag); }
+        button.addEventListener('click', () => addChip(item));
+        results.append(button);
+      });
+      results.hidden = false; input.setAttribute('aria-expanded', 'true'); activeIndex = -1;
+    };
+    const search = query => {
+      controller?.abort(); controller = new AbortController();
+      if (spinner) spinner.hidden = false;
+      const url = new URL(searchUrl, window.location.origin);
+      url.searchParams.set('kind', kind); url.searchParams.set('q', query);
+      fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } })
+        .then(response => { if (!response.ok) throw new Error('search'); return response.json(); })
+        .then(data => render(data.results || []))
+        .catch(error => { if (error.name !== 'AbortError') status.textContent = 'Η αναζήτηση δεν ήταν διαθέσιμη.'; })
+        .finally(() => { if (spinner) spinner.hidden = true; });
+    };
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      const query = input.value.trim();
+      if (query.length < 2) { closeResults(); sync(); return; }
+      timer = setTimeout(() => search(query), 180);
+    });
+    input.addEventListener('keydown', event => {
+      const items = options();
+      if (event.key === 'ArrowDown' && items.length) { event.preventDefault(); setActive(activeIndex + 1); }
+      else if (event.key === 'ArrowUp' && items.length) { event.preventDefault(); setActive(activeIndex - 1); }
+      else if (event.key === 'Enter' && activeIndex >= 0) { event.preventDefault(); items[activeIndex].click(); }
+      else if (event.key === 'Escape') closeResults();
+      else if (event.key === 'Enter') event.preventDefault();   // never submit the form from the search box
+    });
+    chips.addEventListener('click', event => {
+      const remove = event.target.closest('[data-picker-remove]'); if (!remove) return;
+      remove.closest('[data-picker-chip]')?.remove(); sync();
+    });
+    document.addEventListener('click', event => { if (!root.contains(event.target)) closeResults(); });
+    sync();
+  });
   // Fires a GA4 event when a tagged element is activated. gtag only exists after the visitor
   // accepts analytics cookies (see includes/analytics.html); without consent this is a no-op.
   document.addEventListener('click', event => {
@@ -173,6 +289,6 @@
     });
   }
   setTimeout(() => document.querySelectorAll('[data-toast]').forEach(x => { x.style.opacity = '0'; setTimeout(() => x.remove(), 300); }), 3500);
-  document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); });
+  document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); initReferencePickers(); });
   window.addEventListener('resize', sizeCompanyTable);
 })();

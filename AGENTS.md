@@ -159,6 +159,44 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — Organization Radar: αναζητήσιμα multi-select κριτηρίων (2026-09-20). UX μόνο.**
+  - **Το πρόβλημα:** η φόρμα ζητούσε να **πληκτρολογήσεις** κωδικούς ΚΑΔ και να διαλέξεις περιοχές από στενά
+    `<select multiple>`. Με ~19.000 γραμμές ΚΑΔ ο κατάλογος δεν μπορεί να αποδοθεί στη σελίδα, και το «γράψε
+    62010000 από μνήμης» δεν είναι προϊόν.
+  - **Νέο:** `gemiapp/reference_search.py` + endpoint `api/reference/` (`login_required`, `require_GET`) και
+    `templates/includes/reference_picker.html` — ένα αναζητήσιμο multi-select ανά κριτήριο (ΚΑΔ, περιφερειακή
+    ενότητα, δήμος, νομική μορφή, ×2 για στόχευση και εξαιρέσεις).
+  - **Αναζήτηση:** case-insensitive **και accent-insensitive** για ελληνικά. Ούτε το `UPPER` ούτε το `LIKE` του
+    SQLite είναι αξιόπιστα σε ελληνικά (τα tests τρέχουν σε SQLite, η production σε PostgreSQL), οπότε η
+    σύγκριση γίνεται σε Python πάνω σε normalised haystack με το **υπάρχον** `normalize_kad_search` — ίδια
+    συμπεριφορά και στις δύο βάσεις. Ταιριάζει όταν **κάθε** token υπάρχει στο `source_id + description`·
+    καθαρά αριθμητικό query είναι και prefix κωδικού. `ΕΣΤΙΑΣΗ` / `Εστίαση` / `εστιαση` ταυτόσημα· `ΧΙΟ` →
+    `ΧΙΟΥ`. Ο δήμος βρίσκεται και μέσω της περιφερειακής του ενότητας.
+  - **Κόστος:** ο normalised κατάλογος χτίζεται μία φορά και κρατιέται σε cache με κλειδί ένα **stamp** του
+    πίνακα (πλήθος + newest pk + max updated_at, hashed): ένας reference sync τον ακυρώνει μόνος του και κανένα
+    test δεν βλέπει γραμμές άλλου test. Αποτελέσματα φραγμένα (`MAX_LIMIT = 50`).
+  - **Η αναπαράσταση ΔΕΝ άλλαξε — αυτό είναι το κρίσιμο.** Τα πεδία ΚΑΔ ποστάρουν ακόμη μία γραμμή
+    `"<code> <version>"` το καθένα· τα υπόλοιπα ποστάρουν ακόμη primary keys reference γραμμών. Το
+    `parse_radar_form` είναι **αυτούσιο**, άρα ο αποθηκευμένος ορισμός και ο matcher βλέπουν ό,τι έβλεπαν.
+    Η έκδοση ΚΑΔ διατηρείται πάντα (και φαίνεται ως tag «ΚΑΔ 2026»).
+  - **Progressive enhancement:** ο παλιός `<textarea>` / `<select multiple>` αποδίδεται ακόμη και είναι αυτό που
+    ποστάρει **χωρίς JavaScript**· το script τον κρύβει **και τον απενεργοποιεί** (disabled control δεν
+    υποβάλλεται) και αναλαμβάνουν τα chips. Καμία νέα frontend εξάρτηση — ~110 γραμμές vanilla JS δίπλα στον
+    υπάρχοντα legacy KAD picker, με debounce, AbortController και πλοήγηση από πληκτρολόγιο.
+  - **Chips:** `RadarForm.selections` δίνει σε κάθε κριτήριο τις τρέχουσες επιλογές **με ετικέτα καταλόγου**
+    («47191002 — ΛΙΑΝΙΚΟ ΕΜΠΟΡΙΟ» αντί για γυμνό κωδικό ή pk). Γεμίζει και στις δύο διαδρομές — αποθηκευμένος
+    ορισμός **και** απορριφθέν post — άρα οι επιλογές επιβιώνουν ένα σφάλμα validation.
+  - **Layout:** τα κριτήρια σε πλέγμα `minmax(420px, 1fr)`, πάνελ αποτελεσμάτων 320px (240px σε κινητό), μία
+    στήλη σε κινητό χωρίς οριζόντιο scroll. Ίδια primitives: paper, ink rule, amber επιλογή.
+  - **Ασφάλεια:** το endpoint θέλει συνδεδεμένο χρήστη· τα δεδομένα είναι **πλατφόρμας** (κοινά για όλους), οπότε
+    δεν είναι tenant-scoped — οι **εγγραφές** Radar μένουν αυστηρά organization-scoped μέσω
+    `organization_access`, αμετάβλητες. Ο G5 guard (καμία αναφορά «organization» στο `gemiapp/views.py`)
+    τηρείται: η νέα view δεν αγγίζει tenant δεδομένα.
+  - **Καμία migration**, καμία αλλαγή σε matching/scoring/signals/billing/legacy CustomerRadar. 29 νέα tests
+    (`test_reference_search.py` 24, `test_organization_radar_ui.PickerTests` 5)· **2.028 tests OK**.
+    Επαληθεύτηκε και στον browser: «εστίαση» βρίσκει τα ΥΠΗΡΕΣΙΕΣ ΕΣΤΙΑΣΗΣ, «ΧΙΟ» βρίσκει «ΧΙΟΥ», το chip
+    ποστάρει `999056101 kad_2026`, το Radar αποθηκεύεται και στο edit επιστρέφει ως chip.
+
 - **Gemi Leads 2.0 — ενεργή ειδοποίηση operator για αποτυχίες ingestion ΓΕΜΗ (2026-09-20). Χωρίς Sentry.**
   - **Η απαίτηση, διατυπωμένη σωστά:** «**ERROR σε production από τα `gemiapp.ingestion.client` /
     `gemiapp.services` πρέπει να ειδοποιεί ενεργά έναν operator**». Η παλιά διατύπωση ονόμαζε το Sentry· γράφτηκε
@@ -1767,6 +1805,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-20 — Organization Radar criteria pickers (UX).** Νέα: `gemiapp/reference_search.py`,
+  `templates/includes/reference_picker.html`, `gemiapp/test_reference_search.py`. Αλλαγές: `gemiapp/views.py`
+  (+ endpoint `reference_search`), `gemiapp/urls.py`, `gemiapp/organization_radar_form.py`
+  (`RadarForm.selections`, μόνο παρουσίαση), `templates/organizations/radar_form.html`, `static/js/app.js`,
+  `static/css/product-ui.css`, `gemiapp/test_organization_radar_ui.py`. Επαλήθευση: `check`,
+  `makemigrations --check`, 2.028 tests OK· **καμία migration**, καμία αλλαγή στην αναπαράσταση που
+  διαβάζει ο matcher.
 
 - **2026-09-20 — Επανάληψη επιβεβαίωσης της πρόβας G1 (staging).** Ολόκληρος ο κύκλος ξανά από την αρχή
   (rollback → baseline 0031 → forward → rollback → reapply) στην ίδια βάση, σε **μεταγενέστερο commit**, με τη

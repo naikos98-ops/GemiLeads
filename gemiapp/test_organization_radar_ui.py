@@ -6,6 +6,8 @@ form exposes only matcher-supported criteria, resolves every GEMI reference to a
 in Greek. Saving a Radar is configuration only: no signal, opportunity, notification, audit event or schedule.
 """
 
+import re
+
 from django.contrib.messages import get_messages
 from django_q.models import Schedule
 from django.urls import reverse
@@ -269,3 +271,78 @@ class ActivationAndListTests(RadarUiTestCase):
                                                         "signal_types": ["new_company"]})
         self.assertEqual(response.status_code, 302)
         self.assertTrue(OrganizationRadar.objects.get(organization=self.org, name="Μόνο νέες").active)
+
+
+# --- criteria pickers -----------------------------------------------------------------------------------------
+
+class PickerTests(RadarUiTestCase):
+    """The criteria are searchable multi-selects over the canonical reference data. The posted
+    representation is unchanged, so the stored definition and the matcher see exactly what they did."""
+
+    def test_every_reference_criterion_is_a_searchable_picker(self):
+        """The criteria are pickers over the canonical reference data, not raw code entry."""
+        self.client.force_login(self.owner)
+        html = self.client.get(self.create_url()).content.decode()
+
+        for name in ("kads", "prefectures", "municipalities", "legal_forms", "excluded_kads",
+                     "excluded_prefectures", "excluded_municipalities", "excluded_legal_forms"):
+            self.assertIn(f'data-input-name="{name}"', html, name)
+        self.assertEqual(html.count("data-reference-picker"), 8)
+        self.assertEqual(sorted(set(re.findall(r'data-kind="(\w+)"', html))),
+                         ["kad", "legal_form", "municipality", "prefecture"])
+        self.assertIn(reverse("reference_search"), html)
+        # The ~19.000 KAD rows are searched, never rendered: no KAD option or description reaches the page.
+        self.assertNotIn(self.r.kad_other.source_id, html)
+
+    def test_the_page_keeps_working_without_javascript(self):
+        """The control that posts without JavaScript is still there, with the same names and values."""
+        self.client.force_login(self.owner)
+        html = self.client.get(self.create_url()).content.decode()
+        self.assertIn('name="kads"', html)                       # the textarea the server already parses
+        self.assertIn('data-picker-lines', html)
+        self.assertIn('name="prefectures" data-picker-select multiple', html)
+        self.assertIn("data-picker-fallback", html)
+
+    def test_stored_selections_come_back_as_labelled_chips(self):
+        r = self.r
+        GemiKad.objects.filter(pk=r.kad_other.pk).update(description="ΛΙΑΝΙΚΟ ΕΜΠΟΡΙΟ")
+        self.post(self.owner, self.create_url(), self.good_form(
+            name="Με chips", kads=f"{r.kad_other.source_id} {r.kad_other.kad_version}"))
+        radar = OrganizationRadar.objects.get(organization=self.org, name="Με chips")
+
+        html = self.client.get(self.edit_url(radar)).content.decode()
+
+        self.assertIn(f'data-value="{r.kad_other.source_id} {r.kad_other.kad_version}"', html)
+        self.assertIn(f"{r.kad_other.source_id} — ΛΙΑΝΙΚΟ ΕΜΠΟΡΙΟ", html)     # code — description
+        self.assertIn("ΚΑΔ 2026", html)                                        # the version stays visible
+        for row, label in ((r.attica, "Αττικής"), (r.ike, "ΙΚΕ"), (r.kifisia, "Κηφισιάς")):
+            self.assertIn(f'data-value="{row.pk}"', html, label)
+            self.assertIn(label, html)
+        # kad, prefecture, legal form, excluded municipality, excluded legal form
+        self.assertEqual(html.count("data-picker-chip"), 5)
+
+    def test_a_rejected_post_keeps_the_chips_the_customer_chose(self):
+        r = self.r
+        response = self.post(self.owner, self.create_url(), self.good_form(name="", kads="47191002"))
+        html = response.content.decode()
+        self.assertIn("data-form-errors", html)
+        self.assertIn('data-value="47191002"', html)             # the KAD survives the error
+        self.assertIn(f'data-value="{r.attica.pk}"', html)
+        self.assertFalse(OrganizationRadar.objects.filter(organization=self.org, name="").exists())
+
+    def test_a_picker_selection_round_trips_into_the_stored_definition(self):
+        """What the picker posts is what the matcher stores: the representation is unchanged."""
+        r = self.r
+        posted = {"name": "Από picker", "active": "1", "kads": f"{r.kad_other.source_id} {r.kad_other.kad_version}",
+                  "prefectures": [str(r.attica.pk)], "municipalities": [str(r.kifisia.pk)],
+                  "legal_forms": [str(r.ike.pk)], "signal_types": ["new_company"],
+                  "excluded_legal_forms": [str(r.oe.pk)]}
+        self.assertEqual(self.post(self.owner, self.create_url(), posted).status_code, 302)
+
+        radar = OrganizationRadar.objects.get(organization=self.org, name="Από picker")
+        definition = get_organization_radar_definition(self.org, radar)
+        self.assertEqual([(k.source_id, k.kad_version) for k in definition.kads],
+                         [(r.kad_other.source_id, r.kad_other.kad_version)])
+        self.assertEqual({row.pk for row in definition.regions}, {r.attica.pk, r.kifisia.pk})
+        self.assertEqual([row.pk for row in definition.legal_forms], [r.ike.pk])
+        self.assertEqual([row.pk for row in definition.exclusions], [r.oe.pk])
