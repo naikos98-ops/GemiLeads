@@ -31,7 +31,9 @@ The normalised haystack is built once and cached, keyed on a stamp of the table 
 it reads only four small columns; searching is a scan over tuples in memory, which for 19,000 KAD rows is
 immaterial and, unlike a SQL ``LIKE``, is accent-insensitive.
 
-Results are hard-limited (``MAX_LIMIT``), so no query can return the catalogue.
+Results are hard-limited (``MAX_LIMIT``), so neither a query nor an opening list can return the catalogue:
+``browse_reference`` hands back only the head of the index, which is what the dropdown shows before anyone has
+typed anything.
 """
 
 from __future__ import annotations
@@ -141,12 +143,36 @@ def reference_entries(kind: str) -> tuple:
     return entries
 
 
+def _bounded(limit: int) -> int:
+    return max(1, min(int(limit), MAX_LIMIT))
+
+
+def browse_reference(kind: str, limit: int = DEFAULT_LIMIT) -> list[ReferenceHit]:
+    """The head of the catalogue: what the dropdown offers before anyone has typed.
+
+    Bounded by the same ``MAX_LIMIT`` as a search, so opening a picker costs one small page of rows and never
+    the ~19,000 KAD catalogue. The order is the index order -- KAD by code, everything else by name -- which is
+    a browsable starting point rather than an arbitrary sample.
+    """
+    limit = _bounded(limit)
+    return [ReferenceHit(value, label, detail)
+            for value, label, detail, _haystack, _source_id in reference_entries(kind)[:limit]]
+
+
+def reference_options(kind: str, query: str, limit: int = DEFAULT_LIMIT) -> list[ReferenceHit]:
+    """What the dropdown shows for ``query``: the opening list while it is too short to search, the matches
+    once it is long enough. One entry point, so opening a picker and typing into it are the same request."""
+    if len((query or "").strip()) < MIN_QUERY_LENGTH:
+        return browse_reference(kind, limit)
+    return search_reference(kind, query, limit)
+
+
 def search_reference(kind: str, query: str, limit: int = DEFAULT_LIMIT) -> list[ReferenceHit]:
     """The rows matching ``query``, case- and accent-insensitively, at most ``limit`` of them.
 
     A short query returns nothing rather than the head of the catalogue: the picker asks the customer to type.
     """
-    limit = max(1, min(int(limit), MAX_LIMIT))
+    limit = _bounded(limit)
     text = (query or "").strip()
     if len(text) < MIN_QUERY_LENGTH:
         return []

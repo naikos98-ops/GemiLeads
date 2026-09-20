@@ -613,7 +613,8 @@ body.product-body {
   border: 1px solid var(--product-line);
   background: var(--product-paper);
 }
-.product-picker-field:focus-within {
+.product-picker-field:focus-within,
+.product-picker.is-open .product-picker-field {
   border-color: var(--product-green);
   box-shadow: inset 3px 0 var(--product-amber);
 }
@@ -633,6 +634,24 @@ body.product-body {
   color: var(--product-ink);
   outline: none;
 }
+/* The chevron: this field is a dropdown, not just a search box. */
+.product-picker-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--product-muted);
+  cursor: pointer;
+}
+.product-picker-toggle:hover { color: var(--product-ink); }
+.product-picker-toggle svg { transition: transform 0.15s ease; }
+.product-picker.is-open .product-picker-toggle svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .product-picker-toggle svg { transition: none; } }
 .product-picker-spinner {
   width: 14px;
   height: 14px;
@@ -645,10 +664,11 @@ body.product-body {
 @keyframes product-picker-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .product-picker-spinner { animation: none; } }
 .product-picker-results {
-  max-height: 320px;
+  max-height: 400px;
   overflow-y: auto;
-  border: 1px solid var(--product-line);
+  border: 1px solid var(--product-ink);
   background: var(--product-white);
+  box-shadow: 0 6px 18px rgba(17, 17, 17, 0.08);
 }
 .product-picker-option {
   display: flex;
@@ -669,8 +689,12 @@ body.product-body {
 .product-picker-option:last-child { border-bottom: 0; }
 .product-picker-option:hover,
 .product-picker-option.is-active {
-  background: var(--product-paper);
+  background: var(--product-amber-soft);
   box-shadow: inset 3px 0 var(--product-amber);
+}
+.product-picker-option:focus-visible {
+  outline: 2px solid var(--product-green);
+  outline-offset: -2px;
 }
 .product-picker-option em,
 .product-picker-chip em {
@@ -1681,7 +1705,7 @@ body.product-body {
   /* One picker per row, and shorter panels so the page stays scrollable on a phone. */
   .product-picker-grid { grid-template-columns: 1fr; gap: 16px; }
   .product-picker { padding: 12px; }
-  .product-picker-results { max-height: 240px; }
+  .product-picker-results { max-height: 300px; }
   .product-picker-chips { max-height: 200px; }
 
   .product-workspace-row {

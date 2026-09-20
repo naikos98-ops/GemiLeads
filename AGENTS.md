@@ -159,6 +159,35 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — Organization Radar: τα κριτήρια έγιναν κανονικά dropdown (2026-09-20). UX μόνο.**
+  - **Το πρόβλημα:** τα αναζητήσιμα multi-select της ίδιας μέρας άνοιγαν **μόνο** αφού πληκτρολογήσεις δύο
+    χαρακτήρες. Ένα κενό πλαίσιο αναζήτησης δεν λέει τι υπάρχει μέσα: ο πελάτης δεν ξέρει καν ότι υπάρχει
+    λίστα.
+  - **Νέο:** `browse_reference(kind, limit)` και `reference_options(kind, query, limit)` στο
+    `gemiapp/reference_search.py`. Ένα κλικ ή focus ζητάει το **ίδιο** endpoint με κενό `q` και παίρνει την
+    **αρχή** του καταλόγου· γράψιμο φιλτράρει την ίδια λίστα. Ένα σημείο εισόδου, ένα όριο.
+  - **Το όριο δεν άλλαξε:** `MAX_LIMIT = 50`, προεπιλογή `DEFAULT_LIMIT = 40`, ίδιο για αναζήτηση και για το
+    άνοιγμα. Καμία από τις ~19.000 γραμμές ΚΑΔ δεν μπαίνει ποτέ στη σελίδα ή στη μνήμη του browser: το
+    άνοιγμα είναι μία μικρή απάντηση, που κρατιέται (`browseCache`) και ξαναχρησιμοποιείται σε κάθε επόμενο
+    άνοιγμα του ίδιου picker.
+  - **Συμπεριφορά dropdown:** άνοιγμα με κλικ/focus/βελάκι κάτω, κλείσιμο με Escape ή κλικ έξω, πλοήγηση με
+    Arrow Up/Down + Enter, κατάσταση φόρτωσης, «Δεν βρέθηκαν αποτελέσματα» όταν δεν υπάρχει τίποτα. Ό,τι
+    είναι ήδη chip **δεν προσφέρεται ξανά**· αφαίρεση του chip το ξαναφέρνει στη λίστα. Μετά από επιλογή το
+    dropdown μένει ανοιχτό στην αρχική λίστα, για τη δεύτερη και τρίτη επιλογή.
+  - **Bug που βρέθηκε στον browser και διορθώθηκε:** ο listener «κλικ έξω» ήταν στο bubble phase. Η επιλογή
+    ενός option αντικαθιστά τη λίστα, άρα ο κόμβος που πατήθηκε είναι **ήδη αποσπασμένος** όταν φτάσει το
+    event στο document, το `root.contains(target)` το διάβαζε ως κλικ έξω και **έκλεινε** το dropdown σε κάθε
+    επιλογή. Ο listener πήγε στο capture phase· το `PickerScriptTests` το κρατάει εκεί.
+  - **Όψη:** chevron μέσα στο πεδίο (γυρίζει όταν ανοίγει), πάνελ 400px (300px σε κινητό), εντονότερο
+    hover/active με amber. Ίδια primitives: paper, ink rule, amber επιλογή.
+  - **Η αναπαράσταση ΔΕΝ άλλαξε** — ούτε τώρα ούτε στο προηγούμενο βήμα. Τα πεδία ΚΑΔ ποστάρουν μία γραμμή
+    `"<code> <version>"` το καθένα, τα υπόλοιπα primary keys· `parse_radar_form` αυτούσιο, matcher/scoring/
+    signals/billing/legacy CustomerRadar/schema ανέγγιχτα. **Καμία migration.**
+  - **Έλεγχος:** 21 νέα tests (bounded αρχική λίστα, `reference_options`, endpoint με κενό `q`, μη διπλή
+    επιλογή, wiring του dropdown στο `app.js`)· **2.050 tests OK**. Στον browser, σε αντίγραφο dev με 83
+    ΚΑΔ: κλικ στο κενό πεδίο δίνει 40 γραμμές, «εστίαση» φιλτράρει σε 2, η επιλογή γράφει
+    `99380002 kad_2026`, το Radar αποθηκεύεται με σωστή έκδοση ΚΑΔ και το edit επιστρέφει chips με ετικέτα.
+
 - **Gemi Leads 2.0 — Organization Radar: αναζητήσιμα multi-select κριτηρίων (2026-09-20). UX μόνο.**
   - **Το πρόβλημα:** η φόρμα ζητούσε να **πληκτρολογήσεις** κωδικούς ΚΑΔ και να διαλέξεις περιοχές από στενά
     `<select multiple>`. Με ~19.000 γραμμές ΚΑΔ ο κατάλογος δεν μπορεί να αποδοθεί στη σελίδα, και το «γράψε
@@ -1805,6 +1834,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-20 — Organization Radar criteria pickers: dropdown (UX).** Αλλαγές:
+  `gemiapp/reference_search.py` (`browse_reference`, `reference_options`), `gemiapp/views.py` (το endpoint
+  απαντά και σε κενό `q`), `templates/includes/reference_picker.html` (chevron, combobox),
+  `templates/organizations/radar_form.html` (placeholders), `static/js/app.js` (άνοιγμα σε κλικ/focus,
+  capture-phase outside click, «ήδη επιλεγμένο» εκτός λίστας), `static/css/product-ui.css`,
+  `gemiapp/test_reference_search.py`, `gemiapp/test_organization_radar_ui.py`. Επαλήθευση: `check`,
+  `makemigrations --check`, 2.050 tests OK, browser έλεγχος· **καμία migration**, καμία αλλαγή στην
+  αναπαράσταση που διαβάζει ο matcher.
 
 - **2026-09-20 — Organization Radar criteria pickers (UX).** Νέα: `gemiapp/reference_search.py`,
   `templates/includes/reference_picker.html`, `gemiapp/test_reference_search.py`. Αλλαγές: `gemiapp/views.py`

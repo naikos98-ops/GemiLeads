@@ -7,6 +7,9 @@
   posts when JavaScript does not run -- exactly today's behaviour. On init the script hides it, disables it so
   nothing can post twice, and takes over with chips.
 
+  It behaves as a dropdown: clicking or focusing the field opens a bounded opening list straight away (the
+  endpoint answers an empty query with the head of the catalogue), and typing filters that same list.
+
   The posted representation never changes. `emit="lines"` keeps one `<code> <version>` line per selection in
   the original textarea; otherwise one reference primary key is posted per chip, the value the
   `<select multiple>` posted before.
@@ -25,12 +28,17 @@
     {% if help %}<small>{{ help }}</small>{% endif %}
   </div>
 
-  <div class="product-picker-field">
+  <div class="product-picker-field" data-picker-field>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
     <input id="picker-{{ input_name }}" data-picker-search type="search" autocomplete="off" role="combobox"
-           aria-autocomplete="list" aria-expanded="false" aria-controls="picker-{{ input_name }}-results"
-           placeholder="{{ placeholder|default:'Αναζήτηση…' }}">
+           aria-autocomplete="list" aria-haspopup="listbox" aria-expanded="false"
+           aria-controls="picker-{{ input_name }}-results"
+           placeholder="{{ placeholder|default:'Αναζήτηση ή επιλογή…' }}">
     <span data-picker-spinner class="product-picker-spinner" hidden aria-hidden="true"></span>
+    <button type="button" data-picker-toggle class="product-picker-toggle" tabindex="-1"
+            aria-label="Άνοιγμα λίστας: {{ label }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
   </div>
 
   <div id="picker-{{ input_name }}-results" data-picker-results role="listbox" class="product-picker-results" hidden></div>

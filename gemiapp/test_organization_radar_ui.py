@@ -7,8 +7,10 @@ in Greek. Saving a Radar is configuration only: no signal, opportunity, notifica
 """
 
 import re
+from pathlib import Path
 
 from django.contrib.messages import get_messages
+from django.test import SimpleTestCase
 from django_q.models import Schedule
 from django.urls import reverse
 
@@ -346,3 +348,65 @@ class PickerTests(RadarUiTestCase):
         self.assertEqual({row.pk for row in definition.regions}, {r.attica.pk, r.kifisia.pk})
         self.assertEqual([row.pk for row in definition.legal_forms], [r.ike.pk])
         self.assertEqual([row.pk for row in definition.exclusions], [r.oe.pk])
+
+    def test_each_picker_is_a_dropdown_the_customer_can_open(self):
+        """A chevron and a combobox: the field says "there is a list here", it is not a blank search box."""
+        self.client.force_login(self.owner)
+        html = self.client.get(self.create_url()).content.decode()
+
+        self.assertEqual(html.count("data-picker-toggle"), 8)
+        self.assertEqual(html.count("data-picker-field"), 8)
+        self.assertEqual(html.count('aria-haspopup="listbox"'), 8)
+        self.assertEqual(html.count('role="listbox"'), 8)
+        # Opening a picker asks the endpoint; it still costs nothing in the page itself.
+        self.assertEqual(html.count(reverse("reference_search")), 8)
+        self.assertNotIn(self.r.kad_other.source_id, html)
+
+    def test_a_chosen_value_is_offered_once_and_held_once(self):
+        """One chip, one posted value: opening the dropdown again cannot duplicate a selection."""
+        r = self.r
+        self.post(self.owner, self.create_url(), self.good_form(
+            name="Μία φορά", kads=f"{r.kad_other.source_id} {r.kad_other.kad_version}"))
+        radar = OrganizationRadar.objects.get(organization=self.org, name="Μία φορά")
+
+        html = self.client.get(self.edit_url(radar)).content.decode()
+
+        self.assertEqual(html.count(f'data-value="{r.kad_other.source_id} {r.kad_other.kad_version}"'), 1)
+        self.assertEqual(html.count(f'name="prefectures" value="{r.attica.pk}"'), 1)
+        # Within the prefectures picker itself: one chip, so the chosen row is held exactly once.
+        prefectures = html.split('data-input-name="prefectures"')[1].split("data-input-name=")[0]
+        self.assertEqual(prefectures.count("data-picker-chip"), 1)
+        self.assertEqual(prefectures.count(f'data-value="{r.attica.pk}"'), 1)
+        self.assertEqual(OrganizationRadarKad.objects.filter(radar=radar).count(), 1)
+
+class PickerScriptTests(SimpleTestCase):
+    """The dropdown behaviour lives in static/js/app.js, which no Python test can execute. These assert the
+    wiring exists, so the affordance the template promises cannot silently disappear."""
+
+    SCRIPT = (Path(__file__).resolve().parent.parent / "static" / "js" / "app.js").read_text(encoding="utf-8")
+
+    def test_the_dropdown_opens_on_focus_click_and_the_chevron(self):
+        for binding in ("input.addEventListener('focus', openResults)",
+                        "field?.addEventListener('click', openResults)",
+                        "toggle?.addEventListener('click'"):
+            self.assertIn(binding, self.SCRIPT, binding)
+
+    def test_the_dropdown_closes_on_escape_and_on_an_outside_click(self):
+        self.assertIn("event.key === 'Escape'", self.SCRIPT)
+        self.assertIn("if (!root.contains(event.target)) closeResults();", self.SCRIPT)
+
+    def test_the_keyboard_can_walk_the_list(self):
+        for key in ("'ArrowDown'", "'ArrowUp'", "'Enter'"):
+            self.assertIn(f"event.key === {key}", self.SCRIPT, key)
+
+    def test_an_already_chosen_row_is_not_offered_again(self):
+        self.assertIn("shown.filter(item => !taken.has(item.value))", self.SCRIPT)
+
+    def test_choosing_an_option_is_not_mistaken_for_a_click_outside(self):
+        """Found in the browser: picking an option replaces the list, so by the time a bubble-phase document
+        listener runs the clicked node is detached and `contains` reads it as a click outside -- which closed
+        the dropdown on every selection. The listener has to be on the capture phase."""
+        self.assertIn("closeResults(); }, true);", self.SCRIPT)
+
+    def test_an_empty_result_says_so_in_greek(self):
+        self.assertIn("Δεν βρέθηκαν αποτελέσματα", self.SCRIPT)

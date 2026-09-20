@@ -66,20 +66,20 @@
     <section class="product-workspace-section">
       <h2><span>ΣΤΟΧΕΥΣΗ</span></h2>
       <div class="product-picker-grid">
-        {% include "includes/reference_picker.html" with kind="kad" input_name="kads" emit="lines" label="ΚΑΔ" placeholder="Γράψε ΚΑΔ ή δραστηριότητα, π.χ. 4719 ή εστίαση…" help="Αναζήτηση με κωδικό ή περιγραφή. Η έκδοση ΚΑΔ κρατιέται αυτόματα." selected=s.kads text_value=v.kads max_items="50" %}
-        {% include "includes/reference_picker.html" with kind="prefecture" input_name="prefectures" emit="values" label="ΠΕΡΙΦΕΡΕΙΑΚΕΣ ΕΝΟΤΗΤΕΣ" placeholder="Γράψε περιοχή, π.χ. ΧΙΟ…" selected=s.prefectures options=choices.prefectures chosen=v.prefectures %}
-        {% include "includes/reference_picker.html" with kind="municipality" input_name="municipalities" emit="values" label="ΔΗΜΟΙ" placeholder="Γράψε δήμο, π.χ. Κηφισιάς…" selected=s.municipalities options=choices.municipalities chosen=v.municipalities %}
-        {% include "includes/reference_picker.html" with kind="legal_form" input_name="legal_forms" emit="values" label="ΝΟΜΙΚΕΣ ΜΟΡΦΕΣ" placeholder="Γράψε νομική μορφή, π.χ. ΙΚΕ…" selected=s.legal_forms options=choices.legal_forms chosen=v.legal_forms %}
+        {% include "includes/reference_picker.html" with kind="kad" input_name="kads" emit="lines" label="ΚΑΔ" placeholder="Διάλεξε ή γράψε ΚΑΔ, π.χ. 4719 ή εστίαση…" help="Πάτα για να δεις τη λίστα ή γράψε κωδικό / περιγραφή. Η έκδοση ΚΑΔ κρατιέται αυτόματα." selected=s.kads text_value=v.kads max_items="50" %}
+        {% include "includes/reference_picker.html" with kind="prefecture" input_name="prefectures" emit="values" label="ΠΕΡΙΦΕΡΕΙΑΚΕΣ ΕΝΟΤΗΤΕΣ" placeholder="Διάλεξε ή γράψε περιοχή, π.χ. ΧΙΟ…" selected=s.prefectures options=choices.prefectures chosen=v.prefectures %}
+        {% include "includes/reference_picker.html" with kind="municipality" input_name="municipalities" emit="values" label="ΔΗΜΟΙ" placeholder="Διάλεξε ή γράψε δήμο, π.χ. Κηφισιάς…" selected=s.municipalities options=choices.municipalities chosen=v.municipalities %}
+        {% include "includes/reference_picker.html" with kind="legal_form" input_name="legal_forms" emit="values" label="ΝΟΜΙΚΕΣ ΜΟΡΦΕΣ" placeholder="Διάλεξε ή γράψε νομική μορφή, π.χ. ΙΚΕ…" selected=s.legal_forms options=choices.legal_forms chosen=v.legal_forms %}
       </div>
     </section>
 
     <section class="product-workspace-section">
       <h2><span>ΕΞΑΙΡΕΣΕΙΣ</span></h2>
       <div class="product-picker-grid">
-        {% include "includes/reference_picker.html" with kind="kad" input_name="excluded_kads" emit="lines" label="ΚΑΔ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ" placeholder="Γράψε ΚΑΔ ή δραστηριότητα…" selected=s.excluded_kads text_value=v.excluded_kads max_items="50" %}
-        {% include "includes/reference_picker.html" with kind="prefecture" input_name="excluded_prefectures" emit="values" label="ΠΕΡΙΦΕΡΕΙΑΚΕΣ ΕΝΟΤΗΤΕΣ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ" placeholder="Γράψε περιοχή…" selected=s.excluded_prefectures options=choices.prefectures chosen=v.excluded_prefectures %}
-        {% include "includes/reference_picker.html" with kind="municipality" input_name="excluded_municipalities" emit="values" label="ΔΗΜΟΙ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ" placeholder="Γράψε δήμο…" selected=s.excluded_municipalities options=choices.municipalities chosen=v.excluded_municipalities %}
-        {% include "includes/reference_picker.html" with kind="legal_form" input_name="excluded_legal_forms" emit="values" label="ΝΟΜΙΚΕΣ ΜΟΡΦΕΣ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ" placeholder="Γράψε νομική μορφή…" selected=s.excluded_legal_forms options=choices.legal_forms chosen=v.excluded_legal_forms %}
+        {% include "includes/reference_picker.html" with kind="kad" input_name="excluded_kads" emit="lines" label="ΚΑΔ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ" placeholder="Διάλεξε ή γράψε ΚΑΔ…" selected=s.excluded_kads text_value=v.excluded_kads max_items="50" %}
+        {% include "includes/reference_picker.html" with kind="prefecture" input_name="excluded_prefectures" emit="values" label="ΠΕΡΙΦΕΡΕΙΑΚΕΣ ΕΝΟΤΗΤΕΣ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ" placeholder="Διάλεξε ή γράψε περιοχή…" selected=s.excluded_prefectures options=choices.prefectures chosen=v.excluded_prefectures %}
+        {% include "includes/reference_picker.html" with kind="municipality" input_name="excluded_municipalities" emit="values" label="ΔΗΜΟΙ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ" placeholder="Διάλεξε ή γράψε δήμο…" selected=s.excluded_municipalities options=choices.municipalities chosen=v.excluded_municipalities %}
+        {% include "includes/reference_picker.html" with kind="legal_form" input_name="excluded_legal_forms" emit="values" label="ΝΟΜΙΚΕΣ ΜΟΡΦΕΣ ΠΟΥ ΕΞΑΙΡΟΥΝΤΑΙ" placeholder="Διάλεξε ή γράψε νομική μορφή…" selected=s.excluded_legal_forms options=choices.legal_forms chosen=v.excluded_legal_forms %}
       </div>
     </section>
     {% else %}

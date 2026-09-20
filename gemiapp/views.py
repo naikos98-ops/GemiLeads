@@ -25,7 +25,7 @@ from django_ratelimit.decorators import ratelimit
 from .forms import CustomerRadarForm, DigestPreferenceForm, LeadNotesForm, LeadStatusForm, SignupForm
 from .ingestion.kad_catalogue import kad_picker_queryset
 from .kad import normalize_kad_code, normalize_kad_search
-from .reference_search import KINDS, search_reference
+from .reference_search import KINDS, reference_options
 from .models import (
     ActivityCode,
     Company,
@@ -896,13 +896,17 @@ def reference_search(request):
 
     Platform metadata, identical for every customer, so the only requirement is a signed-in user. Nothing
     here reads tenant data -- who may *write* a Radar stays the decision of the authorization layer, which
-    this module deliberately never touches, and the G5 guard keeps it that way. Results are bounded by
-    gemiapp.reference_search; ``value`` is exactly what the Radar form posts for that row.
+    this module deliberately never touches, and the G5 guard keeps it that way.
+
+    An empty or very short ``q`` is the dropdown opening rather than a search, and answers with the bounded
+    head of the catalogue; anything longer is matched. Either way the result is limited by
+    gemiapp.reference_search, so this endpoint can never hand back a whole table, and ``value`` is exactly what
+    the Radar form posts for that row.
     """
     kind = request.GET.get("kind", "")
     if kind not in KINDS:
         return JsonResponse({"results": [], "error": "unknown kind"}, status=400)
-    hits = search_reference(kind, request.GET.get("q", ""))
+    hits = reference_options(kind, request.GET.get("q", ""))
     return JsonResponse({"results": [hit.as_dict() for hit in hits]})
 
 

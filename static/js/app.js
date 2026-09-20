@@ -126,19 +126,27 @@
   // is what posts without JavaScript, so here it is hidden AND disabled -- a disabled control is not submitted --
   // and the chips take over. The posted representation is unchanged: `lines` keeps the newline text the server
   // already parses, otherwise one hidden input per chip carries the reference primary key.
+  // Searchable dropdown over the canonical GEMI reference catalogue, for the Radar criteria
+  // (see templates/includes/reference_picker.html). Clicking or focusing the field opens a bounded
+  // opening list; typing filters that same list. The ~19.000 KAD rows are never in the page or in
+  // memory here: every list is one small server-bounded response, and the opening list is fetched
+  // once per picker and then reused.
   const initReferencePickers = () => document.querySelectorAll('[data-reference-picker]').forEach(root => {
     const input = root.querySelector('[data-picker-search]');
     const results = root.querySelector('[data-picker-results]');
     const chips = root.querySelector('[data-picker-selected]');
     const status = root.querySelector('[data-picker-status]');
     const spinner = root.querySelector('[data-picker-spinner]');
+    const toggle = root.querySelector('[data-picker-toggle]');
+    const field = root.querySelector('[data-picker-field]');
     const fallback = root.querySelector('[data-picker-fallback]');
     const lines = root.querySelector('[data-picker-lines]');
     const select = root.querySelector('[data-picker-select]');
     const { kind, inputName, emit, searchUrl } = root.dataset;
     const maxItems = Number(root.dataset.maxItems || 50);
+    const minQuery = 2;                       // matches MIN_QUERY_LENGTH in gemiapp/reference_search.py
     if (!input || !results || !chips) return;
-    let timer, controller, activeIndex = -1;
+    let timer, controller, activeIndex = -1, isOpen = false, shown = [], browseCache = null;
 
     // Take over from the no-JavaScript control.
     if (fallback) fallback.hidden = true;
@@ -152,9 +160,19 @@
       const count = chosen().length;
       status.textContent = count ? `${count} επιλεγμένα` : '';
     };
-    const closeResults = () => {
-      results.hidden = true; results.replaceChildren(); activeIndex = -1;
-      input.setAttribute('aria-expanded', 'false');
+    const setOpen = state => {
+      isOpen = state;
+      results.hidden = !state;
+      root.classList.toggle('is-open', state);
+      input.setAttribute('aria-expanded', state ? 'true' : 'false');
+      if (!state) { results.replaceChildren(); activeIndex = -1; }
+    };
+    const closeResults = () => setOpen(false);
+    const message = text => {
+      const line = document.createElement('p');
+      line.className = 'product-picker-empty'; line.textContent = text;
+      results.replaceChildren(line);
+      setOpen(true);
     };
     const options = () => [...results.querySelectorAll('[role="option"]')];
     const setActive = index => {
@@ -165,6 +183,27 @@
         item.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
       });
       items[activeIndex].scrollIntoView({ block: 'nearest' });
+    };
+    // What the dropdown shows now: whatever the last response offered, minus what is already a chip, so a
+    // value cannot be chosen twice and removing its chip puts it back on offer.
+    const render = () => {
+      const taken = values();
+      const available = shown.filter(item => !taken.has(item.value));
+      if (!available.length) {
+        message(shown.length ? 'Όλα τα αποτελέσματα είναι ήδη επιλεγμένα.' : 'Δεν βρέθηκαν αποτελέσματα');
+        return;
+      }
+      results.replaceChildren(...available.map(item => {
+        const button = document.createElement('button');
+        button.type = 'button'; button.setAttribute('role', 'option'); button.setAttribute('aria-selected', 'false');
+        button.className = 'product-picker-option';
+        const label = document.createElement('span'); label.textContent = item.label;
+        button.append(label);
+        if (item.detail) { const tag = document.createElement('em'); tag.textContent = item.detail; button.append(tag); }
+        button.addEventListener('click', () => addChip(item));
+        return button;
+      }));
+      setOpen(true); activeIndex = -1;
     };
     const addChip = item => {
       if (values().has(item.value)) { status.textContent = 'Είναι ήδη επιλεγμένο.'; return; }
@@ -184,57 +223,67 @@
         hidden.type = 'hidden'; hidden.name = inputName; hidden.value = item.value; hidden.dataset.pickerValue = '';
         chip.append(hidden);
       }
-      chips.append(chip); input.value = ''; closeResults(); sync(); input.focus();
+      chips.append(chip); sync();
+      // Stay open for the next selection, back on the opening list, which is already in hand.
+      input.value = '';
+      shown = browseCache || shown;
+      render();
+      input.focus();
     };
-    const render = items => {
-      results.replaceChildren();
-      const available = items.filter(item => !values().has(item.value));
-      if (!available.length) {
-        const empty = document.createElement('p');
-        empty.className = 'product-picker-empty'; empty.textContent = 'Δεν βρέθηκε κάτι άλλο.';
-        results.append(empty);
-      } else available.forEach(item => {
-        const button = document.createElement('button');
-        button.type = 'button'; button.setAttribute('role', 'option'); button.setAttribute('aria-selected', 'false');
-        button.className = 'product-picker-option';
-        const label = document.createElement('span'); label.textContent = item.label;
-        button.append(label);
-        if (item.detail) { const tag = document.createElement('em'); tag.textContent = item.detail; button.append(tag); }
-        button.addEventListener('click', () => addChip(item));
-        results.append(button);
-      });
-      results.hidden = false; input.setAttribute('aria-expanded', 'true'); activeIndex = -1;
-    };
-    const search = query => {
-      controller?.abort(); controller = new AbortController();
+    const load = query => {
+      const text = (query || '').trim();
+      const browsing = text.length < minQuery;
+      if (browsing && browseCache) { shown = browseCache; render(); return; }
+      controller?.abort();
+      const mine = controller = new AbortController();
       if (spinner) spinner.hidden = false;
+      message('Αναζήτηση…');
       const url = new URL(searchUrl, window.location.origin);
-      url.searchParams.set('kind', kind); url.searchParams.set('q', query);
-      fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } })
+      url.searchParams.set('kind', kind); url.searchParams.set('q', text);
+      fetch(url, { signal: mine.signal, headers: { Accept: 'application/json' } })
         .then(response => { if (!response.ok) throw new Error('search'); return response.json(); })
-        .then(data => render(data.results || []))
-        .catch(error => { if (error.name !== 'AbortError') status.textContent = 'Η αναζήτηση δεν ήταν διαθέσιμη.'; })
-        .finally(() => { if (spinner) spinner.hidden = true; });
+        .then(data => {
+          shown = data.results || [];
+          if (browsing) browseCache = shown;
+          render();
+        })
+        .catch(error => {
+          if (error.name === 'AbortError') return;
+          shown = []; message('Η αναζήτηση δεν ήταν διαθέσιμη.');
+        })
+        .finally(() => { if (spinner && controller === mine) spinner.hidden = true; });
     };
+    const openResults = () => { if (!isOpen) load(input.value); };
+
+    input.addEventListener('focus', openResults);
+    field?.addEventListener('click', openResults);
+    toggle?.addEventListener('click', () => {
+      if (isOpen) { closeResults(); return; }
+      input.focus();                      // focusing opens it; force it only if the field was focused already
+      openResults();
+    });
     input.addEventListener('input', () => {
       clearTimeout(timer);
       const query = input.value.trim();
-      if (query.length < 2) { closeResults(); sync(); return; }
-      timer = setTimeout(() => search(query), 180);
+      timer = setTimeout(() => load(query), query ? 180 : 0);
     });
     input.addEventListener('keydown', event => {
       const items = options();
-      if (event.key === 'ArrowDown' && items.length) { event.preventDefault(); setActive(activeIndex + 1); }
+      if (event.key === 'ArrowDown' && !isOpen) { event.preventDefault(); openResults(); }
+      else if (event.key === 'ArrowDown' && items.length) { event.preventDefault(); setActive(activeIndex + 1); }
       else if (event.key === 'ArrowUp' && items.length) { event.preventDefault(); setActive(activeIndex - 1); }
       else if (event.key === 'Enter' && activeIndex >= 0) { event.preventDefault(); items[activeIndex].click(); }
-      else if (event.key === 'Escape') closeResults();
+      else if (event.key === 'Escape') { closeResults(); }
       else if (event.key === 'Enter') event.preventDefault();   // never submit the form from the search box
     });
     chips.addEventListener('click', event => {
       const remove = event.target.closest('[data-picker-remove]'); if (!remove) return;
       remove.closest('[data-picker-chip]')?.remove(); sync();
+      if (isOpen) render();               // the value it held is on offer again
     });
-    document.addEventListener('click', event => { if (!root.contains(event.target)) closeResults(); });
+    // Capture, deliberately: choosing an option replaces the list, so by the bubble phase the clicked
+    // node is already detached and `contains` would read it as a click outside and close the dropdown.
+    document.addEventListener('click', event => { if (!root.contains(event.target)) closeResults(); }, true);
     sync();
   });
   // Fires a GA4 event when a tagged element is activated. gtag only exists after the visitor

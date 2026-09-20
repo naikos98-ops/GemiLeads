@@ -13,7 +13,8 @@ from django.urls import reverse
 
 from .models import GemiKad, GemiLegalType, GemiMunicipality, GemiPrefecture
 from .reference_search import (
-    DEFAULT_LIMIT, KAD, KINDS, LEGAL_FORM, MAX_LIMIT, MUNICIPALITY, PREFECTURE, ReferenceHit, search_reference,
+    DEFAULT_LIMIT, KAD, KINDS, LEGAL_FORM, MAX_LIMIT, MUNICIPALITY, PREFECTURE, ReferenceHit, browse_reference,
+    reference_options, search_reference,
 )
 from .test_customer_workspace import WorkspaceTestCase
 from .test_organization_icp import ref
@@ -116,6 +117,63 @@ class RegionAndLegalFormSearchTests(SearchTestCase):
         self.assertEqual(search_reference(PREFECTURE, "ΧΙΟ"), [])
 
 
+class BrowseTests(SearchTestCase):
+    """What the picker offers the moment it is opened, before anyone has typed."""
+
+    def test_opening_a_picker_offers_rows_instead_of_an_empty_panel(self):
+        self.assertIn("56101000 kad_2026", [hit.value for hit in browse_reference(KAD)])
+
+    def test_the_opening_list_is_bounded_and_never_the_catalogue(self):
+        for index in range(MAX_LIMIT + 20):
+            kad(f"9901{index:04d}", "ΔΟΚΙΜΑΣΤΙΚΗ ΔΡΑΣΤΗΡΙΟΤΗΤΑ")
+        self.assertEqual(len(browse_reference(KAD)), DEFAULT_LIMIT)
+        self.assertEqual(len(browse_reference(KAD, limit=10_000)), MAX_LIMIT)
+        self.assertEqual(len(browse_reference(KAD, limit=5)), 5)
+
+    def test_an_opened_row_posts_the_same_value_a_searched_one_does(self):
+        searched = {hit.value: hit for hit in search_reference(KAD, "ΕΣΤΙΑΣΗ")}
+        browsed = {hit.value: hit for hit in browse_reference(KAD)}
+        self.assertTrue(searched)
+        for value, hit in searched.items():
+            self.assertEqual(browsed.get(value), hit, value)
+
+    def test_a_retired_row_is_never_offered(self):
+        GemiPrefecture.objects.filter(pk=self.chios.pk).update(is_present=False)
+        self.assertNotIn(str(self.chios.pk), [hit.value for hit in browse_reference(PREFECTURE)])
+
+    def test_every_kind_opens_with_something(self):
+        for kind in KINDS:
+            self.assertTrue(browse_reference(kind), kind)
+
+    def test_an_unknown_kind_is_refused(self):
+        with self.assertRaises(ValueError):
+            browse_reference("companies")
+
+
+class ReferenceOptionsTests(SearchTestCase):
+    """Opening the dropdown and typing into it are the same question, so they are one entry point."""
+
+    def test_a_query_too_short_to_search_opens_the_list(self):
+        opening = [hit.value for hit in browse_reference(PREFECTURE)]
+        self.assertTrue(opening)
+        for query in ("", "   ", "Χ"):
+            self.assertEqual([hit.value for hit in reference_options(PREFECTURE, query)], opening, repr(query))
+
+    def test_typing_filters_that_same_list(self):
+        self.assertEqual([hit.value for hit in reference_options(PREFECTURE, "ΧΙΟ")], [str(self.chios.pk)])
+        self.assertLess(len(reference_options(PREFECTURE, "ΧΙΟ")), len(reference_options(PREFECTURE, "")))
+
+    def test_filtering_is_exactly_the_search(self):
+        for kind, query in ((KAD, "ΕΣΤΙΑΣΗ"), (MUNICIPALITY, "κηφισιας"), (LEGAL_FORM, "ΙΚΕ")):
+            self.assertEqual(reference_options(kind, query), search_reference(kind, query), kind)
+
+    def test_the_result_is_bounded_whatever_the_query(self):
+        for index in range(MAX_LIMIT + 20):
+            kad(f"9902{index:04d}", "ΔΟΚΙΜΑΣΤΙΚΗ ΔΡΑΣΤΗΡΙΟΤΗΤΑ")
+        for query in ("", "ΔΟΚΙΜΑΣΤΙΚΗ"):
+            self.assertEqual(len(reference_options(KAD, query, limit=10_000)), MAX_LIMIT, repr(query))
+
+
 class ContractTests(SimpleTestCase):
     def test_an_unknown_kind_is_refused(self):
         with self.assertRaises(ValueError):
@@ -158,6 +216,30 @@ class EndpointTests(CatalogueFixture, WorkspaceTestCase):
             response = self.get(self.owner, kind=kind, q=query)
             self.assertEqual(response.status_code, 200, kind)
             self.assertTrue(response.json()["results"], kind)
+
+    def test_opening_a_picker_asks_for_a_bounded_list(self):
+        """No query at all is the dropdown opening: it answers with rows, not with nothing."""
+        response = self.get(self.owner, kind=KAD)
+        self.assertEqual(response.status_code, 200)
+        results = response.json()["results"]
+        self.assertTrue(results)
+        self.assertLessEqual(len(results), MAX_LIMIT)
+        self.assertEqual(sorted(results[0]), ["detail", "label", "value"])
+
+    def test_the_opening_list_can_never_be_the_whole_catalogue(self):
+        for index in range(MAX_LIMIT + 20):
+            kad(f"9903{index:04d}", "ΔΟΚΙΜΑΣΤΙΚΗ ΔΡΑΣΤΗΡΙΟΤΗΤΑ")
+        self.assertEqual(len(self.get(self.owner, kind=KAD, q="").json()["results"]), DEFAULT_LIMIT)
+
+    def test_typing_filters_the_list_the_dropdown_opened_with(self):
+        opened = self.get(self.owner, kind=PREFECTURE, q="").json()["results"]
+        typed = self.get(self.owner, kind=PREFECTURE, q="ΧΙΟ").json()["results"]
+        self.assertEqual([item["value"] for item in typed], [str(self.chios.pk)])
+        self.assertGreater(len(opened), len(typed))
+
+    def test_every_kind_opens(self):
+        for kind in KINDS:
+            self.assertTrue(self.get(self.owner, kind=kind).json()["results"], kind)
 
     def test_an_unknown_kind_is_a_bad_request(self):
         response = self.get(self.owner, kind="companies", q="ΧΙΟ")
