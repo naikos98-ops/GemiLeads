@@ -1762,6 +1762,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-09-20 — Επανάληψη επιβεβαίωσης της πρόβας G1 (staging).** Ολόκληρος ο κύκλος ξανά από την αρχή
+  (rollback → baseline 0031 → forward → rollback → reapply) στην ίδια βάση, σε **μεταγενέστερο commit**, με τη
+  λίστα στηλών του 0031 **ξανα-παραγόμενη** από το `information_schema`: ίδια σύνολα στηλών, **και τα 13 digests
+  αναπαρήχθησαν byte-για-byte**, PASS σε κάθε στάδιο. Χρόνοι: rollback 19,04 s · forward **31,56 s** (`0034`
+  3,66 s, `0035` 4,11 s) · rollback 18,15 s · reapply **35,90 s** (`0034` 4,42 s, `0035` 4,63 s). D37
+  `1→0→1→0→1`, schedules 4→3→4→3→4 χωρίς διπλότυπα, ids legacy (1, 3, 22) αμετάβλητα, `check` /
+  `migrate --check` / `makemigrations --check` καθαρά. Μόνο τεκμηρίωση: `docs/RELEASE_READINESS.md`, `AGENTS.md`.
+  Καμία επαφή με production, κανένα αίτημα ΓΕΜΗ.
+
 - **2026-09-20 — Ενεργή ειδοποίηση operator για αποτυχίες ingestion (χωρίς Sentry).** Νέα:
   `config/operator_alerts.py` (`OperatorEmailHandler`), `gemiapp/test_operator_alerts.py` (21 tests). Αλλαγές:
   `config/settings.py` (`operator_admins`, `ADMINS`, `OPERATOR_ALERT_LOGGERS`, `LOGGING`),

@@ -1,6 +1,6 @@
 # Gemi Leads 2.0 — Release readiness (G0 / G1)
 
-Status as of 2026-09-20 (G1 drill completed 07:23–07:26 UTC). This file records the gates that block every Gemi Leads 2.0 migration from reaching
+Status as of 2026-09-20 (G1 drill 07:23–07:26 UTC, independently repeated 10:57–11:01 UTC). This file records the gates that block every Gemi Leads 2.0 migration from reaching
 production, the staging contract that G0 requires, and the rollback procedures that G1 must prove on staging.
 It never contains secret values, hostnames, database names or keys.
 
@@ -19,7 +19,7 @@ Every claim below carries its class. Nothing is presented as proven by the repos
 | Gate | Status | Why |
 | --- | --- | --- |
 | G0 — staging environment | **PASSED_WITH_DOCUMENTED_SCOPE** | A separate staging PostgreSQL exists, loaded with production-shaped data, driven by local application processes. See the scope note below. |
-| G1 — staging forward/rollback | **PASSED** | A full drill on 2026-09-20 with a legacy parity digest captured at every stage: rollback → **authoritative 0031 baseline** → forward → rollback → reapply. All 13 legacy datasets matched the baseline on count *and* digest at every stage **[B]**. |
+| G1 — staging forward/rollback | **PASSED** | A full drill on 2026-09-20 with a legacy parity digest captured at every stage: rollback → **authoritative 0031 baseline** → forward → rollback → reapply. All 13 legacy datasets matched the baseline on count *and* digest at every stage, and the whole drill was **repeated independently the same day with byte-identical digests** **[B]**. |
 | G6 — request budget | **NOT_MEASURED** | The ≤7/min ceiling is structurally enforced **[A]**; the legacy importer's actual consumption has never been measured **[C]**. Not a dark-deploy blocker: no 2.0 job is scheduled. |
 | Operator alerting (A2) | **IMPLEMENTED** | A production ERROR from `gemiapp.ingestion.client` / `gemiapp.services` emails the configured operators through the existing SMTP relay **[A]**. Sentry is not required and is not provisioned. One post-deploy confirmation remains **[C]**. |
 | Production migrations 0032–0054 | **READY, pending the post-deploy alert confirmation** | G0, G1 and the A2 alerting requirement are closed. What is left is a confirmation that can only be made against production (below). |
@@ -118,6 +118,28 @@ production-shaped volume — including `0035`'s two non-concurrent partial uniqu
 `companyactivity` rows, which is the only operation in the range that takes `ACCESS EXCLUSIVE` on a table with
 real data.
 
+#### Confirmation run, 2026-09-20 10:57–11:01 UTC **[B]**
+
+The whole drill was repeated from scratch against the same database (same fingerprint), on the later commit that
+added operator alerting, with the 0031 column list **re-derived from `information_schema` rather than reused**.
+
+| Step | Duration | First run |
+| --- | --- | --- |
+| Rollback 0054 → 0031 (first) | 19.04 s | 20.64 s |
+| **Forward 0031 → 0054** | **31.56 s** | 32.40 s |
+| — `0031→0033` / **`0034`** / **`0035`** / `0035→0054` | 4.22 s / **3.66 s** / **4.11 s** / 19.57 s | 4.29 / 3.85 / 4.25 / 20.01 s |
+| Rollback 0054 → 0031 (second) | 18.15 s | 20.58 s |
+| **Reapply 0031 → 0054** | **35.90 s** | 35.93 s |
+| — `0031→0033` / **`0034`** / **`0035`** / `0035→0054` | 4.79 s / **4.42 s** / **4.63 s** / 22.06 s | 4.76 / 4.22 / 4.68 / 22.27 s |
+| `check` · `migrate --check` · `makemigrations --check` at 0054 | — | all clean, exit 0, "No changes detected" |
+| D37 across the run | **1 → 0 → 1 → 0 → 1** | same |
+| Schedules · duplicate funcs | 4 → 3 → 4 → 3 → 4 · **0 at every stage** | same |
+| Legacy schedule ids | 1, 3, 22 unchanged throughout | same |
+
+**The re-derived column sets were identical, and all 13 baseline digests reproduced byte for byte.** Two
+independent drills, run hours apart on different commits, produced the same authoritative 0031 baseline and the
+same match at every stage — so the parity result is a property of the migrations, not of one capture.
+
 ### Legacy parity — the G1 verdict **[B]**
 
 **Digest definition.** For each dataset, the **complete 0031-era column list** was read from
@@ -154,10 +176,11 @@ recorded above, so the drill ran on production-shaped volume and the 2.0 chain c
 row. After the reapply, `gemiapp_companyactivity` still holds **0** rows at `legacy_listed = false`: the 2.0
 schema adds no derived rows on its own.
 
-**`G1_STATUS = PASSED`.** The earlier gap — no digest captured before the forward migration — is closed: this
-drill rolled staging back to 0031 first, captured the baseline there, and only then measured the forward run
-against it. Digests from the 2026-09-19 snapshot are superseded; they covered a hand-picked subset of columns,
-while these cover every 0031-era column of every dataset.
+**`G1_STATUS = PASSED`.** The earlier gap — no digest captured before the forward migration — is closed: the
+drill rolls staging back to 0031 first, captures the baseline there, and only then measures the forward run
+against it; and it has now been done twice with identical results. Digests from the 2026-09-19 snapshot are
+superseded; they covered a hand-picked subset of columns, while these cover every 0031-era column of every
+dataset.
 
 ## Local rehearsal against staging (2026-09-20) **[B]**
 
