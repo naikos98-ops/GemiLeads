@@ -159,6 +159,49 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — ενεργή ειδοποίηση operator για αποτυχίες ingestion ΓΕΜΗ (2026-09-20). Χωρίς Sentry.**
+  - **Η απαίτηση, διατυπωμένη σωστά:** «**ERROR σε production από τα `gemiapp.ingestion.client` /
+    `gemiapp.services` πρέπει να ειδοποιεί ενεργά έναν operator**». Η παλιά διατύπωση ονόμαζε το Sentry· γράφτηκε
+    σε **αυτό** το branch στις 2026-09-15 (`74def43`, πακέτο A2) και **ποτέ** δεν ίσχυσε σε deployed κώδικα. Το ίδιο
+    το Sentry είναι παλαιότερο (`f0885c1` το SDK, `da3f72b` το `SENTRY_DSN` στο `render.yaml`, Αύγουστος, στο
+    `main`) αλλά **τίποτα δεν εξαρτάται από αυτό**: το `sentry_sdk.init` είναι πίσω από `if SENTRY_DSN:` και το
+    `gemiapp` δεν το κάνει import πουθενά. **Το Sentry είναι μία έγκυρη υλοποίηση — δεν απαιτείται και δεν
+    υπάρχει σε αυτό το deployment.**
+  - **Γιατί υπάρχει η απαίτηση:** από την 0054 το `GemiClient._validate` **ξαναρίχνει** σε απάντηση που κόβει το
+    A2 contract, χωρίς retry· το `fetch_companies` επικυρώνει κάθε σελίδα πριν γραφτεί οτιδήποτε, το
+    `import_for_date` σημειώνει `ImportRun.status=failed` και ξαναρίχνει, και το `send_digests` **δεν τρέχει
+    ποτέ**. Καμία ειδοποίηση = το μαθαίνει πρώτος ο πελάτης από το digest που δεν ήρθε.
+  - **Υλοποίηση:** `AdminEmailHandler` του Django πάνω στο **υπάρχον** SMTP relay που ήδη στέλνει τα digests —
+    καμία νέα υπηρεσία, κανένα νέο credential, καμία νέα εξάρτηση.
+    - **Παραλήπτες:** `ADMINS = operator_admins(SUPERADMIN_EMAILS)` στο `config/settings.py`· **καμία διεύθυνση
+      γραμμένη σε κώδικα** (το `render.yaml` ορίζει ήδη το `SUPERADMIN_EMAILS`). Άδειο μέσα → άδειο έξω: χωρίς
+      `ADMINS` ο handler γυρίζει πριν φτιάξει μήνυμα, άρα «καμία ειδοποίηση», ποτέ σφάλμα.
+    - **Δρομολόγηση:** το `LOGGING` δίνει `operator_console` (stderr) + `operator_email` **ακριβώς** στους δύο
+      loggers, σε `WARNING` — ό,τι ακριβώς είχαν πριν (χωρίς `LOGGING`, έπεφταν στο `logging.lastResort`, που
+      είναι WARNING/stderr). **Τίποτα δεν κρύβεται και τίποτα νέο δεν εκπέμπεται.** Το email handler είναι
+      **ERROR only**, με το φίλτρο `require_debug_false` (σε development καμία ειδοποίηση), και δεν κρέμεται από
+      κανέναν πρόγονο → **ένα record δίνει το πολύ ένα μήνυμα**. Το `propagate` μένει ανοιχτό (ώστε
+      `assertLogs("gemiapp")` και τυχόν μελλοντικός root handler να βλέπουν το record).
+    - **Απομόνωση αποτυχίας:** `config/operator_alerts.OperatorEmailHandler` στέλνει κάθε δική του αποτυχία στο
+      `logging.Handler.handleError`. Το Django ήδη στέλνει με `fail_silently`· αυτό καλύπτει όλα τα υπόλοιπα,
+      ώστε ένα χαλασμένο relay **να μην μπορεί** να βγει από το `logger.error()`, να μπει στο ingestion και να
+      κρύψει το σφάλμα που ανέφερε. Το αρχικό σφάλμα φτάνει ούτως ή άλλως στο stderr.
+    - **Tests:** ο runner αδειάζει τα `ADMINS` για όλο το suite, ώστε **κανένα** test να μην ειδοποιεί operator·
+      όποιο test θέλει τη δρομολόγηση τη ζητά με `override_settings(ADMINS=...)`.
+  - **Παθητικά τεκμήρια, αμετάβλητα:** Render stderr (WARNING/ERROR φτάνουν, INFO όχι — όπως και πριν),
+    `ImportRun.status`/`error_message` στο `/superadmin/pipeline/`, γραμμές αποτυχίας django-q στο `/admin/`
+    (όριο `save_limit: 50`), `diagnose_intraday`. Κρατούν την απόδειξη· **δεν ειδοποιούν κανέναν.**
+  - **Απομένει (μόνο σε production):** μία επιβεβαίωση ότι φτάνει πράγματι email — `manage.py sendtestemail
+    --admins` μετά το deploy, μέσα στο smoke checklist.
+  - **Follow-up, σκόπιμα ΕΚΤΟΣ αυτής της εργασίας:** ημερήσιος έλεγχος αποτελέσματος (heartbeat) που ειδοποιεί
+    όταν λείπει το αναμενόμενο `ImportRun` ή οι `DigestDelivery` — πιάνει και κάθε άλλη αιτία χαμένου digest
+    (νεκρός worker, κολλημένο schedule, SMTP outage). Το `diagnose_intraday` έχει ήδη τα queries.
+  - **Καμία migration**, καμία αλλαγή σε ingestion/retries/billing. 21 νέα tests
+    (`gemiapp/test_operator_alerts.py`)· **1.994 tests OK**· `check`, `check --deploy` (με τους διακόπτες του
+    `render.yaml`) και `makemigrations --check` καθαρά. **`G0_STATUS = PASSED_WITH_DOCUMENTED_SCOPE`,
+    `G1_STATUS = PASSED`**, η απαίτηση A2 κλειστή. **`G4_STATUS = NOT_PASSED`**, LIVE **απαγορευμένη**, καμία
+    merge, κανένα deploy.
+
 - **Gemi Leads 2.0 — `G1_STATUS = PASSED` (τελική πρόβα parity στο staging, 2026-09-20 07:23–07:26 UTC).**
   Πλήρης καταγραφή: `docs/RELEASE_READINESS.md`.
   - **Η πρόβα:** rollback 0054→0031 → **αυθεντική baseline στο 0031** → forward 0031→0054 → rollback 0054→0031 →
@@ -1693,12 +1736,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   8 σε κατάσταση «Διαγραφή». Το φίλτρο «Μόνο ενεργές επιχειρήσεις» των Radars δεν έχει επομένως
   πραγματικό αποτέλεσμα. Η διόρθωση χρειάζεται τα companyStatuses reference data (A5) και parity
   report, γιατί αλλάζει ποια leads βλέπουν οι πελάτες.
-- **Release gate για το A2:** να επιβεβαιωθεί
-  ότι το `SENTRY_DSN` είναι ορισμένο στο production και ότι υπάρχει Sentry alert rule για ERROR
-  events των `gemiapp.ingestion.client` / `gemiapp.services`· χωρίς αυτό η αποτυχία φαίνεται μόνο
-  στο `ImportRun` (Superadmin → GEMI Pipeline) και στα logs. Πριν από
-  οποιαδήποτε 2.0 migration σε production απαιτούνται: staging βάση, ξεχωριστό GEMI API key για
-  staging και γνωστός όγκος δεδομένων production.
+- **Release gate για το A2 — ΚΛΕΙΣΤΟ (2026-09-20):** η απαίτηση είναι «**ERROR σε production από τα
+  `gemiapp.ingestion.client` / `gemiapp.services` πρέπει να ειδοποιεί ενεργά έναν operator**», **όχι** «τρέξε
+  Sentry». Υλοποιήθηκε με `AdminEmailHandler` + `ADMINS` από το `SUPERADMIN_EMAILS`, πάνω στο υπάρχον SMTP
+  (βλ. «ενεργή ειδοποίηση operator»). Το Sentry παραμένει **προαιρετικό** και **δεν** υπάρχει σε αυτό το
+  deployment. Απομένει μία επιβεβαίωση σε production: `manage.py sendtestemail --admins`. Το `ImportRun`
+  (Superadmin → GEMI Pipeline), τα logs και οι γραμμές django-q μένουν **παθητικά** τεκμήρια. Πριν από
+  οποιαδήποτε 2.0 migration σε production απαιτούνταν επίσης: staging βάση (**G0 κλειστό**), forward/rollback
+  (**G1 κλειστό**) και γνωστός όγκος δεδομένων production (**4.903 / 33.391, καταγεγραμμένος**)· το ξεχωριστό
+  GEMI API key για staging μένει ανοιχτό ως A5/G6, όχι ως dark-deploy blocker.
 - **Διόρθωση τεκμηρίωσης billing:** το README, το AI_SUMMARY και αυτό το αρχείο γράφουν ότι οι
   πληρωμές είναι κλειστές (beta), ενώ η production σελίδα pricing δείχνει ενεργό checkout
   (`render.yaml`, commit `e158012`). Μέχρι να επιβεβαιωθεί, το billing θεωρείται LIVE.
@@ -1715,6 +1761,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-20 — Ενεργή ειδοποίηση operator για αποτυχίες ingestion (χωρίς Sentry).** Νέα:
+  `config/operator_alerts.py` (`OperatorEmailHandler`), `gemiapp/test_operator_alerts.py` (21 tests). Αλλαγές:
+  `config/settings.py` (`operator_admins`, `ADMINS`, `OPERATOR_ALERT_LOGGERS`, `LOGGING`),
+  `config/fast_test_runner.py` (`silence_operator_alerts`), `AGENTS.md`, `docs/RELEASE_READINESS.md` (η πύλη
+  ξαναγράφηκε ως απαίτηση, όχι ως προϊόν). Επαλήθευση: `check`, `check --deploy`, `makemigrations --check`,
+  1.994 tests OK· καμία migration, καμία αλλαγή σε ingestion/retries/billing.
 
 - **2026-09-20 — Τελική πρόβα G1 parity στο staging.** Rollback → baseline 0031 → forward → rollback → reapply,
   με digest πάνω σε **όλες** τις στήλες του 0031 σε κάθε στάδιο· 13/13 datasets ταυτίστηκαν παντού· D37

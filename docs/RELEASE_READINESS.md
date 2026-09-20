@@ -21,8 +21,8 @@ Every claim below carries its class. Nothing is presented as proven by the repos
 | G0 — staging environment | **PASSED_WITH_DOCUMENTED_SCOPE** | A separate staging PostgreSQL exists, loaded with production-shaped data, driven by local application processes. See the scope note below. |
 | G1 — staging forward/rollback | **PASSED** | A full drill on 2026-09-20 with a legacy parity digest captured at every stage: rollback → **authoritative 0031 baseline** → forward → rollback → reapply. All 13 legacy datasets matched the baseline on count *and* digest at every stage **[B]**. |
 | G6 — request budget | **NOT_MEASURED** | The ≤7/min ceiling is structurally enforced **[A]**; the legacy importer's actual consumption has never been measured **[C]**. Not a dark-deploy blocker: no 2.0 job is scheduled. |
-| Sentry alert rule (A2) | **UNVERIFIABLE_FROM_REPO** | The code supports `SENTRY_DSN` **[A]**; whether it is set in production, and whether an alert rule exists, can only be confirmed in the Sentry and Render dashboards **[C]**. |
-| Production migrations 0032–0054 | **BLOCKED** | Blocked only by the Sentry check below. The environment and migration gates are closed. |
+| Operator alerting (A2) | **IMPLEMENTED** | A production ERROR from `gemiapp.ingestion.client` / `gemiapp.services` emails the configured operators through the existing SMTP relay **[A]**. Sentry is not required and is not provisioned. One post-deploy confirmation remains **[C]**. |
+| Production migrations 0032–0054 | **READY, pending the post-deploy alert confirmation** | G0, G1 and the A2 alerting requirement are closed. What is left is a confirmation that can only be made against production (below). |
 | D37 schedule in production | **Not enabled** | Registered only when 0054 code is deployed. Currently 0 rows in production **[B]**. |
 
 ## Authoritative criteria
@@ -187,21 +187,64 @@ and all four staging schedules were past due, so a plain boot would have fired b
 | `manage.py collectstatic --noinput` | 1 copied, 134 unmodified, 372 post-processed — the hashed manifest builds |
 | Working tree after the build | Clean: `app.css`, `node_modules/` and `staticfiles/` are all ignored |
 
-## Sentry (A2) **[A]** + **[C]**
+## Operator alerting (A2)
 
-| Fact | Class |
+### The requirement
+
+> **Production ERROR events from `gemiapp.ingestion.client` / `gemiapp.services` must actively notify an
+> operator.**
+
+This replaces the earlier wording, which named Sentry. That wording was written on this branch on 2026-09-15
+(`74def43`, the A2 package) as the release gate for contract validation; it has never applied to deployed code.
+Sentry itself is older — `f0885c1` added the SDK and `da3f72b` declared `SENTRY_DSN` in `render.yaml`, both on
+`main` in August — but nothing in the codebase depends on it: `sentry_sdk.init` sits behind `if SENTRY_DSN:` and
+`gemiapp` contains no Sentry import. **Sentry is one valid implementation of the requirement above. It is not
+required, and it is not provisioned for this deployment.**
+
+Why the requirement exists at all: from 0054 onward `GemiClient._validate` re-raises on a response the A2
+contract refuses, and the error is not retried. `fetch_companies` validates every page before anything is
+written, `import_for_date` marks the `ImportRun` failed and re-raises, `run_daily_pipeline_task` re-raises — and
+`send_digests` never runs. **No customer gets a digest that day**, and without an active signal the failure is
+found by a customer rather than by an operator.
+
+### How this deployment satisfies it **[A]**
+
+Django's own `AdminEmailHandler`, over the SMTP relay that already sends the digests. No new service, no new
+credential, no new dependency.
+
+| Piece | Where |
 | --- | --- |
-| `sentry-sdk==2.0.0` is pinned | **[A]** |
-| `config/settings.py` initialises Sentry when `SENTRY_DSN` is set, with `DjangoIntegration()` and a 5% trace sample | **[A]** |
-| sentry-sdk 2.x enables the logging integration by default, so a `logger.error` becomes an event | **[A]** |
-| `render.yaml` declares `SENTRY_DSN` with `sync: false` — set in the Render dashboard, never in the repository | **[A]** |
-| Whether `SENTRY_DSN` is actually set on the production service | **[C]** — dashboard only |
-| Whether an alert rule exists for ERROR events of `gemiapp.ingestion.client` / `gemiapp.services` | **[C]** — Sentry only |
+| Recipients | `ADMINS = operator_admins(SUPERADMIN_EMAILS)` in `config/settings.py`. No address is written in code; `render.yaml` already sets `SUPERADMIN_EMAILS`. Empty in, empty out — with no `ADMINS`, `AdminEmailHandler` returns before it builds a message, so an unset variable degrades to "no alert", never to an error. |
+| Routing | `LOGGING` attaches `operator_console` (stderr) and `operator_email` to exactly `gemiapp.ingestion.client` and `gemiapp.services`, at `WARNING` — which is precisely the visibility they had before, when an unconfigured root left them on `logging.lastResort`. Nothing is suppressed and nothing new is emitted. |
+| Level | The email handler is `ERROR` only. WARNING and INFO never notify. |
+| Not production, no alert | The handler carries Django's `require_debug_false` filter, so a development run never notifies anyone. The test runner additionally empties `ADMINS` for the whole suite. |
+| No duplicates | The email handler hangs off those two loggers and off no ancestor of them, so one record can only ever produce one message. `propagate` stays on, so `assertLogs` and any future root handler still see the record. |
+| Failure containment | `config/operator_alerts.OperatorEmailHandler` routes any failure of its own to `logging.Handler.handleError`. Django already sends with `fail_silently`; this covers everything else, so a failing relay can never escape `logger.error()`, reach the ingestion path and mask the exception being reported. The original error still reaches stderr through the console handler beside it. |
 
-No code can verify an external alert rule. **This is the one manual operator blocker**, and it matters: from 0054
-onward `GemiClient._validate` re-raises on a contract violation, so an upstream GEMI schema change stops the daily
-import and therefore the daily digest. `config/settings.py` defines no `LOGGING`, so `gemiapp` INFO lines never
-reach the Render log — ERROR and WARNING do, and Sentry is the alerting path.
+Tests: `gemiapp/test_operator_alerts.py` (21) — recipient derivation, routing for both loggers, silence for
+INFO/WARNING, for unrelated loggers, under `DEBUG`, and with no operators configured; one record producing exactly
+one message; a raising backend leaving the import's exception, `ImportRun` status and stderr untouched.
+
+### What remains, and it can only be done against production **[C]**
+
+Confirm, once, that an operator email actually arrives from the production service. `manage.py sendtestemail
+--admins` exercises the whole path — `ADMINS` plus the SMTP relay — without faking an ingestion failure. It is in
+the dark-deployment smoke checklist and is the last item of the A2 gate.
+
+### Secondary, passive evidence — unchanged
+
+Render's stderr (`gemiapp` WARNING and ERROR reach it; INFO does not, and that is unchanged),
+`ImportRun.status` / `error_message` at `/superadmin/pipeline/`, django-q's failure rows in `/admin/` (bounded by
+`save_limit: 50`), and the `diagnose_intraday` command. All of them keep the evidence; none of them tells anyone.
+They remain the triage material after an alert, not a substitute for one.
+
+### Follow-up, deliberately not implemented here
+
+An ERROR alert says a request failed; it does not say **the digest did not go out**. The stronger check is a daily
+outcome heartbeat: one scheduled task asserting that yesterday has a successful `ImportRun` *and* the expected
+`DigestDelivery` rows, which notifies when it does not. It catches this failure and every other cause of a missing
+digest — a dead worker, a stuck schedule, an SMTP outage — none of which an ingestion-error alert would catch.
+`diagnose_intraday` already contains the query logic. Recorded as the post-deploy follow-up.
 
 ## Staging environment contract (`config/environment.py`)
 
@@ -297,11 +340,14 @@ reaches the branch checked out in the main working copy, the dumps in that copy 
 
 ## Remaining blockers before a dark deployment
 
-1. **Sentry (A2)** — confirm `SENTRY_DSN` is set on the production service and that an alert rule exists for ERROR
-   events of `gemiapp.ingestion.client` / `gemiapp.services`. Manual, dashboard-only, and the one hard blocker.
+1. **Confirm the operator alert path against production** — `manage.py sendtestemail --admins` after the deploy,
+   as part of the smoke checklist. The mechanism is implemented and tested; this proves the relay delivers.
 2. **Move the two production dumps out of the repository tree** (`.gitignore` now prevents accidental staging;
    the files still exist on disk).
 3. **Staging GEMI key, or measured headroom (A5/G6)** — a follow-up, not a dark-deploy blocker, since no 2.0 job
    is scheduled and the dark deploy adds zero scheduled GEMI requests.
+4. **Daily outcome heartbeat** — the post-deploy follow-up described under Operator alerting. Not required for the
+   dark deploy.
 
-G1 is closed (2026-09-20). Sentry is the only gate still standing between here and a dark deployment.
+G0, G1 and the A2 alerting requirement are closed (2026-09-20). Nothing in this repository now blocks the dark
+deployment; item 1 is a confirmation to make against production, not a gate to build.

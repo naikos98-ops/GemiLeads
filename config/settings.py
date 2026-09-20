@@ -229,6 +229,61 @@ EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Gemi Leads <notifications@send.gemileads.gr>")
 EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "info@gemileads.gr")
 
+# --- Operator alerting for GEMI ingestion failures ---------------------------------------------
+# The requirement is not "run Sentry"; it is that a production ERROR from the GEMI ingestion path
+# actively notifies an operator. Everything else that records such a failure -- Render's stderr,
+# ImportRun.status, django-q's failure row -- is passive: it keeps the evidence and tells nobody,
+# so a stopped import (and the digest that never went out with it) is found by a customer first.
+# See config/operator_alerts.py. Sentry is one valid implementation and stays optional; this
+# deployment uses Django's AdminEmailHandler over the SMTP relay that already sends the digests,
+# so there is no new service and no new credential.
+
+
+def operator_admins(emails):
+    """Django ADMINS for the configured operator addresses, with no address written here.
+
+    Empty in, empty out: with no ADMINS, AdminEmailHandler returns before it builds a message, so
+    an unset SUPERADMIN_EMAILS degrades to "no alert", never to an error.
+    """
+    return [("Gemi Leads operator", email) for email in emails]
+
+
+ADMINS = operator_admins(SUPERADMIN_EMAILS)
+
+# The two loggers that carry an ingestion failure: gemiapp.ingestion.client logs the ERROR when a
+# response fails the A2 contract, gemiapp.services logs the ImportRun it stopped. Deliberately not
+# the whole application: an alert that fires for everything is one nobody reads.
+OPERATOR_ALERT_LOGGERS = ("gemiapp.ingestion.client", "gemiapp.services")
+
+LOGGING = {
+    "version": 1,
+    # Django applies its own DEFAULT_LOGGING first; this adds to it and must not disable it.
+    "disable_existing_loggers": False,
+    "filters": {"require_debug_false": {"()": "django.utils.log.RequireDebugFalse"}},
+    "formatters": {"operator": {"format": "%(levelname)s %(asctime)s %(name)s %(message)s"}},
+    "handlers": {
+        # Named apart from Django's own "console" handler so neither definition shadows the other.
+        "operator_console": {"class": "logging.StreamHandler", "formatter": "operator"},
+        "operator_email": {
+            "level": "ERROR",
+            "class": "config.operator_alerts.OperatorEmailHandler",
+            # DEBUG on -> the record is dropped here, so a development run never notifies anyone.
+            "filters": ["require_debug_false"],
+        },
+    },
+    "loggers": {
+        # WARNING is exactly the visibility these two had before: with no LOGGING configured they
+        # fell through to logging.lastResort, which is a WARNING-level stderr handler. Nothing is
+        # suppressed and nothing new is emitted.
+        #
+        # propagate stays on so ancestors -- assertLogs("gemiapp"), and any root handler added
+        # later -- still see the record. The email handler hangs off these two loggers and off no
+        # ancestor of them, so one record can only ever produce one message.
+        name: {"handlers": ["operator_console", "operator_email"], "level": "WARNING", "propagate": True}
+        for name in OPERATOR_ALERT_LOGGERS
+    },
+}
+
 # Skips the outreach MX pre-check (gemiapp.email_validation) and treats every address as
 # deliverable. On only under `manage.py test`: a test that hits real DNS is slow, fails
 # offline, and silently changes verdict when some example.gr domain lapses. MXValidationTests
