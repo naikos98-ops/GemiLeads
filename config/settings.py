@@ -228,6 +228,11 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Gemi Leads <notifications@send.gemileads.gr>")
 EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "info@gemileads.gr")
+# The sender for error mail, which is what AdminEmailHandler puts on an operator alert. Django's default is
+# root@localhost: the Brevo relay accepted it and returned success, then dropped the message, so the alert
+# tested in production never arrived and nothing reported a failure. Defaults to the address the digests
+# already send from -- a verified sender on a verified domain -- instead of a second hard-coded address.
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 
 # --- Operator alerting for GEMI ingestion failures ---------------------------------------------
 # The requirement is not "run Sentry"; it is that a production ERROR from the GEMI ingestion path

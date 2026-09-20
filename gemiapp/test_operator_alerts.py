@@ -12,9 +12,11 @@ run, so a test that wants the routing has to ask for it with ``override_settings
 
 import contextlib
 import copy
+import importlib
 import io
 import json
 import logging
+import os
 from datetime import date, timedelta
 from unittest.mock import patch
 
@@ -90,6 +92,63 @@ class RecipientTests(SimpleTestCase):
         self.assertEqual(settings_module.operator_admins([]), [])
 
 
+class SenderTests(SimpleTestCase):
+    """The sender of an operator alert.
+
+    ``AdminEmailHandler`` sends through ``mail_admins``, which uses ``settings.SERVER_EMAIL``. Django's default
+    is ``root@localhost``; the Brevo relay accepted it, returned success and dropped the message, so the alert
+    tested in production never arrived and nothing reported a failure. The sender now defaults to the address
+    the digests already send from.
+    """
+
+    def reloaded(self, **environ):
+        """The settings *module* re-evaluated under a patched environment. This reads module attributes and
+        never reconfigures ``django.conf.settings``."""
+        with patch.dict(os.environ, environ, clear=False):
+            for name in environ:
+                if environ[name] is None:
+                    os.environ.pop(name, None)
+            return importlib.reload(settings_module)
+
+    def tearDown(self):
+        importlib.reload(settings_module)                                # restore the real configuration
+
+    def test_server_email_defaults_to_default_from_email(self):
+        os.environ.pop("SERVER_EMAIL", None)
+        module = self.reloaded()
+        self.assertEqual(module.SERVER_EMAIL, module.DEFAULT_FROM_EMAIL)
+        self.assertNotEqual(module.SERVER_EMAIL, "root@localhost")
+
+    def test_an_explicit_server_email_is_respected(self):
+        module = self.reloaded(SERVER_EMAIL="alerts@example.com")
+        self.assertEqual(module.SERVER_EMAIL, "alerts@example.com")
+        self.assertNotEqual(module.DEFAULT_FROM_EMAIL, "alerts@example.com")  # only the error sender moves
+
+    def test_the_running_configuration_has_a_real_sender(self):
+        from django.conf import global_settings, settings
+
+        self.assertEqual(global_settings.SERVER_EMAIL, "root@localhost")      # what the regression was
+        self.assertNotEqual(settings.SERVER_EMAIL, global_settings.SERVER_EMAIL)
+        self.assertEqual(settings.SERVER_EMAIL, settings.DEFAULT_FROM_EMAIL)
+        self.assertIn("@", settings.SERVER_EMAIL)
+
+    @override_settings(ADMINS=OPERATORS, DEBUG=False)
+    def test_the_handler_sends_from_the_configured_sender(self):
+        from django.conf import settings
+
+        mail.outbox = []
+        emit(CLIENT_LOGGER)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].from_email, settings.SERVER_EMAIL)
+        self.assertNotEqual(mail.outbox[0].from_email, "root@localhost")
+
+    @override_settings(ADMINS=OPERATORS, DEBUG=False, SERVER_EMAIL="ops@example.com")
+    def test_the_handler_follows_an_overridden_sender(self):
+        mail.outbox = []
+        emit(SERVICES_LOGGER)
+        self.assertEqual(mail.outbox[0].from_email, "ops@example.com")
+
+
 class ConfigurationTests(SimpleTestCase):
     def test_exactly_the_two_ingestion_loggers_carry_the_email_handler(self):
         self.assertEqual(tuple(settings_module.OPERATOR_ALERT_LOGGERS), (CLIENT_LOGGER, SERVICES_LOGGER))
@@ -131,6 +190,7 @@ class RoutingTests(SimpleTestCase):
         self.assertEqual(len(mail.outbox), 1, logger_name)
         message = mail.outbox[0]
         self.assertEqual(message.to, ["operator@example.com"])
+        self.assertEqual(message.from_email, settings_module.SERVER_EMAIL)   # never Django's root@localhost
         self.assertIn("ERROR", message.subject)
         self.assertIn("ingestion failure marker", message.subject)
         self.assertIn("ingestion failure marker", stderr)               # and still in the log stream
