@@ -48,6 +48,11 @@ signal would flood the ORM queue (``queue_limit`` 50) during a backfill and depe
 
 Observability
 -------------
+``collect_pipeline_runs()`` lets a caller **observe** the runs that happen inside a block -- above all the ones the
+``on_commit`` hook starts while a producer is writing signals, whose return value the hook itself discards. It is an
+observer and nothing else: what runs, and what each run does, is identical whether or not anyone is collecting. An
+orchestrator that wants the numbers therefore never has to process the same new signal a second time.
+
 Every run returns a ``PipelineRun`` and logs one line: signal, mode, context status, Radars considered (active,
 after C5's pre-filter), of those entitled, matched / insufficient state / no match, opportunities created /
 updated / unchanged, below threshold, skipped (not entitled), errors. No schema, no customer analytics.
@@ -61,6 +66,8 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 
 from django.apps import apps
@@ -121,9 +128,32 @@ def _model(name):
     return apps.get_model("gemiapp", name)
 
 
+_collected_runs: ContextVar[list | None] = ContextVar("shadow_pipeline_runs", default=None)
+
+
+@contextmanager
+def collect_pipeline_runs():
+    """Collect every ``PipelineRun`` produced inside this block, including the ones ``transaction.on_commit``
+    starts. Observation only -- see the module docstring."""
+    runs: list[PipelineRun] = []
+    token = _collected_runs.set(runs)
+    try:
+        yield runs
+    finally:
+        _collected_runs.reset(token)
+
+
 def process_company_signal(signal, *, as_of=None, dry_run: bool = False) -> PipelineRun:
     """Run the shadow pipeline for one saved CompanySignal and report what happened. Never raises for a pipeline
     failure (it is recorded in ``errors`` and logged); raises ``PipelineError`` only for an invalid input."""
+    run = _process_company_signal(signal, as_of=as_of, dry_run=dry_run)
+    observers = _collected_runs.get()
+    if observers is not None:
+        observers.append(run)
+    return run
+
+
+def _process_company_signal(signal, *, as_of, dry_run: bool) -> PipelineRun:
     CompanySignal = _model("CompanySignal")
     if not isinstance(signal, CompanySignal) or signal.pk is None:
         raise PipelineError("a saved CompanySignal is required")

@@ -159,6 +159,55 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — ο ντετερμινιστικός κύκλος SHADOW του G4 (2026-09-20).** Μία εντολή operator, μία σειρά, μία
+  ελέγξιμη αναφορά: `gemiapp/g4_shadow_cycle.py` + `python manage.py run_g4_shadow_cycle`.
+  - **Σειρά φάσεων (η σειρά είναι το συμβόλαιο):** `precheck` → `discovery` → `materialisation` →
+    `opportunity_pipeline` → `replay` → `comparison`.
+    - **A. precheck** — πριν από **οποιαδήποτε** εγγραφή και οποιοδήποτε αίτημα ΓΕΜΗ, fail closed: ingest κλειστό
+      (`GEMI_DISCOVERY_V2_ENABLED=0`), discovery shadow flag ανοιχτό, το pipeline δέχεται **μόνο** SHADOW, κανένα
+      σήμα LIVE στη βάση, οι πίνακες 2.0 υπάρχουν (introspection), ο cursor αρχικοποιημένος, ο collector ΓΕΜΗ
+      ρυθμισμένος. Τίποτα δεν είναι hard-coded: environment/vendor διαβάζονται από τη ρύθμιση και μόνο
+      αναφέρονται. Cursor σε `anomaly` → **δεν** μπλοκάρει (το σύνορο είναι ήδη παγωμένο), αναφέρεται.
+    - **B. discovery** — ένα shadow run A10. **Η μόνη φάση που μιλά στο ΓΕΜΗ** (1 αίτημα ανά σελίδα, lane
+      DISCOVERY, κοινό rate budget).
+    - **C. materialisation** — B2 από τα επιλέξιμα ευρήματα, με το baseline του ce0cd4f.
+    - **D. opportunity_pipeline** — **παρατηρείται, δεν επαναλαμβάνεται.** Το `record_company_signal` δηλώνει το
+      pipeline με `transaction.on_commit`, άρα κάθε νέο σήμα επεξεργάζεται **ήδη μία φορά** μέσα στη φάση C· ο
+      hook όμως πετά το `PipelineRun`. Νέο `collect_pipeline_runs()` στο `opportunity_pipeline` (context manager,
+      ContextVar) **μόνο** συλλέγει αυτά τα runs: τίποτα δεν αλλάζει σε ό,τι τρέχει. Έτσι ο orchestrator παίρνει
+      τις μετρικές **χωρίς** δεύτερο πέρασμα στο ίδιο σήμα.
+    - **E. replay** — **off εκτός αν ζητηθεί** (`--replay-hours N`, `--replay-limit`, 1–1000). Σε υγιή κύκλο δεν
+      έχει τι να κάνει· υπάρχει για να ανακτά δουλειά που **προηγούμενος** κύκλος έχασε (αποτυχία pipeline, Radar
+      που φτιάχτηκε αργότερα, entitlement που επανήλθε). Εξαιρεί ρητά τα σήματα που μόλις επεξεργάστηκε η φάση D.
+    - **F. report** — μία αναφορά: DISCOVERY (status, σελίδες/αιτήματα, examined/known/new, εξ αυτών ήδη τοπικές,
+      late/invalid, duplicates, anomalies, cursor πριν→μετά), MATERIALISATION (candidates, created, existing,
+      pending_no_company, baselines created/reused/unavailable, conflicts), PIPELINE και REPLAY (processed, radars
+      considered/entitled/matched/insufficient_state/no_match, opportunities created/updated/unchanged/
+      below_threshold/skipped, errors), G4 COVERAGE και, με `--compare-date`, η **υπάρχουσα** σύγκριση legacy/v2.
+  - **G4 COVERAGE:** επιλέξιμα ευρήματα, πόσα έχουν `Company`, πόσα σήματα υλοποιήθηκαν, **coverage ratio**,
+    **τεκμήριο race-loss** (`classification != known AND company_existed = True`), εκκρεμή `pending_no_company` ανά
+    κατάταξη (late_publication / invalid_date / new_incorporation) και **ηλικία του παλαιότερου** εκκρεμούς
+    τεκμηρίου. Καμία migration, κανένα μοντέλο μετρικών: console/log μόνο.
+  - **Late publications:** παραμένουν `pending_no_company` — **δεν** γίνονται ingest εδώ. Μετρούνται ρητά, ώστε το
+    κενό να γίνει **τεκμήριο G4** αντί για σιωπή.
+  - **Idempotency:** καμία δική του εγγύηση — στηρίζεται στις υπάρχουσες (dedupe key B1, επαναχρησιμοποίηση
+    baseline ce0cd4f, κλειδί (organization, Radar, company) του C8 και «ήδη συνδεδεμένο σήμα → unchanged»). Δεύτερη
+    εκτέλεση: κανένα δεύτερο σήμα/snapshot/opportunity, κανένα ξαναγράψιμο capture· το discovery καταγράφει
+    κανονικά νέο run και παρατηρήσεις (είναι το log του, όχι διπλή δουλειά).
+  - **Αποτυχίες:** μία αποτυχημένη φάση → **non-zero** (`CommandError` που ονομάζει τη φάση), αλλά **τίποτα δεν
+    αναιρείται**: ένα σήμα που έχει ήδη γίνει commit μένει, το `replay` το ανακτά. Discovery `failed`/`anomaly` =
+    αποτυχημένη φάση, η υλοποίηση συνεχίζει (διαβάζει ήδη αποθηκευμένα τεκμήρια).
+  - **`--dry-run`:** αληθινό, όχι προσποίηση — καμία εγγραφή (ούτε run/observations/cursor, ούτε σήματα, snapshots,
+    opportunities). Το discovery **κάνει** τα αιτήματά του και η αναφορά λέει ρητά ότι, επειδή δεν αποθηκεύτηκαν τα
+    ευρήματα, η υλοποίηση είδε μόνο τεκμήρια προηγούμενων εκτελέσεων.
+  - **Κόστος ΓΕΜΗ:** μόνο το discovery. Υλοποίηση, baseline, matching, scoring, persistence και replay: **μηδέν**
+    αιτήματα. Κανένα refresh/reference sync δεν προστέθηκε στον κύκλο.
+  - **Operator-run μόνο: καμία εγγραφή στο `apps.SCHEDULES`**, κανένα django-q schedule, καμία migration, καμία
+    αλλαγή σε billing, Organizations, κατάταξη Discovery, CustomerRadar, leads, matches, digests.
+  - **`G4_STATUS = NOT_PASSED`** — η 14ήμερη παρατήρηση **δεν** ξεκίνησε και η LIVE παραμένει **απαγορευμένη**.
+    23 νέα tests (`test_g4_shadow_cycle.py`, `TransactionTestCase` ώστε το on_commit να τρέχει αληθινά)·
+    **1.973 tests OK** με μία κανονική εκτέλεση.
+
 - **Gemi Leads 2.0 — Discovery v2: η «καινούρια» εταιρεία κρίνεται από το σύνορο, όχι από τον Company (2026-09-20).**
   Άρση της εξάρτησης ανάμεσα στην κατάταξη του Discovery v2 και στη **στιγμή εγγραφής** του legacy importer.
   - **Το ελάττωμα:** η κατάταξη γινόταν αποκλειστικά με «υπάρχει τώρα γραμμή `Company`;» τη στιγμή της σάρωσης.
@@ -1450,9 +1499,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   εκτός του legacy importer, δηλαδή την πύλη του cutover.
 - **G4 blocker B — χρονοπρογραμματισμός: ΛΥΘΗΚΕ (2026-09-20).** Η κατάταξη του Discovery v2 κρίνεται πλέον από το
   σύνορο στην αρχή του run, όχι από το αν ο legacy importer είχε προλάβει να γράψει τη γραμμή· η σειρά των runs δεν
-  επηρεάζει πια ποια σήματα NEW_COMPANY παράγονται. Ανοιχτό μόνο ως **λειτουργική** απόφαση: σταθερή ακολουθία
-  discovery → materialization → pipeline (δεν υλοποιήθηκε εδώ), ώστε το `detected_at` να μην εξαρτάται από το πότε
-  τρέχει χειροκίνητα ο operator. Το Discovery v2 παραμένει εκτός `apps.SCHEDULES`.
+  επηρεάζει πια ποια σήματα NEW_COMPANY παράγονται. Η σταθερή ακολουθία discovery → materialization →
+  pipeline υπάρχει πλέον ως **μία** εντολή operator, `manage.py run_g4_shadow_cycle` (2026-09-20). Ανοιχτό μόνο:
+  πότε την τρέχει ο operator — **καμία** εγγραφή στο `apps.SCHEDULES`, ούτε για το Discovery v2 ούτε για τον κύκλο.
 - **Ιδιοκτησία billing — ανοιχτό:** το billing μένει user-owned με entitlement οργανισμού παράγωγο του owner·
   μεταφορά συνδρομής/Stripe customer σε Organization (και θέσεις/seats) είναι ξεχωριστό, ελεγμένο μελλοντικό πακέτο.
 - **Customer workspace — ανοιχτά:** δεν υπάρχει ακόμη customer UI για δημιουργία οργανισμού, πρόσκληση/διαχείριση
@@ -1591,6 +1640,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-20 — Deterministic G4 shadow cycle.** Νέα: `gemiapp/g4_shadow_cycle.py`,
+  `manage.py run_g4_shadow_cycle`, `gemiapp/test_g4_shadow_cycle.py` (23 tests). Αλλαγή:
+  `gemiapp/opportunity_pipeline.py` (`collect_pipeline_runs()` — παρατήρηση των on-commit runs, καμία αλλαγή
+  συμπεριφοράς). Επαλήθευση: `check`, `makemigrations --check`, 1.973 tests OK· καμία migration, κανένα
+  επιπλέον αίτημα ΓΕΜΗ πέρα από το ίδιο το discovery run, κανένα schedule.
 
 - **2026-09-20 — Discovery v2 frontier classification fix.** Αλλαγές: `gemiapp/ingestion/discovery.py` (κατάταξη
   ανά εγγραφή με το σύνορο της αρχής του run, `rediscovered_local_records`, ingest που δεν ξαναγράφει τοπική
