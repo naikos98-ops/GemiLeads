@@ -159,6 +159,38 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — `G1_STATUS = PASSED` (τελική πρόβα parity στο staging, 2026-09-20 07:23–07:26 UTC).**
+  Πλήρης καταγραφή: `docs/RELEASE_READINESS.md`.
+  - **Η πρόβα:** rollback 0054→0031 → **αυθεντική baseline στο 0031** → forward 0031→0054 → rollback 0054→0031 →
+    reapply 0031→0054. Πριν από **κάθε** καταστροφική εντολή επαναεπιβεβαιώθηκαν: PostgreSQL,
+    `GEMI_LEADS_ENVIRONMENT=staging`, GEMI collector **απενεργοποιημένος** (η production έχει key· το staging όχι)
+    και αμετάβλητο **αδιαφανές fingerprint** της συνδεδεμένης βάσης. **Η production δεν επικοινωνήθηκε ποτέ**,
+    κανένα αίτημα ΓΕΜΗ, κανένας τοπικός worker/server συνδεδεμένος.
+  - **Ορισμός digest (αυστηρότερος από πριν):** για κάθε dataset διαβάστηκε από το `information_schema` η **πλήρης
+    λίστα στηλών του 0031** στη baseline και επαναχρησιμοποιήθηκε αυτούσια σε κάθε στάδιο — καμία στήλη 2.0 δεν
+    μπορεί να μπει, καμία στήλη δεν παραλείπεται σιωπηλά:
+    `md5(string_agg(md5(row(<κάθε στήλη 0031>)::text), '' ORDER BY id))`. Για το `companyactivity` ισχύει ο
+    τεκμηριωμένος κανόνας συμβατότητας (στο 0054 μόνο οι `legacy_listed` γραμμές· στο 0031 δεν υπάρχει η στήλη).
+    Καμία γραμμή, κανένα PII δεν τυπώθηκε· μόνο πλήθη και digests.
+  - **Αποτέλεσμα: και τα 13 legacy datasets ταυτίστηκαν με τη baseline σε πλήθος ΚΑΙ digest σε ΚΑΘΕ στάδιο**
+    (auth_user 17, usersubscription 17, customerradar 17, radarmatch 12.549, usercompanylead 12.542,
+    digestpreference 17, digestdelivery 398, outreachsuppression 29, personsuppression 0, importrun 750,
+    activitycode 9.911, **company 4.903**, **companyactivity 33.391**). Τα δύο τελευταία είναι **ίδια με την
+    production baseline**, άρα η πρόβα έτρεξε σε production-shaped όγκο. Μετά το reapply, `legacy_listed = false`
+    → **0** γραμμές.
+  - **Χρόνοι:** rollback 20,64 s · **forward 32,40 s** (`0034` **3,85 s**, `0035` **4,25 s**) · rollback 20,58 s ·
+    **reapply 35,93 s** (`0034` **4,22 s**, `0035` **4,68 s**). Οι μόνες δύο migrations που αγγίζουν legacy πίνακα
+    μένουν κοντά στα 4 s — μαζί με τα δύο μη-concurrent partial unique indexes της `0035` πάνω σε 33.391 γραμμές.
+  - **D37 lifecycle: 1 → 0 → 1 → 0 → 1.** Schedules 4 → 3 → 4 → 3 → 4, **μηδέν διπλότυπα funcs** σε κάθε στάδιο·
+    τα ids των legacy schedules (1, 3, 22) αμετάβλητα· `check` καθαρό και `migrate --check` καθαρό στο 0054.
+  - Τα staging-only 2.0 smoke fixtures καταστράφηκαν από τα rollbacks (εγκεκριμένο). **Κανένα legacy δεδομένο δεν
+    άλλαξε.** Τα digests της 2026-09-19 αντικαθίστανται: κάλυπταν υποσύνολο στηλών.
+  - **`G0_STATUS = PASSED_WITH_DOCUMENTED_SCOPE`, `G1_STATUS = PASSED`.** Απομένει **ένας** blocker για dark
+    deploy: **Sentry** — αν το `SENTRY_DSN` είναι ορισμένο στο production και αν υπάρχει alert rule για ERROR των
+    `gemiapp.ingestion.client` / `gemiapp.services`· **δεν επαληθεύεται από κώδικα**, μόνο από τα dashboards.
+    `G6_STATUS = NOT_MEASURED` (όχι blocker). **`G4_STATUS = NOT_PASSED`**, LIVE **απαγορευμένη**, καμία merge,
+    κανένα deploy, καμία production migration.
+
 - **Gemi Leads 2.0 — Pre-dark-deployment closure (2026-09-20).** Πλήρης καταγραφή: `docs/RELEASE_READINESS.md`,
   που πλέον ταξινομεί **κάθε** ισχυρισμό ως **[A] repository-recorded**, **[B] externally observed** ή **[C] open**.
   - **`G0_STATUS = PASSED_WITH_DOCUMENTED_SCOPE`.** Αφαιρέθηκε το παράγωγο κριτήριο «ξεχωριστό staging **web +
@@ -465,7 +497,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     δική του PostgreSQL, `GEMI_LEADS_ENVIRONMENT=staging`, κανένα production secret).
   - *(Αναθεώρηση 2026-09-20: το staging υπάρχει ως ξεχωριστή Supabase PostgreSQL με τοπικές διεργασίες εφαρμογής·
     το κριτήριο «ξεχωριστό Render web+worker service» αφαιρέθηκε ως μη προβλεπόμενο από το `AGENTS.md`.
-    `G0_STATUS = PASSED_WITH_DOCUMENTED_SCOPE`, `G1_STATUS = PARTIAL`. Βλ. «Pre-dark-deployment closure».)*
+    `G0_STATUS = PASSED_WITH_DOCUMENTED_SCOPE`· `G1_STATUS = PASSED` μετά την τελική πρόβα parity της ίδιας ημέρας.
+    Βλ. «G1_STATUS = PASSED (τελική πρόβα parity στο staging)».)*
 
 - **Gemi Leads 2.0 — Phase D ΟΛΟΚΛΗΡΩΘΗΚΕ (`PHASE_D_STATUS = COMPLETE`, 2026-09-19).** Τα βήματα 29–37 είναι
   δεσμευμένα/επαληθευμένα. Αυτό **δεν** σημαίνει production-ready: `G0`/`G1` μπλοκάρουν τις production migrations
@@ -1682,6 +1715,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-20 — Τελική πρόβα G1 parity στο staging.** Rollback → baseline 0031 → forward → rollback → reapply,
+  με digest πάνω σε **όλες** τις στήλες του 0031 σε κάθε στάδιο· 13/13 datasets ταυτίστηκαν παντού· D37
+  `1→0→1→0→1`· `check` και `migrate --check` καθαρά. Αλλαγές τεκμηρίωσης: `docs/RELEASE_READINESS.md`
+  (`G1_STATUS = PASSED`, χρόνοι, πίνακας parity), `AGENTS.md`. Καμία αλλαγή κώδικα, καμία production επαφή,
+  κανένα αίτημα ΓΕΜΗ, καμία merge, κανένα deploy.
 
 - **2026-09-20 — Pre-dark-deployment closure (τεκμηρίωση + data safety).** Αλλαγές: `docs/RELEASE_READINESS.md`
   (ταξινόμηση τεκμηρίων A/B/C, αφαίρεση του κριτηρίου web+worker service, production volume 4.903/33.391, staging

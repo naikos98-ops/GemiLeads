@@ -1,6 +1,6 @@
 # Gemi Leads 2.0 — Release readiness (G0 / G1)
 
-Status as of 2026-09-20. This file records the gates that block every Gemi Leads 2.0 migration from reaching
+Status as of 2026-09-20 (G1 drill completed 07:23–07:26 UTC). This file records the gates that block every Gemi Leads 2.0 migration from reaching
 production, the staging contract that G0 requires, and the rollback procedures that G1 must prove on staging.
 It never contains secret values, hostnames, database names or keys.
 
@@ -19,10 +19,10 @@ Every claim below carries its class. Nothing is presented as proven by the repos
 | Gate | Status | Why |
 | --- | --- | --- |
 | G0 — staging environment | **PASSED_WITH_DOCUMENTED_SCOPE** | A separate staging PostgreSQL exists, loaded with production-shaped data, driven by local application processes. See the scope note below. |
-| G1 — staging forward/rollback | **PARTIAL** | Forward, rollback and reapply all passed on staging **[B]**, and the post-drill volumes match production exactly **[B]**. No *pre-drill* digest was captured, so "the legacy digests were identical before and after" is **not** evidenced. |
+| G1 — staging forward/rollback | **PASSED** | A full drill on 2026-09-20 with a legacy parity digest captured at every stage: rollback → **authoritative 0031 baseline** → forward → rollback → reapply. All 13 legacy datasets matched the baseline on count *and* digest at every stage **[B]**. |
 | G6 — request budget | **NOT_MEASURED** | The ≤7/min ceiling is structurally enforced **[A]**; the legacy importer's actual consumption has never been measured **[C]**. Not a dark-deploy blocker: no 2.0 job is scheduled. |
 | Sentry alert rule (A2) | **UNVERIFIABLE_FROM_REPO** | The code supports `SENTRY_DSN` **[A]**; whether it is set in production, and whether an alert rule exists, can only be confirmed in the Sentry and Render dashboards **[C]**. |
-| Production migrations 0032–0054 | **BLOCKED** | Blocked only by the Sentry check and the G1 gap above, not by the environment. |
+| Production migrations 0032–0054 | **BLOCKED** | Blocked only by the Sentry check below. The environment and migration gates are closed. |
 | D37 schedule in production | **Not enabled** | Registered only when 0054 code is deployed. Currently 0 rows in production **[B]**. |
 
 ## Authoritative criteria
@@ -88,55 +88,76 @@ brief, but it is a non-concurrent index build and takes `ACCESS EXCLUSIVE` while
 | Tables | 84 |
 | GEMI collector | Disabled (no `GEMI_STAGING_API_KEY`): every request is refused before anything is sent |
 
-### Migration drill
+### Migration drill — final G1 run, 2026-09-20 07:23–07:26 UTC **[B]**
 
-| Step | Result |
-| --- | --- |
-| Forward 0031 → 0054 | Passed |
-| Rollback 0054 → 0031 | Passed |
-| Reapply 0031 → 0054 | Passed |
-| D37 schedule lifecycle across the drill | 0 → 1 → 0 → 1, as designed |
-| SHADOW end-to-end smoke at 0054 | Passed |
+PostgreSQL **17.6**. Source schema `gemiapp` **0031**, target **0054**, 23 migrations in the range. Before every
+destructive command the drill re-verified, and aborted on any doubt: PostgreSQL, `GEMI_LEADS_ENVIRONMENT=staging`,
+the GEMI collector disabled (production has a key; staging must not), and an opaque fingerprint of the connected
+database unchanged since the drill began. **Production was never contacted at any point**, no GEMI request was
+made, and no local worker or server held a connection (the only other connections were Supabase's own platform
+components).
 
-### Legacy parity snapshot (read-only, 2026-09-20)
+The staging-only 2.0 smoke fixtures (2 organizations, 2 organization radars, 2 signals, 1 snapshot, 2
+opportunities) were destroyed by the rollbacks, as authorised. No legacy data was touched.
 
-Counts and md5 digests over the 0031-era columns, taken after the drill. Nothing was written to staging.
-
-| Table | Rows | md5 of row digest |
+| Step | Duration | Result |
 | --- | --- | --- |
-| `auth_user` | 17 | `9b407a5bba32b10b78c83028d31f6122` |
-| `gemiapp_usersubscription` | 17 | `e560d3e58dd3591631ec322d0b33ac2b` |
-| `gemiapp_customerradar` | 17 | `5e84806badc234dff504c26cec809aa5` |
-| `gemiapp_radarmatch` | 12,549 | `9d07dc54049b08a04c8b92f34a264362` |
-| `gemiapp_usercompanylead` | 12,542 | `31d3e70ee9dd22929340659d577d02ad` |
-| `gemiapp_digestpreference` | 17 | `fa7eb4b07f943fe79ab6da5a8613c1c6` |
-| `gemiapp_digestdelivery` | 398 | `b346d0524718c700b544e62cf80ac2c7` |
-| `gemiapp_outreachsuppression` | 29 | `825bae6e2d4b7b6f8b5dc8b72b7f3245` |
-| `gemiapp_personsuppression` | 0 | `d41d8cd98f00b204e9800998ecf8427e` |
-| `gemiapp_importrun` | 750 | `81bffb112e7e74f4110b4e94c7e93200` |
-| `gemiapp_activitycode` | 9,911 | `528507162b75759ecc71a2b5d971257d` |
-| `gemiapp_company` | **4,903** | `495df351747c50a7a344ac1ab30cebcc` |
-| `gemiapp_companyactivity` where `legacy_listed` | **33,391** | `dc6acdb82ea6e6c794450fae4aed33eb` |
+| Rollback 0054 → 0031 (first) | 20.64 s | 23 migrations unapplied; 84 → 38 tables |
+| **Forward 0031 → 0054** | **32.40 s** | `0031→0033` 4.29 s · **`0034` 3.85 s** · **`0035` 4.25 s** · `0035→0054` 20.01 s |
+| Rollback 0054 → 0031 (second) | 20.58 s | 84 → 38 tables |
+| **Reapply 0031 → 0054** | **35.93 s** | `0031→0033` 4.76 s · **`0034` 4.22 s** · **`0035` 4.68 s** · `0035→0054` 22.27 s |
+| `manage.py check` at 0054 | — | No issues (0 silenced) |
+| `manage.py migrate --check` at 0054 | — | Clean (exit 0) |
+| D37 schedule across the drill | — | **1 → 0 → 1 → 0 → 1** |
+| Schedule totals across the drill | — | 4 → 3 → 4 → 3 → 4, **zero duplicate funcs at every stage** |
+| Legacy schedule identities | — | ids 1, 3 and 22 preserved unchanged throughout; only the D37 row is removed and re-created |
+| SHADOW end-to-end smoke at 0054 (earlier) | — | Passed |
 
-Digest definition (reproducible): `md5(string_agg(md5(row(<0031-era columns>)::text), '' ORDER BY id))`, with
-`gemiapp_company` including `raw_data::text`.
+`0034` and `0035` are the only two migrations that touch a legacy table, and both stayed close to four seconds on
+production-shaped volume — including `0035`'s two non-concurrent partial unique index builds over 33,391
+`companyactivity` rows, which is the only operation in the range that takes `ACCESS EXCLUSIVE` on a table with
+real data.
 
-**What this proves.** `gemiapp_company` = 4,903 and legacy-visible `gemiapp_companyactivity` = 33,391 are
-**identical to the production baseline** above, after the full forward → rollback → reapply cycle. No legacy row
-was created or destroyed by the 2.0 chain on the two tables where an independent production baseline exists.
-`gemiapp_companyactivity` total is also 33,391 with **0** rows at `legacy_listed = false`, so the 2.0 schema has
-added no derived rows: the legacy view is the whole table.
+### Legacy parity — the G1 verdict **[B]**
 
-**What this does not prove, and why G1 is not marked fully passed.** No digest was captured *before* the forward
-migration on this database, so the criterion "legacy aggregates are identical before and after the forward run"
-has no before-value to compare against. The table above is a **forward baseline** for any future drill, not
-evidence of equality across the one already performed. Closing this honestly means one more drill on staging with
-a digest captured at 0031 first — it does **not** mean re-running anything in production. No parity evidence has
-been invented to fill the gap.
+**Digest definition.** For each dataset, the **complete 0031-era column list** was read from
+`information_schema.columns` at the authoritative 0031 baseline and reused verbatim at every later stage, so a
+digest can only ever cover columns that existed at 0031 — no 2.0 column can enter it, and no column can be
+silently omitted. The digest is
 
-**Note.** Staging also carries the SHADOW smoke's own rows (2 organizations, 2 organization radars, 2 signals of
-which 1 is LIVE, 1 snapshot, 2 opportunities). The LIVE signal is a smoke fixture; it will make
-`run_g4_shadow_cycle`'s precheck refuse on staging, which is the precheck working as designed.
+    md5(string_agg(md5(row(<every 0031 column, alphabetical>)::text), '' ORDER BY id))
+
+For `gemiapp_companyactivity` the documented compatibility rule applies: at 0054 the legacy view is the
+`legacy_listed` rows, and at 0031 the column does not exist and every row is legacy-visible. No row content and
+no PII was printed at any point; only counts and digests were recorded. Two independent reads of the same 0031
+state produced identical digests, so the capture itself is stable.
+
+| dataset | baseline | forward | rollback | reapply | baseline digest | forward | rollback | reapply |
+| --- | ---: | ---: | ---: | ---: | --- | :---: | :---: | :---: |
+| `auth_user` (11 cols) | 17 | 17 | 17 | 17 | `1094f27862af353089744a5ea081d729` | ✓ | ✓ | ✓ |
+| `gemiapp_usersubscription` (16) | 17 | 17 | 17 | 17 | `aae526f9312b7e9ac402e9025b7ea511` | ✓ | ✓ | ✓ |
+| `gemiapp_customerradar` (13) | 17 | 17 | 17 | 17 | `e1a3d56c9ef753dbf3c2815f3761d30d` | ✓ | ✓ | ✓ |
+| `gemiapp_radarmatch` (9) | 12,549 | 12,549 | 12,549 | 12,549 | `498a1e1998f9b7a5b740ef5213909ed0` | ✓ | ✓ | ✓ |
+| `gemiapp_usercompanylead` (9) | 12,542 | 12,542 | 12,542 | 12,542 | `d3d2d19b5ed3ddea5cd6c776ea0cdc2d` | ✓ | ✓ | ✓ |
+| `gemiapp_digestpreference` (9) | 17 | 17 | 17 | 17 | `d265fb2062780f3978db20611fdca1c1` | ✓ | ✓ | ✓ |
+| `gemiapp_digestdelivery` (8) | 398 | 398 | 398 | 398 | `afc0a97217a5d510a53b30b06b55aff5` | ✓ | ✓ | ✓ |
+| `gemiapp_outreachsuppression` (3) | 29 | 29 | 29 | 29 | `01d362b45ff78a5f57f7e02eb45f7569` | ✓ | ✓ | ✓ |
+| `gemiapp_personsuppression` (7) | 0 | 0 | 0 | 0 | `d41d8cd98f00b204e9800998ecf8427e` | ✓ | ✓ | ✓ |
+| `gemiapp_importrun` (9) | 750 | 750 | 750 | 750 | `42a71f73a2255fd7a9c0f12f1611b24e` | ✓ | ✓ | ✓ |
+| `gemiapp_activitycode` (6) | 9,911 | 9,911 | 9,911 | 9,911 | `b4a3b446b90a449fca47b9214f8bdf64` | ✓ | ✓ | ✓ |
+| `gemiapp_company` (22) | **4,903** | 4,903 | 4,903 | 4,903 | `76c3f8242fe320501a9c9302aeb19d42` | ✓ | ✓ | ✓ |
+| `gemiapp_companyactivity` (5) | **33,391** | 33,391 | 33,391 | 33,391 | `7e57e07c67733506eebb6f63c0d352b4` | ✓ | ✓ | ✓ |
+
+**Every legacy dataset matched the authoritative 0031 baseline, on count and on digest, at every stage.**
+`gemiapp_company` = 4,903 and `gemiapp_companyactivity` = 33,391 are also identical to the production baseline
+recorded above, so the drill ran on production-shaped volume and the 2.0 chain created and destroyed no legacy
+row. After the reapply, `gemiapp_companyactivity` still holds **0** rows at `legacy_listed = false`: the 2.0
+schema adds no derived rows on its own.
+
+**`G1_STATUS = PASSED`.** The earlier gap — no digest captured before the forward migration — is closed: this
+drill rolled staging back to 0031 first, captured the baseline there, and only then measured the forward run
+against it. Digests from the 2026-09-19 snapshot are superseded; they covered a hand-picked subset of columns,
+while these cover every 0031-era column of every dataset.
 
 ## Local rehearsal against staging (2026-09-20) **[B]**
 
@@ -278,9 +299,9 @@ reaches the branch checked out in the main working copy, the dumps in that copy 
 
 1. **Sentry (A2)** — confirm `SENTRY_DSN` is set on the production service and that an alert rule exists for ERROR
    events of `gemiapp.ingestion.client` / `gemiapp.services`. Manual, dashboard-only, and the one hard blocker.
-2. **G1 pre-drill digests** — either accept G1 as PARTIAL with this file's reasoning, or run one more staging
-   drill capturing the digest at 0031 before the forward run.
-3. **Move the two production dumps out of the repository tree** (`.gitignore` now prevents accidental staging;
+2. **Move the two production dumps out of the repository tree** (`.gitignore` now prevents accidental staging;
    the files still exist on disk).
-4. **Staging GEMI key, or measured headroom (A5/G6)** — a follow-up, not a dark-deploy blocker, since no 2.0 job
+3. **Staging GEMI key, or measured headroom (A5/G6)** — a follow-up, not a dark-deploy blocker, since no 2.0 job
    is scheduled and the dark deploy adds zero scheduled GEMI requests.
+
+G1 is closed (2026-09-20). Sentry is the only gate still standing between here and a dark deployment.
