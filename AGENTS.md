@@ -196,8 +196,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     `GEMI_REQUEST_METRICS_ENABLED` (προεπιλογή 1).
   - **Αναφορά:** `python manage.py report_gemi_request_budget --hours 24` — **μόνο ανάγνωση**: καμία κλήση
     ΓΕΜΗ, καμία εγγραφή. Το «outbound attempts» είναι **μόνο** όσες έφτασαν στο transport· τα budget timeout /
-    unavailable έχουν δική τους γραμμή και **δεν** μετρούν ούτε εκεί ούτε στο peak. Το headroom είναι **πάντα**
-    έναντι του ασφαλούς ορίου 7/λεπτό (`MAX_REQUESTS_PER_MINUTE`): κανένα flag δεν το μετακινεί. Δίνει παράθυρο,
+    unavailable έχουν δική τους γραμμή και **δεν** μετρούν ούτε εκεί ούτε στο peak.
+  - **Δύο όρια, πάντα και τα δύο:** το **ασφαλές ανώτατο** `MAX_REQUESTS_PER_MINUTE = 7` (θεωρητικό μέγιστο)
+    και η **effective configured capacity** — το `GEMI_RATE_LIMIT_PER_MINUTE` με το clamp 2..7 του
+    `BudgetConfig.from_settings()`, που η αναφορά **καλεί** αντί να το ξαναγράφει, ώστε να μη διαφωνεί ποτέ με το
+    budget. Utilisation και headroom τυπώνονται και για τα δύο. **Κάθε λειτουργική απόφαση G6 χρησιμοποιεί την
+    effective capacity**, όχι το 7: με όριο 5 και peak 3 μένουν 2, όχι 4. Το headroom **δεν** είναι ποτέ
+    αρνητικό· peak πάνω από το όριο εμφανίζεται ως ξεχωριστό **OVER CAPACITY** (ή **AT CAPACITY** όταν ισούται).
+    Τα saturated / high-utilisation παράθυρα κρίνονται έναντι της effective capacity. Δίνει παράθυρο,
     απόπειρες (outbound / retries / λογικές κλήσεις / όσες δεν στάλθηκαν),
     ανά lane, 429 / 5xx / 4xx / transport, budget timeout & unavailable, συνολική-μέση-μέγιστη αναμονή, peak
     σε κυλιόμενο λεπτό, utilisation και headroom έναντι του ασφαλούς ορίου 7/λεπτό, saturated και
@@ -210,7 +216,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   - **Ανοιχτό (τεκμηριωμένο, όχι κρυμμένο):** ο πίνακας είναι append-only χωρίς retention. Στο ceiling των
     7/λεπτό το απόλυτο άνω όριο είναι ~10.080 γραμμές/ημέρα (στην πράξη πολύ λιγότερες)· χρειάζεται
     ξεχωριστή απόφαση για purge, όπως έγινε με το `purge_gemi_source_records`.
-  - 37 νέα tests (`gemiapp/test_gemi_request_metrics.py`)· **2.089 tests OK**· `check`,
+  - 46 νέα tests (`gemiapp/test_gemi_request_metrics.py`)· **2.098 tests OK**· `check`,
     `makemigrations --check` καθαρά.
 
 - **Gemi Leads 2.0 — Organization Radar: διόρθωση του chevron του dropdown (2026-09-21). UX μόνο.**
@@ -1927,7 +1933,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   `gemiapp/ingestion/client.py` (μία παρατήρηση ανά απόπειρα, μέτρηση αναμονής budget),
   `config/settings.py` (`GEMI_REQUEST_METRICS_ENABLED`), `config/fast_test_runner.py` (off στο suite),
   και τα deliberate migration-head pins σε έξι test modules (0054 → 0055). Επαλήθευση: `check`,
-  `makemigrations --check`, 2.089 tests OK. **Καμία** αλλαγή σε matching, scoring, billing, organization
+  `makemigrations --check`, 2.098 tests OK. **Καμία** αλλαγή σε matching, scoring, billing, organization
   logic, schedules ή στο ceiling· **G4 NOT STARTED**, LIVE απαγορευμένη.
 
 - **2026-09-21 — Radar picker chevron toggle (bugfix).** Αλλαγές: `static/js/app.js` (stopPropagation στο

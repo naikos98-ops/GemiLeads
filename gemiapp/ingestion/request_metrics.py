@@ -49,7 +49,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from .rate_budget import MAX_REQUESTS_PER_MINUTE, GemiLane
+from .rate_budget import MAX_REQUESTS_PER_MINUTE, BudgetConfig, GemiLane
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,8 @@ BUDGET_UNAVAILABLE = "budget_unavailable"
 SENT_OUTCOMES = (SUCCESS, RATE_LIMITED, SERVER_ERROR, CLIENT_ERROR, TRANSPORT_ERROR)
 
 ROLLING_WINDOW_SECONDS = 60.0
-# A window is "high utilisation" at this share of the ceiling, and "saturated" at the ceiling itself.
+# A window is "high utilisation" at this share of the effective capacity, and "saturated" at the capacity.
+# Both are judged against the effective configured capacity: that is what the budget actually allows.
 HIGH_UTILISATION_SHARE = 0.8
 
 _NUMERIC_SEGMENT = re.compile(r"^\d[\d\-]*$")
@@ -153,8 +154,13 @@ class BudgetReport:
     window_start: datetime
     window_end: datetime
     hours: float
+    # The application's safe ceiling across every process (MAX_REQUESTS_PER_MINUTE), the theoretical maximum.
     ceiling_per_minute: int
+    # GEMI_RATE_LIMIT_PER_MINUTE as configured, before clamping.
     configured_limit_per_minute: int
+    # What the budget really enforces: the configured limit clamped exactly as BudgetConfig.from_settings()
+    # clamps it. Any G6 operational decision uses this, not the theoretical ceiling.
+    effective_capacity_per_minute: int
 
     recorded_attempts: int = 0        # every row, including the ones that never reached the transport
     sent_attempts: int = 0            # attempts that consumed a request slot
@@ -177,24 +183,58 @@ class BudgetReport:
 
     peak_rolling_60s: int = 0
     peak_window_start: datetime | None = None
-    saturated_windows: int = 0
-    high_utilisation_windows: int = 0
+    saturated_windows: int = 0              # anchored windows at or above the effective capacity
+    high_utilisation_windows: int = 0       # anchored windows at >= HIGH_UTILISATION_SHARE of that capacity
+    saturated_ceiling_windows: int = 0      # anchored windows at or above the safe ceiling
 
     by_lane: tuple[LaneUsage, ...] = field(default_factory=tuple)
     endpoints: tuple[tuple[str, int], ...] = field(default_factory=tuple)
 
-    @property
-    def utilisation_pct(self) -> float:
-        return 100.0 * self.peak_rolling_60s / self.ceiling_per_minute if self.ceiling_per_minute else 0.0
+    # Headroom is never negative: a peak above a limit is not "negative room", it is an overrun, reported as
+    # its own figure so it cannot be read as capacity left over.
 
     @property
-    def headroom_per_minute(self) -> int:
-        return self.ceiling_per_minute - self.peak_rolling_60s
+    def utilisation_vs_ceiling_pct(self) -> float:
+        return _share(self.peak_rolling_60s, self.ceiling_per_minute)
+
+    @property
+    def headroom_vs_ceiling(self) -> int:
+        return max(0, self.ceiling_per_minute - self.peak_rolling_60s)
+
+    @property
+    def over_ceiling(self) -> int:
+        return max(0, self.peak_rolling_60s - self.ceiling_per_minute)
+
+    @property
+    def utilisation_vs_capacity_pct(self) -> float:
+        return _share(self.peak_rolling_60s, self.effective_capacity_per_minute)
+
+    @property
+    def headroom_vs_capacity(self) -> int:
+        return max(0, self.effective_capacity_per_minute - self.peak_rolling_60s)
+
+    @property
+    def over_capacity(self) -> int:
+        return max(0, self.peak_rolling_60s - self.effective_capacity_per_minute)
+
+    @property
+    def at_or_over_capacity(self) -> bool:
+        return self.effective_capacity_per_minute > 0 and self.peak_rolling_60s >= self.effective_capacity_per_minute
 
     @property
     def average_per_minute(self) -> float:
         minutes = (self.window_end - self.window_start).total_seconds() / 60.0
         return self.sent_attempts / minutes if minutes > 0 else 0.0
+
+
+def _share(part: int, whole: int) -> float:
+    return 100.0 * part / whole if whole else 0.0
+
+
+def effective_capacity() -> int:
+    """Requests per minute the budget really allows. Deliberately *calls* BudgetConfig.from_settings() rather
+    than restating its clamp (2..MAX_REQUESTS_PER_MINUTE), so the report can never disagree with the budget."""
+    return BudgetConfig.from_settings().capacity
 
 
 def _rolling_windows(moments: list[datetime]):
@@ -243,6 +283,7 @@ def build_report(*, hours: float = 24.0, now: datetime | None = None, ceiling: i
     start = end - timedelta(hours=float(hours))
     ceiling = int(ceiling if ceiling is not None else MAX_REQUESTS_PER_MINUTE)
     configured = int(getattr(settings, "GEMI_RATE_LIMIT_PER_MINUTE", MAX_REQUESTS_PER_MINUTE))
+    capacity = effective_capacity()
 
     rows = list(
         model.objects.filter(occurred_at__gte=start, occurred_at__lte=end)
@@ -252,7 +293,8 @@ def build_report(*, hours: float = 24.0, now: datetime | None = None, ceiling: i
     sent = [row for row in rows if row[3] in SENT_OUTCOMES]
     moments = [row[0] for row in sent]
     peak, peak_at = _rolling_peak(moments)
-    saturated, high = _window_counts(moments, ceiling)
+    saturated, high = _window_counts(moments, capacity)
+    saturated_ceiling, _ = _window_counts(moments, ceiling)
 
     waits = [row[4] / 1000.0 for row in rows]
     lanes = []
@@ -277,6 +319,7 @@ def build_report(*, hours: float = 24.0, now: datetime | None = None, ceiling: i
         hours=float(hours),
         ceiling_per_minute=ceiling,
         configured_limit_per_minute=configured,
+        effective_capacity_per_minute=capacity,
         recorded_attempts=len(rows),
         sent_attempts=len(sent),
         logical_calls=sum(1 for row in rows if row[2] == 1),
@@ -296,6 +339,7 @@ def build_report(*, hours: float = 24.0, now: datetime | None = None, ceiling: i
         peak_window_start=peak_at,
         saturated_windows=saturated,
         high_utilisation_windows=high,
+        saturated_ceiling_windows=saturated_ceiling,
         by_lane=tuple(lanes),
         endpoints=tuple(sorted(endpoints.items(), key=lambda item: (-item[1], item[0]))),
     )

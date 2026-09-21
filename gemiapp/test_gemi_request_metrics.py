@@ -322,8 +322,8 @@ class ReportArithmeticTests(TestCase):
 
         self.assertEqual(report.peak_rolling_60s, 4)
         self.assertEqual(report.peak_window_start, self.BASE + timedelta(seconds=50))
-        self.assertEqual(report.headroom_per_minute, 3)
-        self.assertAlmostEqual(report.utilisation_pct, 400 / 7, places=6)
+        self.assertEqual(report.headroom_vs_ceiling, 3)
+        self.assertAlmostEqual(report.utilisation_vs_ceiling_pct, 400 / 7, places=6)
 
     def test_attempts_exactly_sixty_seconds_apart_are_not_in_the_same_window(self):
         self.attempt(offset=0)
@@ -338,8 +338,8 @@ class ReportArithmeticTests(TestCase):
         report = self.report(ceiling=7)
 
         self.assertEqual(report.peak_rolling_60s, 7)
-        self.assertEqual(report.headroom_per_minute, 0)
-        self.assertEqual(report.utilisation_pct, 100.0)
+        self.assertEqual(report.headroom_vs_ceiling, 0)
+        self.assertEqual(report.utilisation_vs_ceiling_pct, 100.0)
         self.assertEqual(report.saturated_windows, 1)          # only the window holding all seven
         self.assertEqual(report.high_utilisation_windows, 2)   # the windows holding six and seven
 
@@ -365,7 +365,7 @@ class ReportArithmeticTests(TestCase):
 
         self.assertEqual((report.recorded_attempts, report.peak_rolling_60s), (0, 0))
         self.assertIsNone(report.peak_window_start)
-        self.assertEqual(report.headroom_per_minute, 7)
+        self.assertEqual((report.headroom_vs_ceiling, report.headroom_vs_capacity), (7, 7))
         self.assertEqual(report.average_per_minute, 0.0)
 
     def test_a_row_stamped_in_the_future_is_excluded_and_reported(self):
@@ -384,6 +384,126 @@ class ReportArithmeticTests(TestCase):
         self.attempt(offset=2, endpoint="/companies/{id}")
 
         self.assertEqual(self.report().endpoints, (("/companies", 2), ("/companies/{id}", 1)))
+
+
+class EffectiveCapacityTests(TestCase):
+    """Headroom against what the budget really allows, not only the theoretical ceiling of 7.
+
+    The effective capacity is GEMI_RATE_LIMIT_PER_MINUTE clamped exactly as BudgetConfig.from_settings() clamps
+    it. If the limit is configured below 7, headroom against 7 overstates what the application can use.
+    """
+
+    BASE = datetime(2026, 9, 21, 9, 0, 0, tzinfo=dt_timezone.utc)
+
+    def attempts(self, count):
+        for offset in range(count):                     # all inside one rolling minute
+            GemiRequestAttempt.objects.create(
+                occurred_at=self.BASE + timedelta(seconds=offset), lane=int(GemiLane.DIGEST_IMPORT),
+                attempt=1, outcome=SUCCESS, http_status=200, endpoint="/companies",
+            )
+
+    def report(self):
+        return build_report(hours=24, now=self.BASE + timedelta(hours=1))
+
+    def test_the_effective_capacity_is_exactly_what_the_budget_enforces(self):
+        from .ingestion.rate_budget import BudgetConfig
+
+        for configured in (1, 2, 5, 7, 8, 12):
+            with override_settings(GEMI_RATE_LIMIT_PER_MINUTE=configured):
+                self.assertEqual(self.report().effective_capacity_per_minute,
+                                 BudgetConfig.from_settings().capacity, configured)
+
+    def test_a_configured_limit_of_7_leaves_capacity_and_ceiling_equal(self):
+        self.attempts(3)
+        with override_settings(GEMI_RATE_LIMIT_PER_MINUTE=7):
+            report = self.report()
+
+        self.assertEqual((report.configured_limit_per_minute, report.effective_capacity_per_minute,
+                          report.ceiling_per_minute), (7, 7, 7))
+        self.assertEqual((report.headroom_vs_capacity, report.headroom_vs_ceiling), (4, 4))
+        self.assertAlmostEqual(report.utilisation_vs_capacity_pct, 300 / 7, places=6)
+        self.assertAlmostEqual(report.utilisation_vs_ceiling_pct, 300 / 7, places=6)
+
+    def test_a_limit_below_7_shrinks_the_headroom_that_is_really_available(self):
+        """The case this exists for: 3 at peak against a limit of 5 leaves 2, not the 4 the ceiling suggests."""
+        self.attempts(3)
+        with override_settings(GEMI_RATE_LIMIT_PER_MINUTE=5):
+            report = self.report()
+
+        self.assertEqual(report.effective_capacity_per_minute, 5)
+        self.assertEqual(report.headroom_vs_capacity, 2)
+        self.assertEqual(report.headroom_vs_ceiling, 4)
+        self.assertEqual(report.utilisation_vs_capacity_pct, 60.0)
+        self.assertAlmostEqual(report.utilisation_vs_ceiling_pct, 300 / 7, places=6)
+
+    def test_a_limit_above_7_is_clamped_to_7(self):
+        self.attempts(3)
+        with override_settings(GEMI_RATE_LIMIT_PER_MINUTE=12):
+            report = self.report()
+
+        self.assertEqual(report.configured_limit_per_minute, 12)   # reported as configured...
+        self.assertEqual(report.effective_capacity_per_minute, 7)  # ...but never believed above the ceiling
+        self.assertEqual(report.headroom_vs_capacity, 4)
+
+    def test_a_limit_below_2_is_clamped_to_2(self):
+        with override_settings(GEMI_RATE_LIMIT_PER_MINUTE=1):
+            self.assertEqual(self.report().effective_capacity_per_minute, 2)
+
+    def test_a_peak_equal_to_the_effective_capacity_leaves_no_headroom(self):
+        self.attempts(5)
+        with override_settings(GEMI_RATE_LIMIT_PER_MINUTE=5):
+            report = self.report()
+
+        self.assertEqual((report.peak_rolling_60s, report.headroom_vs_capacity, report.over_capacity), (5, 0, 0))
+        self.assertEqual(report.utilisation_vs_capacity_pct, 100.0)
+        self.assertTrue(report.at_or_over_capacity)
+        self.assertEqual(report.saturated_windows, 1)             # judged against the capacity of 5
+        self.assertEqual(report.saturated_ceiling_windows, 0)     # 5 never reached the ceiling of 7
+        self.assertEqual(report.headroom_vs_ceiling, 2)
+
+    def test_a_peak_above_the_effective_capacity_is_an_overrun_not_negative_headroom(self):
+        self.attempts(6)
+        with override_settings(GEMI_RATE_LIMIT_PER_MINUTE=5):
+            report = self.report()
+
+        self.assertEqual(report.headroom_vs_capacity, 0)          # never presented as -1 "available"
+        self.assertEqual(report.over_capacity, 1)                 # the overrun is its own figure
+        self.assertEqual(report.utilisation_vs_capacity_pct, 120.0)
+        self.assertEqual((report.headroom_vs_ceiling, report.over_ceiling), (1, 0))
+
+    def test_the_command_prints_both_and_labels_an_overrun(self):
+        now = timezone.now() - timedelta(minutes=5)
+        for offset in range(6):
+            GemiRequestAttempt.objects.create(
+                occurred_at=now + timedelta(seconds=offset), lane=int(GemiLane.DIGEST_IMPORT), attempt=1,
+                outcome=SUCCESS, http_status=200, endpoint="/companies",
+            )
+        out = StringIO()
+        with override_settings(GEMI_RATE_LIMIT_PER_MINUTE=5):
+            call_command("report_gemi_request_budget", hours=1, stdout=out)
+        output = out.getvalue()
+
+        for expected in ("safe ceiling          : 7/min", "configured limit      : GEMI_RATE_LIMIT_PER_MINUTE=5",
+                         "effective capacity    : 5/min", "vs EFFECTIVE capacity 5/min (the decision basis)",
+                         "utilisation         : 120.0%", "OVER CAPACITY       : peak exceeded the effective "
+                         "capacity by 1", "vs safe ceiling 7/min", "utilisation         : 85.7%",
+                         "every G6 operational decision uses the EFFECTIVE capacity"):
+            self.assertIn(expected, output, expected)
+        self.assertNotIn("-1", output)                            # no negative headroom anywhere
+
+    def test_the_command_labels_a_peak_at_capacity(self):
+        now = timezone.now() - timedelta(minutes=5)
+        for offset in range(5):
+            GemiRequestAttempt.objects.create(
+                occurred_at=now + timedelta(seconds=offset), lane=int(GemiLane.DIGEST_IMPORT), attempt=1,
+                outcome=SUCCESS, http_status=200, endpoint="/companies",
+            )
+        out = StringIO()
+        with override_settings(GEMI_RATE_LIMIT_PER_MINUTE=5):
+            call_command("report_gemi_request_budget", hours=1, stdout=out)
+
+        self.assertIn("AT CAPACITY         : peak reached the effective capacity", out.getvalue())
+        self.assertNotIn("OVER CAPACITY", out.getvalue())
 
 
 class ReportCommandTests(TestCase):
@@ -405,8 +525,9 @@ class ReportCommandTests(TestCase):
 
         for expected in ("OUTBOUND ATTEMPTS", "outbound attempts     : 2", "of which retries      : 1",
                          "429 rate limited      : 1", "DISCOVERY", "DIGEST_IMPORT", "MONITORED_REFRESH",
-                         "DOCUMENTS", "BUDGET WAIT", "peak requests/window  : 2", "headroom              : 5",
-                         "utilisation vs ceiling", "saturated windows", "transport/network",
+                         "DOCUMENTS", "BUDGET WAIT", "peak outbound/60s     : 2",
+                         "headroom            : 5 requests/min", "effective capacity    : 7/min",
+                         "utilisation", "saturated windows", "transport/network",
                          "budget timeout", "budget unavailable", "/companies"):
             self.assertIn(expected, output, expected)
         self.assertEqual(GemiRequestAttempt.objects.count(), 2)     # nothing was written or deleted
@@ -424,13 +545,14 @@ class ReportCommandTests(TestCase):
         self.assertIn("not sent (budget)     : 2", output)
         self.assertIn("budget timeout        : 1", output)
         self.assertIn("budget unavailable    : 1", output)
-        self.assertIn("peak requests/window  : 1", output)       # the two that never sent are not in the peak
+        self.assertIn("peak outbound/60s     : 1", output)       # the two that never sent are not in the peak
 
     def test_headroom_is_always_against_the_application_ceiling_of_7(self):
         output = self.run_command(hours=1)
 
-        self.assertIn("safe ceiling          : 7/min, the application ceiling (MAX_REQUESTS_PER_MINUTE)", output)
-        self.assertIn("headroom              : 7 requests/min", output)
+        self.assertIn("safe ceiling          : 7/min   (MAX_REQUESTS_PER_MINUTE", output)
+        self.assertIn("vs safe ceiling 7/min", output)
+        self.assertIn("headroom            : 7 requests/min", output)
         with self.assertRaises(Exception):                     # no flag can move the ceiling
             self.run_command(hours=1, ceiling=20)
 

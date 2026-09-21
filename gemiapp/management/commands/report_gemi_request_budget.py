@@ -33,9 +33,15 @@ class Command(BaseCommand):
         write("GEMI REQUEST BUDGET - G6 observation")
         write(f"  window                : {_stamp(report.window_start)} .. {_stamp(report.window_end)} "
               f"({report.hours:g}h)")
-        write(f"  safe ceiling          : {report.ceiling_per_minute}/min, the application ceiling "
-              f"(MAX_REQUESTS_PER_MINUTE); configured GEMI_RATE_LIMIT_PER_MINUTE="
-              f"{report.configured_limit_per_minute}")
+
+        write("")
+        write("CAPACITY")
+        write(f"  safe ceiling          : {report.ceiling_per_minute}/min   (MAX_REQUESTS_PER_MINUTE, the "
+              "theoretical application maximum)")
+        write(f"  configured limit      : GEMI_RATE_LIMIT_PER_MINUTE={report.configured_limit_per_minute}")
+        write(f"  effective capacity    : {report.effective_capacity_per_minute}/min   (what the budget enforces: "
+              f"the configured limit clamped to 2..{report.ceiling_per_minute}, as BudgetConfig.from_settings)")
+        write("  -> every G6 operational decision uses the EFFECTIVE capacity, not the theoretical ceiling.")
 
         write("")
         write("OUTBOUND ATTEMPTS (reached the transport and spent a slot; each retry counted separately)")
@@ -73,15 +79,30 @@ class Command(BaseCommand):
         write("")
         write(f"PEAK USAGE (exact rolling {ROLLING_WINDOW_SECONDS:.0f}s window, anchored at each attempt -")
         write("            this is a true rolling window, not a wall-clock minute bucket)")
-        write(f"  peak requests/window  : {report.peak_rolling_60s}")
+        write(f"  peak outbound/60s     : {report.peak_rolling_60s}")
         write(f"  peak window began     : {_stamp(report.peak_window_start)}")
-        write(f"  utilisation vs ceiling: {report.utilisation_pct:.1f}% of {report.ceiling_per_minute}/min")
-        write(f"  headroom              : {report.headroom_per_minute} requests/min")
         write(f"  average rate          : {report.average_per_minute:.2f} requests/min over the window")
-        write(f"  saturated windows     : {report.saturated_windows} "
+        write("")
+        write(f"  vs EFFECTIVE capacity {report.effective_capacity_per_minute}/min (the decision basis):")
+        write(f"    utilisation         : {report.utilisation_vs_capacity_pct:.1f}%")
+        write(f"    headroom            : {report.headroom_vs_capacity} requests/min")
+        if report.over_capacity:
+            write(f"    OVER CAPACITY       : peak exceeded the effective capacity by {report.over_capacity} "
+                  "request(s)/min - no headroom")
+        elif report.at_or_over_capacity:
+            write("    AT CAPACITY         : peak reached the effective capacity - no headroom")
+        write(f"    saturated windows   : {report.saturated_windows} "
+              f"(anchored windows reaching {report.effective_capacity_per_minute})")
+        write(f"    high-utilisation    : {report.high_utilisation_windows} "
+              f"(anchored windows at >={HIGH_UTILISATION_SHARE:.0%} of {report.effective_capacity_per_minute})")
+        write(f"  vs safe ceiling {report.ceiling_per_minute}/min (theoretical maximum):")
+        write(f"    utilisation         : {report.utilisation_vs_ceiling_pct:.1f}%")
+        write(f"    headroom            : {report.headroom_vs_ceiling} requests/min")
+        if report.over_ceiling:
+            write(f"    OVER CEILING        : peak exceeded the safe ceiling by {report.over_ceiling} "
+                  "request(s)/min - investigate: the budget should make this impossible")
+        write(f"    saturated windows   : {report.saturated_ceiling_windows} "
               f"(anchored windows reaching {report.ceiling_per_minute})")
-        write(f"  high-utilisation      : {report.high_utilisation_windows} "
-              f"(anchored windows at >={HIGH_UTILISATION_SHARE:.0%} of the ceiling)")
         write("  note: anchored windows overlap; these are counts of moments at which the rate was that")
         write("        high, not counts of separate periods.")
 
@@ -96,7 +117,9 @@ class Command(BaseCommand):
         if report.sent_attempts == 0:
             write("  No outbound attempt was recorded in this window. That is not evidence of headroom:")
             write("  check that GEMI_REQUEST_METRICS_ENABLED=1 and that a GEMI job actually ran.")
-        write(f"  measured peak {report.peak_rolling_60s}/min against a safe ceiling of "
-              f"{report.ceiling_per_minute}/min leaves {report.headroom_per_minute} requests/min unused.")
+        write(f"  measured peak {report.peak_rolling_60s}/min against the effective capacity of "
+              f"{report.effective_capacity_per_minute}/min leaves {report.headroom_vs_capacity} requests/min "
+              f"unused ({report.headroom_vs_ceiling} against the theoretical ceiling of "
+              f"{report.ceiling_per_minute}/min).")
         write("  G6_STATUS is not decided here: the repository defines no numeric threshold for it, so this")
         write("  command reports facts only. G4 remains NOT STARTED / NOT PASSED and LIVE remains prohibited.")
