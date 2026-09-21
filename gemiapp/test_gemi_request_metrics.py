@@ -489,7 +489,8 @@ class EffectiveCapacityTests(TestCase):
                          "capacity by 1", "vs safe ceiling 7/min", "utilisation         : 85.7%",
                          "every G6 operational decision uses the EFFECTIVE capacity"):
             self.assertIn(expected, output, expected)
-        self.assertNotIn("-1", output)                            # no negative headroom anywhere
+        self.assertNotRegex(output, r"headroom\s*:\s*-")         # no negative headroom anywhere
+        # (not a bare "-1" check: the window timestamps contain "-1" on days 10-19 and in October)
 
     def test_the_command_labels_a_peak_at_capacity(self):
         now = timezone.now() - timedelta(minutes=5)
