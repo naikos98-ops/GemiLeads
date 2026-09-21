@@ -173,6 +173,25 @@ class ObservabilityIsHarmlessTests(NoNetworkMixin, TestCase):
         self.assertEqual(len(transport.calls), 1)                        # and no request was repeated
         self.assertEqual(GemiRequestAttempt.objects.count(), 0)
 
+    def test_an_observation_failure_cannot_alter_any_request_result(self):
+        """Break the observation itself, not just the write: success, retry, final 4xx and a budget failure
+        all behave exactly as they would with metrics off."""
+        broken = patch("gemiapp.ingestion.request_metrics.record_attempt", side_effect=RuntimeError("boom"))
+        with broken, self.assertLogs("gemiapp.ingestion.client", level="ERROR"):
+            client, transport, _, _ = make_client(response(503), response(200, {"searchResults": [1]}))
+            self.assertEqual(client.get("/companies", {}, lane=GemiLane.DISCOVERY), {"searchResults": [1]})
+            self.assertEqual(len(transport.calls), 2)              # the retry still happened, once
+
+            client, _, _, _ = make_client(response(404, {"message": "x"}))
+            with self.assertRaises(GemiNotFoundError):             # the same exception, not a metrics one
+                client.get("/companies/1", {}, lane=GemiLane.DOCUMENTS)
+
+            client, transport, _, _ = make_client(response(200, {}))
+            with patch.object(client._budget, "acquire", side_effect=GemiBudgetTimeoutError("no slot")):
+                with self.assertRaises(GemiBudgetTimeoutError):    # the budget error is not replaced
+                    client.get("/companies", {}, lane=GemiLane.DISCOVERY)
+            self.assertEqual(transport.calls, [])
+
     def test_recording_makes_no_extra_gemi_request(self):
         client, transport, _, _ = make_client(response(200, {"searchResults": []}))
 
@@ -223,6 +242,14 @@ class NoSecretsOrCustomerDataTests(NoNetworkMixin, TestCase):
         self.assertEqual(normalise_endpoint("/companies/123456789000/documents"), "/companies/{id}/documents")
         self.assertEqual(normalise_endpoint("/metadata/prefectures"), "/metadata/prefectures")
         self.assertEqual(normalise_endpoint(""), "")
+
+
+class SchemaTests(TestCase):
+    def test_the_report_timestamp_filter_is_indexed(self):
+        """Both report queries range-filter occurred_at; an index led by it serves them, and only one does."""
+        leading = [index for index in GemiRequestAttempt._meta.indexes if index.fields[0] == "occurred_at"]
+        self.assertEqual(len(leading), 1)
+        self.assertFalse(GemiRequestAttempt._meta.get_field("occurred_at").db_index)   # no duplicate index
 
 
 class ClassificationTests(TestCase):
@@ -376,13 +403,36 @@ class ReportCommandTests(TestCase):
 
         output = self.run_command(hours=24)
 
-        for expected in ("OUTBOUND ATTEMPTS", "consumed a slot       : 2", "retries               : 1",
+        for expected in ("OUTBOUND ATTEMPTS", "outbound attempts     : 2", "of which retries      : 1",
                          "429 rate limited      : 1", "DISCOVERY", "DIGEST_IMPORT", "MONITORED_REFRESH",
                          "DOCUMENTS", "BUDGET WAIT", "peak requests/window  : 2", "headroom              : 5",
                          "utilisation vs ceiling", "saturated windows", "transport/network",
                          "budget timeout", "budget unavailable", "/companies"):
             self.assertIn(expected, output, expected)
         self.assertEqual(GemiRequestAttempt.objects.count(), 2)     # nothing was written or deleted
+
+    def test_budget_failures_are_reported_separately_and_never_as_outbound(self):
+        """The headline number is attempts that reached the transport. A budget failure sent nothing."""
+        now = timezone.now() - timedelta(minutes=5)
+        for outcome, status in ((SUCCESS, 200), (BUDGET_TIMEOUT, None), (BUDGET_UNAVAILABLE, None)):
+            GemiRequestAttempt.objects.create(occurred_at=now, lane=int(GemiLane.DISCOVERY), attempt=1,
+                                              outcome=outcome, http_status=status, endpoint="/companies")
+
+        output = self.run_command(hours=1)
+
+        self.assertIn("outbound attempts     : 1", output)
+        self.assertIn("not sent (budget)     : 2", output)
+        self.assertIn("budget timeout        : 1", output)
+        self.assertIn("budget unavailable    : 1", output)
+        self.assertIn("peak requests/window  : 1", output)       # the two that never sent are not in the peak
+
+    def test_headroom_is_always_against_the_application_ceiling_of_7(self):
+        output = self.run_command(hours=1)
+
+        self.assertIn("safe ceiling          : 7/min, the application ceiling (MAX_REQUESTS_PER_MINUTE)", output)
+        self.assertIn("headroom              : 7 requests/min", output)
+        with self.assertRaises(Exception):                     # no flag can move the ceiling
+            self.run_command(hours=1, ceiling=20)
 
     def test_the_command_never_claims_g6_passed(self):
         output = self.run_command(hours=1)
@@ -404,12 +454,12 @@ class ReportCommandTests(TestCase):
         output = self.run_command(hours=1)
 
         self.assertIn("stamped after the end of this window", output)
-        self.assertIn("consumed a slot       : 0", output)
+        self.assertIn("outbound attempts     : 0", output)
 
     def test_the_window_length_is_honoured(self):
         now = timezone.now()
         GemiRequestAttempt.objects.create(occurred_at=now - timedelta(hours=5), lane=int(GemiLane.DOCUMENTS),
                                           attempt=1, outcome=SUCCESS, http_status=200, endpoint="/metadata")
 
-        self.assertIn("consumed a slot       : 0", self.run_command(hours=1))
-        self.assertIn("consumed a slot       : 1", self.run_command(hours=24))
+        self.assertIn("outbound attempts     : 0", self.run_command(hours=1))
+        self.assertIn("outbound attempts     : 1", self.run_command(hours=24))

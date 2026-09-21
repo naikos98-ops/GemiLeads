@@ -7,6 +7,7 @@ involved -- no API key, no query parameters, no payload, no company identifier.
 
 from django.core.management.base import BaseCommand
 
+from gemiapp.ingestion.rate_budget import MAX_REQUESTS_PER_MINUTE
 from gemiapp.ingestion.request_metrics import HIGH_UTILISATION_SHARE, ROLLING_WINDOW_SECONDS, build_report
 
 
@@ -23,26 +24,27 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--hours", type=float, default=24.0,
                             help="Παράθυρο παρατήρησης σε ώρες (προεπιλογή 24).")
-        parser.add_argument("--ceiling", type=int, default=None,
-                            help="Ανώτατο ασφαλές όριο αιτημάτων/λεπτό για τον υπολογισμό (προεπιλογή 7).")
 
     def handle(self, *args, **options):
-        report = build_report(hours=options["hours"], ceiling=options["ceiling"])
+        # Always against the application's safe ceiling: headroom relative to anything else is not G6 evidence.
+        report = build_report(hours=options["hours"], ceiling=MAX_REQUESTS_PER_MINUTE)
         write = self.stdout.write
 
         write("GEMI REQUEST BUDGET - G6 observation")
         write(f"  window                : {_stamp(report.window_start)} .. {_stamp(report.window_end)} "
               f"({report.hours:g}h)")
-        write(f"  safe ceiling          : {report.ceiling_per_minute}/min "
-              f"(GEMI_RATE_LIMIT_PER_MINUTE={report.configured_limit_per_minute})")
+        write(f"  safe ceiling          : {report.ceiling_per_minute}/min, the application ceiling "
+              f"(MAX_REQUESTS_PER_MINUTE); configured GEMI_RATE_LIMIT_PER_MINUTE="
+              f"{report.configured_limit_per_minute}")
 
         write("")
-        write("OUTBOUND ATTEMPTS (one row per real attempt, retries counted separately)")
-        write(f"  recorded attempts     : {report.recorded_attempts}")
-        write(f"  consumed a slot       : {report.sent_attempts}")
-        write(f"  logical calls         : {report.logical_calls}")
-        write(f"  retries               : {report.retries}")
+        write("OUTBOUND ATTEMPTS (reached the transport and spent a slot; each retry counted separately)")
+        write(f"  outbound attempts     : {report.sent_attempts}")
+        write(f"  of which retries      : {report.retries}")
         write(f"  successful (2xx)      : {report.successes}")
+        write(f"  logical calls         : {report.logical_calls}   (first attempts, including any that never sent)")
+        write(f"  not sent (budget)     : {report.budget_timeouts + report.budget_unavailable}   "
+              f"(excluded from every count above and from the peak)")
 
         write("")
         write("BY LANE (attempts that consumed a slot)")

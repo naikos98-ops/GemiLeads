@@ -829,7 +829,7 @@ class GemiRequestAttempt(models.Model):
     SENT_OUTCOMES = (Outcome.SUCCESS, Outcome.RATE_LIMITED, Outcome.SERVER_ERROR, Outcome.CLIENT_ERROR,
                      Outcome.TRANSPORT_ERROR)
 
-    occurred_at = models.DateTimeField(db_index=True)
+    occurred_at = models.DateTimeField()
     lane = models.PositiveSmallIntegerField(choices=Lane.choices)
     # 1-based within one logical call; anything above 1 is a retry of the same call.
     attempt = models.PositiveSmallIntegerField()
@@ -844,7 +844,9 @@ class GemiRequestAttempt(models.Model):
         verbose_name = "GEMI request attempt"
         verbose_name_plural = "GEMI request attempts"
         indexes = [
-            # The report's window scan: every attempt in the last N hours, in time order.
+            # The report's window scan -- every attempt in the last N hours, in time order -- and its count of
+            # rows stamped after the window. occurred_at leads, so this one index serves both range filters; a
+            # separate single-column index on occurred_at would only duplicate it.
             models.Index(fields=["occurred_at", "outcome"], name="gemireq_occurred_outcome_idx"),
         ]
 

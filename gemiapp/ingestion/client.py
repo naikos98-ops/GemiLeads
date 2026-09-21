@@ -346,8 +346,7 @@ class GemiClient:
                     path, "timeout" if exc.timed_out else "network error", exc.kind, attempt, self._max_attempts,
                 )
             else:
-                self._observe(lane, attempt, path, request_metrics.classify_status(response.status),
-                              response.status, waited)
+                self._observe(lane, attempt, path, None, response.status, waited)
                 response_headers = {str(key).lower(): str(value) for key, value in response.headers.items()}
                 reset_in = _exhausted_window_seconds(response_headers)
                 if reset_in is not None:
@@ -405,15 +404,25 @@ class GemiClient:
             raise
         return self._clock() - started
 
-    def _observe(self, lane: GemiLane, attempt: int, path: str, outcome: str, status: int | None,
+    def _observe(self, lane: GemiLane, attempt: int, path: str, outcome: str | None, status: int | None,
                  waited: float) -> None:
-        """One G6 observation. Metadata only, and it can never break the request: record_attempt swallows
-        its own failures, and this adds nothing that could raise."""
-        request_metrics.record_attempt(
-            lane=lane, attempt=attempt, endpoint=path, outcome=outcome, http_status=status,
-            budget_wait_seconds=waited,
-            occurred_at=datetime.fromtimestamp(self._clock(), tz=dt_timezone.utc),
-        )
+        """One G6 observation: metadata only, and it can never change the request's result.
+
+        Everything happens inside one guard -- classifying the status, stamping the time, writing the row --
+        so nothing here can raise into the request path. That matters most on a budget failure, where an
+        exception from here would replace the GemiBudgetTimeoutError or GemiBudgetUnavailableError the caller
+        is about to receive. ``outcome`` is None when there was an HTTP response; it is classified here.
+        """
+        try:
+            request_metrics.record_attempt(
+                lane=lane, attempt=attempt, endpoint=path,
+                outcome=outcome if outcome is not None else request_metrics.classify_status(status),
+                http_status=status, budget_wait_seconds=waited,
+                occurred_at=datetime.fromtimestamp(self._clock(), tz=dt_timezone.utc),
+            )
+        except Exception as exc:  # noqa: BLE001 -- observability must never alter a GEMI request
+            logger.error("GEMI request metrics: observation skipped (%s); the request is unaffected.",
+                         type(exc).__name__)
 
     @staticmethod
     def _validate(family: ResponseFamily, payload: Any, path: str, request_id: str, lane: GemiLane) -> None:

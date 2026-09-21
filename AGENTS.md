@@ -177,7 +177,10 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     `MAX_ENTRIES`, δηλαδή ακριβώς όταν η κίνηση είναι υψηλή· (3) το cache API **δεν απαριθμεί** κλειδιά. Το
     budget δεν χρειάζεται τίποτα από αυτά γιατί χρησιμοποιεί `add()` σε κλειδί που κανείς άλλος δεν
     διεκδικεί, που **είναι** ατομικό. Άρα: ένας μικρός append-only πίνακας `GemiRequestAttempt`
-    (**migration 0055**, όπως ζητήθηκε: ορθότητα πάνω από την αποφυγή migration).
+    (**migration 0055**, όπως ζητήθηκε: ορθότητα πάνω από την αποφυγή migration). **Ένα** index,
+    `(occurred_at, outcome)`: το `occurred_at` προηγείται, οπότε εξυπηρετεί και τα δύο range φίλτρα της αναφοράς
+    (επαληθεύτηκε με `EXPLAIN QUERY PLAN`: index range seek, χωρίς επιπλέον sort). Ένα δεύτερο index μόνο στο
+    `occurred_at` θα ήταν διπλότυπο και αφαιρέθηκε πριν από το deploy.
   - **Peak:** με μία γραμμή ανά απόπειρα και ακριβή χρόνο, το peak υπολογίζεται σε **αληθινό κυλιόμενο
     παράθυρο 60 δευτερολέπτων** (τα παράθυρα αγκυρώνονται σε κάθε απόπειρα — το μέγιστο οποιουδήποτε
     διαστήματος 60s πιάνεται πάντα σε διάστημα που ξεκινά σε απόπειρα). **Δεν** είναι bucket ημερολογιακού
@@ -185,12 +188,17 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     ξεχωριστές περίοδοι.
   - **Ασφάλεια production:** καμία επιπλέον κλήση ΓΕΜΗ· ένα μικρό INSERT **μετά** την απάντηση· **fail-open**
     (κάθε σφάλμα καταγραφής καταπίνεται και λογαρίζεται — η ingestion δεν σπάει ποτέ επειδή έσπασε η
-    μέτρηση)· το INSERT τρέχει σε **δικό του savepoint** ώστε σφάλμα βάσης να μη δηλητηριάσει transaction
+    μέτρηση). Όλη η παρατήρηση — ταξινόμηση status, χρονοσφραγίδα, εγγραφή — είναι μέσα σε **ένα** guard στο
+    `GemiClient._observe`, ώστε τίποτα από αυτήν να μην μπορεί να αντικαταστήσει το σφάλμα budget που θα πάρει ο
+    καλών· τα logs γράφουν μόνο τον **τύπο** της εξαίρεσης, ποτέ το μήνυμα· το INSERT τρέχει σε **δικό του savepoint** ώστε σφάλμα βάσης να μη δηλητηριάσει transaction
     του καλούντος· το budget μένει **fail-closed** (αποτυχία budget καταγράφεται και **ξαναρίχνεται
     αυτούσια**, δεν στάλθηκε τίποτα και δεν μετρά στο ceiling). Διακόπτης:
     `GEMI_REQUEST_METRICS_ENABLED` (προεπιλογή 1).
   - **Αναφορά:** `python manage.py report_gemi_request_budget --hours 24` — **μόνο ανάγνωση**: καμία κλήση
-    ΓΕΜΗ, καμία εγγραφή. Δίνει παράθυρο, απόπειρες (σύνολο / όσες ξόδεψαν slot / λογικές κλήσεις / retries),
+    ΓΕΜΗ, καμία εγγραφή. Το «outbound attempts» είναι **μόνο** όσες έφτασαν στο transport· τα budget timeout /
+    unavailable έχουν δική τους γραμμή και **δεν** μετρούν ούτε εκεί ούτε στο peak. Το headroom είναι **πάντα**
+    έναντι του ασφαλούς ορίου 7/λεπτό (`MAX_REQUESTS_PER_MINUTE`): κανένα flag δεν το μετακινεί. Δίνει παράθυρο,
+    απόπειρες (outbound / retries / λογικές κλήσεις / όσες δεν στάλθηκαν),
     ανά lane, 429 / 5xx / 4xx / transport, budget timeout & unavailable, συνολική-μέση-μέγιστη αναμονή, peak
     σε κυλιόμενο λεπτό, utilisation και headroom έναντι του ασφαλούς ορίου 7/λεπτό, saturated και
     high-utilisation παράθυρα, και κανονικοποιημένα endpoints.
@@ -202,7 +210,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   - **Ανοιχτό (τεκμηριωμένο, όχι κρυμμένο):** ο πίνακας είναι append-only χωρίς retention. Στο ceiling των
     7/λεπτό το απόλυτο άνω όριο είναι ~10.080 γραμμές/ημέρα (στην πράξη πολύ λιγότερες)· χρειάζεται
     ξεχωριστή απόφαση για purge, όπως έγινε με το `purge_gemi_source_records`.
-  - 33 νέα tests (`gemiapp/test_gemi_request_metrics.py`)· **2.083 tests OK**· `check`,
+  - 37 νέα tests (`gemiapp/test_gemi_request_metrics.py`)· **2.089 tests OK**· `check`,
     `makemigrations --check` καθαρά.
 
 - **Gemi Leads 2.0 — Organization Radar: διόρθωση του chevron του dropdown (2026-09-21). UX μόνο.**
@@ -1807,7 +1815,10 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   να έχει κριτήρια.
 - **Release gate για το G6 — μία μόνο additive migration:** η `0055` δημιουργεί **μόνο** τον άδειο πίνακα
   `GemiRequestAttempt`. Το deploy δεν κάνει καμία κλήση ΓΕΜΗ και δεν προγραμματίζει τίποτα: ο πίνακας
-  γεμίζει μόνος του από τις **υπάρχουσες** εργασίες (daily/intraday import) καθώς τρέχουν. Μετά το deploy:
+  γεμίζει μόνος του από τις **υπάρχουσες** εργασίες (daily/intraday import) καθώς τρέχουν. **Η 0055 εφαρμόζεται
+  από το `preDeployCommand` του Render (`python manage.py migrate`)** — **όχι** χειροκίνητα μετά το deploy· η
+  επαλήθευση γίνεται από το deploy log του Render (`Applying gemiapp.0055_gemi_request_attempt... OK`). Μετά το
+  deploy:
   `python manage.py report_gemi_request_budget --hours 24` (μόνο ανάγνωση) για τουλάχιστον έναν πλήρη κύκλο
   24 ωρών πριν συζητηθεί οποιαδήποτε απόφαση G4.
 - **Release gate για το C1 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0044` δημιουργεί τρεις
@@ -1916,7 +1927,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   `gemiapp/ingestion/client.py` (μία παρατήρηση ανά απόπειρα, μέτρηση αναμονής budget),
   `config/settings.py` (`GEMI_REQUEST_METRICS_ENABLED`), `config/fast_test_runner.py` (off στο suite),
   και τα deliberate migration-head pins σε έξι test modules (0054 → 0055). Επαλήθευση: `check`,
-  `makemigrations --check`, 2.083 tests OK. **Καμία** αλλαγή σε matching, scoring, billing, organization
+  `makemigrations --check`, 2.089 tests OK. **Καμία** αλλαγή σε matching, scoring, billing, organization
   logic, schedules ή στο ceiling· **G4 NOT STARTED**, LIVE απαγορευμένη.
 
 - **2026-09-21 — Radar picker chevron toggle (bugfix).** Αλλαγές: `static/js/app.js` (stopPropagation στο
