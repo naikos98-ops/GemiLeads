@@ -1,0 +1,9 @@
+{% comment %} The product's .product-ink-button, email-safe: the colour sits on the cell as well as
+the link so Outlook still paints it, and the padding is on the link so the whole block is
+clickable. Pass href and label. {% endcomment %}<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td bgcolor="#12201e" style="background-color: #12201e;">
+      <a href="{{ href }}" style="display: inline-block; padding: 13px 20px; border: 1px solid #12201e; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 13px; font-weight: 600; letter-spacing: 0.06em; color: #fbfbf7; text-decoration: none;">{{ label }}</a>
+    </td>
+  </tr>
+</table>

@@ -159,6 +159,46 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Νέα email templates στο Signal Ledger (2026-09-26). Μόνο εμφάνιση/κείμενο· καμία αλλαγή σε αποστολή.**
+  - **Κοινό πλαίσιο `templates/emails/_base.html`** (+ `_button.html`): paper `#f3f2ec`, ένα φύλλο `#fbfbf7` με
+    1px ink rule, logo αριστερά και mono metadata δεξιά (το topbar του προϊόντος), τετράγωνες γωνίες. **Όχι**
+    emoji, σκιές, pills, στρογγυλές κάρτες, κεντραρισμένο hero ή μπλε — ό,τι έκανε τα παλιά να μοιάζουν
+    γενικά/AI. Όλα inline και σε πίνακες (Gmail/Outlook)· preheader, `color-scheme: light`, phone padding.
+  - **Digest** (`daily_digest.html/.txt`): ίδιο context. Σύνοψη (πλήθος), «Ταιριάζουν στα Ραντάρ σου» με το amber
+    match stroke (3px αριστερό rule, όπως `.product-signal.selected`), «Νέες εγγραφές ΓΕΜΗ» ως register με
+    γραμμές `#cbd0cb`, ΓΕΜΗ/ΑΦΜ/τόπος σε mono· **κανένα επινοημένο default** (πριν: «Νέα επιχείρηση»,
+    «Ελλάδα»). Ink κουμπί + «Λήψη CSV». Το footer **δεν** λέει πια «έχεις ενεργή συνδρομή» — από 2026-09-06 το
+    daily πάει και σε μη συνδρομητές· δείχνει Ρυθμίσεις + διακοπή. Το `.txt` είναι πλέον `autoescape off`
+    (πριν ένα `&` στην επωνυμία έβγαινε `&amp;` σε text/plain) και δεν λέει «Καλημέρα» στο alert των 20:00.
+  - **Verification / password reset:** επικεφαλίδα, μία πρόταση, κουμπί, σύνδεσμος για αντιγραφή, notice με amber
+    rule («ισχύει 3 ημέρες» = `PASSWORD_RESET_TIMEOUT` του Django). Ενικός, όπως όλο το site.
+  - **Bug που διορθώθηκε:** το Django `PasswordResetView` έπαιρνε για το **text/plain** το default
+    `registration/password_reset_email.html`, δηλαδή έστελνε raw HTML ως κείμενο. Νέο
+    `registration/password_reset_email.txt` + `email_template_name` στο `config/urls.py`·
+    `TransactionalEmailFormatTests` το κλειδώνει.
+  - Subjects, tags Brevo, links, unsubscribe/CSV tokens **αμετάβλητα**. Το `client_outreach.*` **δεν** άλλαξε
+    (cold outreach παγωμένο). **2.101 tests OK**· καμία migration.
+
+- **Νέο branding: artwork αντί για CSS mark (2026-09-26). Μόνο assets/references, κανένα άλλο UI.**
+  - **Assets (`static/images/`, μία πηγή, χωρίς διπλότυπα):** `gemi-leads-logo-horizontal.png` (icon + λεκτικό,
+    400×100, διαφανές) · `gemi-leads-icon.png` (512², διαφανές) · `favicon.ico` (16/32/48) · `favicon.png` (96²,
+    **ίδιο όνομα**, ώστε και τα παλιά email που το δείχνουν απόλυτα να δείχνουν πλέον το νέο icon) ·
+    `apple-touch-icon.png` (180², σε `--product-white`, γιατί το iOS γεμίζει τη διαφάνεια με μαύρο) ·
+    `gemi-leads-logo-email.png` (256×64, **flattened σε `#fbfbf7`**, μόνο για email) · `gemi-leads-og.png`
+    (1200×630, στο cream του artwork). Το παλιό `logo.png` (μπλε radar) **διαγράφηκε**.
+  - **Διαφάνεια:** η κάρτα του artwork έχει το **ίδιο** cream με το φόντο, οπότε color-key θα την τρυπούσε. Η κάρτα
+    εντοπίστηκε από το αχνό της περίγραμμα και μένει αδιαφανής (μαζί με τα παράθυρα του κτιρίου)· μόνο το
+    εξωτερικό φόντο, τα counters των γραμμάτων και η διάχυτη σκιά έγιναν διαφανή (το σύστημα είναι flat). Τα
+    anti-aliased άκρα είναι un-blended, άρα καθαρά σε οποιοδήποτε φόντο. Το ίδιο το σχέδιο **δεν** άλλαξε.
+  - **Πού:** full logo σε **και τα τρία** topbars (`.product-brand`, `.public-brand`, `.admin-brand`) ως
+    `<img class="brand-logo" alt="Gemi Leads">`, **25px** ύψος παντού — το μέγιστο που χωρά μαζί με το BETA μέσα
+    στη στήλη 184px του rail (επαληθεύτηκε: καμία υπερχείλιση σε 1280/768/375/320, ίδια ύψη bar 58/52px). Το
+    λεκτικό **δεν** ξαναγράφεται σε HTML δίπλα του. Το CSS-drawn `.product-mark` και τα `.*-brand b` αφαιρέθηκαν.
+    Favicon set σε `base.html` **και** `superadmin/base.html` (που πριν δεν είχε κανένα favicon). `og:image` →
+    `gemi-leads-og.png`, JSON-LD `logo` → `gemi-leads-icon.png`. Τα emails: βλ. «Νέα email templates».
+  - Νέο `BrandAssetTests`: κάθε `static 'images/…'` / `gemileads.gr/static/images/…` σε template πρέπει να
+    υπάρχει, και τα headers αποδίδουν το artwork χωρίς το παλιό mark. **2.100 tests OK**· καμία migration.
+
 - **Gemi Leads 2.0 — G6: παρατηρησιμότητα του request budget του ΓΕΜΗ (2026-09-21). Μέτρηση, όχι απόφαση.**
   - **Τι μετριέται:** **κάθε πραγματική εξερχόμενη απόπειρα**, όχι οι λογικές κλήσεις. Μία κλήση που κάνει
     retry ξοδεύει δικό της slot κάθε φορά, άρα γράφει μία γραμμή ανά απόπειρα (`attempt` 1..n· ό,τι είναι
@@ -1761,6 +1801,16 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Email templates — ανοιχτά:** (α) τα allauth emails (π.χ. reset από το `/accounts/password/reset/`, που
+  είναι ακόμη προσβάσιμο) μένουν στα default plain-text του allauth, εκτός του νέου σχεδίου· (β) το
+  `client_outreach.*` μένει στο παλιό στυλ όσο το outreach είναι παγωμένο· (γ) χρειάζεται μία πραγματική
+  αποστολή σε Gmail/Outlook/Apple Mail μετά το deploy (τα logos φορτώνουν από `gemileads.gr/static`).
+- **Branding — ανοιχτές αποφάσεις (όχι bugs):** (α) το `<meta name="theme-color" content="#081a2c">` του
+  `base.html` είναι ακόμη το παλιό navy (το superadmin έχει `#12201e`)· αφέθηκε γιατί είναι χρώμα, όχι asset.
+  (β) Το public footer δεν είχε ποτέ logo, μόνο το νομικό «© 2026 GEMI LEADS»· δεν προστέθηκε logo για να μην
+  αλλάξει το layout. (γ) Τα email δείχνουν τα logos με απόλυτο URL `https://gemileads.gr/static/images/…`:
+  λειτουργούν μόνο αφού γίνει deploy αυτό το branch.
+
 - **G4 blocker A — late publications (ανοιχτό, μετρούμενο):** εταιρείες που ο legacy importer δεν αποθηκεύει
   ποτέ τοπικά (φέρνει μόνο όσες έχουν ημερομηνία σύστασης = ημερομηνία στόχου) μένουν `pending_no_company` και
   **δεν** παίρνουν σήμα NEW_COMPANY μέχρι το cutover του Discovery v2. Δεν λύθηκε σκόπιμα: μετριέται στο G4 ως
@@ -1926,6 +1976,20 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-26 — Email templates στο Signal Ledger.** Νέα: `templates/emails/_base.html`, `_button.html`,
+  `registration/password_reset_email.txt`, `static/images/gemi-leads-logo-email.png` (αντικατέστησε το
+  `gemi-leads-logo-stacked.png`, που δεν έγινε ποτέ deploy). Αλλαγές: `daily_digest.html/.txt`,
+  `verification.html/.txt`, `registration/password_reset_email.html`, `config/urls.py` (`email_template_name`),
+  `gemiapp/tests.py`. Επαλήθευση: render με δείγματα σε desktop και 375px, `check`, `makemigrations --check`,
+  2.101 tests OK.
+
+- **2026-09-26 — Νέο branding (icon + full logo).** Νέα: 6 assets στο `static/images/` (βλ. «Τρέχουσα
+  κατάσταση»), `BrandAssetTests`. Αλλαγές: `templates/base.html` (favicon set, og:image, JSON-LD logo, δύο
+  topbars), `templates/superadmin/base.html` (favicon set, topbar), `static/css/product-ui.css` (`.brand-logo`,
+  αφαίρεση `.product-mark`), 3 HTML emails, `gemiapp/tests.py` (budget/og tests στα νέα ονόματα). Διαγραφή
+  `static/images/logo.png`. Επαλήθευση: `check`, `makemigrations --check`, 2.100 tests OK, έλεγχος σε browser
+  (desktop/tablet/mobile, public + product, email header)· το superadmin header ελέγχθηκε μέσω test client.
 
 - **2026-09-21 — G6 request-budget observability.** Νέα: `gemiapp/ingestion/request_metrics.py`,
   `gemiapp/management/commands/report_gemi_request_budget.py`, `gemiapp/test_gemi_request_metrics.py`,

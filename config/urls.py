@@ -13,7 +13,10 @@ urlpatterns = [
     path("superadmin/", include("gemiapp.superadmin.urls")),
     path("login/", RateLimitedLoginView.as_view(template_name="registration/login.html"), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
-    path("password_reset/", RateLimitedPasswordResetView.as_view(html_email_template_name="registration/password_reset_email.html"), name="password_reset"),
+    path("password_reset/", RateLimitedPasswordResetView.as_view(
+        email_template_name="registration/password_reset_email.txt",
+        html_email_template_name="registration/password_reset_email.html",
+    ), name="password_reset"),
     path("password_reset/done/", auth_views.PasswordResetDoneView.as_view(), name="password_reset_done"),
     path("reset/<uidb64>/<token>/", auth_views.PasswordResetConfirmView.as_view(), name="password_reset_confirm"),
     path("reset/done/", auth_views.PasswordResetCompleteView.as_view(), name="password_reset_complete"),

@@ -7,6 +7,9 @@
   {# Opt in to the light palette so mobile browsers' forced dark mode does not muddy it. #}
   <meta name="color-scheme" content="light">
   <title>{% block title %}Superadmin · Gemi Leads{% endblock %}</title>
+  <link rel="icon" href="{% static 'images/favicon.ico' %}" sizes="16x16 32x32 48x48">
+  <link rel="icon" type="image/png" href="{% static 'images/favicon.png' %}" sizes="96x96">
+  <link rel="apple-touch-icon" href="{% static 'images/apple-touch-icon.png' %}">
   {% comment %} Same two stylesheets as the authenticated product. product-ui.css is what makes this
      page the same software as Signals/Radars/Leads rather than a separate admin theme. {% endcomment %}
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
@@ -29,8 +32,7 @@
 
   <header class="admin-topbar">
     <a class="admin-brand" href="{% url 'superadmin:overview' %}" aria-label="Gemi Leads · Superadmin">
-      <span class="product-mark" aria-hidden="true"><i></i></span>
-      <span>GEMI <b>LEADS</b></span>
+      <img class="brand-logo" src="{% static 'images/gemi-leads-logo-horizontal.png' %}" alt="Gemi Leads" width="100" height="25">
       <small>ADMIN</small>
     </a>
     <div class="admin-topbar-meta">

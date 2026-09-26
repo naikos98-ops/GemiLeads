@@ -7,7 +7,9 @@
   <meta name="theme-color" content="#081a2c">
   {# Opt in to the single light palette so mobile browsers' forced dark mode does not muddy it. #}
   <meta name="color-scheme" content="light">
-  <link rel="icon" type="image/png" href="{% static 'images/favicon.png' %}">
+  <link rel="icon" href="{% static 'images/favicon.ico' %}" sizes="16x16 32x32 48x48">
+  <link rel="icon" type="image/png" href="{% static 'images/favicon.png' %}" sizes="96x96">
+  <link rel="apple-touch-icon" href="{% static 'images/apple-touch-icon.png' %}">
   <title>{% block title %}Gemi Leads{% endblock %}</title>
   {# Compiled by the Tailwind CLI (npm run build:css). #}
   {# The CDN build shipped a 120 KB JIT compiler that blocked the first paint. #}
@@ -31,7 +33,7 @@
   <meta property="og:title" content="{% block og_title %}Gemi Leads{% endblock %}">
   <meta property="og:description" content="{% block og_description %}Νέες επιχειρήσεις και B2B leads από το ΓΕΜΗ — βρες νέους πιθανούς πελάτες τη στιγμή που μπαίνουν στην αγορά.{% endblock %}">
   <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
-  <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'images/logo.png' %}">
+  <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'images/gemi-leads-og.png' %}">
   <meta name="twitter:card" content="summary_large_image">
 
   {# Entity definition for search and AI engines. Only verifiable facts here: #}
@@ -47,7 +49,7 @@
         "url": "{{ request.scheme }}://{{ request.get_host }}/",
         "logo": {
           "@type": "ImageObject",
-          "url": "{{ request.scheme }}://{{ request.get_host }}{% static 'images/logo.png' %}"
+          "url": "{{ request.scheme }}://{{ request.get_host }}{% static 'images/gemi-leads-icon.png' %}"
         },
         "email": "info@gemileads.gr",
         "description": "Καθημερινή παρακολούθηση νέων επιχειρήσεων από το επίσημο Open Data API του ΓΕΜΗ, με φίλτρα ΚΑΔ και περιοχής."
@@ -79,8 +81,7 @@
   {% if user.is_authenticated %}
   <header class="product-topbar">
     <a class="product-brand" href="{% url 'dashboard' %}" aria-label="Gemi Leads · Signals">
-      <span class="product-mark" aria-hidden="true"><i></i></span>
-      <span>GEMI <b>LEADS</b></span>
+      <img class="brand-logo" src="{% static 'images/gemi-leads-logo-horizontal.png' %}" alt="Gemi Leads" width="100" height="25">
       {% if beta_mode %}<small>BETA</small>{% endif %}
     </a>
     <div class="product-source-meta">
@@ -105,12 +106,11 @@
   </nav>
   {% else %}
   {% comment %} Public chrome. Different destinations from the authenticated rail, but the same
-     brand mark, the same ink rule, the same mono nav grammar -- a visitor and a
+     brand logo, the same ink rule, the same mono nav grammar -- a visitor and a
      subscriber are unmistakably looking at one product. {% endcomment %}
   <header class="public-topbar">
     <a class="public-brand" href="{% url 'home' %}" aria-label="Gemi Leads">
-      <span class="product-mark" aria-hidden="true"><i></i></span>
-      <span>GEMI <b>LEADS</b></span>
+      <img class="brand-logo" src="{% static 'images/gemi-leads-logo-horizontal.png' %}" alt="Gemi Leads" width="100" height="25">
       {% if beta_mode %}<small>Beta</small>{% endif %}
     </a>
     <nav class="public-nav" aria-label="Δημόσια πλοήγηση">

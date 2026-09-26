@@ -2424,9 +2424,62 @@ class FrontendAssetTests(TestCase):
         from django.conf import settings
 
         images = Path(settings.BASE_DIR) / "static" / "images"
-        for name, limit_kb in (("favicon.png", 40), ("logo.png", 150)):
+        for name, limit_kb in (
+            ("favicon.png", 40),
+            ("favicon.ico", 20),
+            ("apple-touch-icon.png", 40),
+            ("gemi-leads-icon.png", 150),
+            ("gemi-leads-logo-horizontal.png", 60),
+            ("gemi-leads-logo-email.png", 30),
+            ("gemi-leads-og.png", 150),
+        ):
             size_kb = (images / name).stat().st_size / 1024
             self.assertLess(size_kb, limit_kb, f"{name} is {size_kb:.0f} KB")
+
+
+class TransactionalEmailFormatTests(TestCase):
+    """Each email part must be what its content type says it is."""
+
+    def test_password_reset_text_part_is_plain_text(self):
+        """Django fell back to the HTML template for text/plain, so the text part was raw markup."""
+        User.objects.create_user("reset@example.com", "reset@example.com", "StrongPass123")
+        self.client.post(reverse("password_reset"), {"email": "reset@example.com"})
+
+        message = mail.outbox[0]
+        self.assertNotIn("<", message.body)
+        self.assertRegex(message.body, r"https?://[^\s]+/reset/[^\s]+/")
+        html, mimetype = message.alternatives[0]
+        self.assertEqual(mimetype, "text/html")
+        self.assertIn("gemi-leads-logo-email.png", html)
+        self.assertRegex(html, r'href="https?://[^"]+/reset/[^"]+/"')
+
+
+class BrandAssetTests(TestCase):
+    """The brand is artwork now: every surface must point at a file that exists."""
+
+    IMAGE_REF = re.compile(r"(?:static '|gemileads\.gr/static/)(images/[\w./-]+)")
+
+    def test_every_referenced_brand_image_exists(self):
+        from pathlib import Path
+        from django.conf import settings
+
+        root = Path(settings.BASE_DIR)
+        refs = set()
+        for template in (root / "templates").rglob("*.html"):
+            refs.update(self.IMAGE_REF.findall(template.read_text(encoding="utf-8")))
+        self.assertTrue(refs, "no image references found; the pattern is stale")
+        for ref in sorted(refs):
+            self.assertTrue((root / "static" / ref).is_file(), f"{ref} is referenced but missing")
+
+    def test_public_and_product_headers_use_the_logo_artwork(self):
+        public = self.client.get(reverse("home")).content.decode()
+        user = User.objects.create_user("brand@example.com", "brand@example.com", "StrongPass123")
+        self.client.force_login(user)
+        product = self.client.get(reverse("dashboard")).content.decode()
+        for html in (public, product):
+            self.assertRegex(html, r'<img class="brand-logo" src="[^"]*gemi-leads-logo-horizontal[^"]*" alt="Gemi Leads"')
+            self.assertNotIn("product-mark", html)
+            self.assertNotIn("GEMI <b>LEADS</b>", html)
 
 
 class PricingAccuracyTests(TestCase):
@@ -2498,8 +2551,8 @@ class OpenGraphImageTests(TestCase):
         html = self.client.get("/", HTTP_HOST="gemileads.gr").content.decode()
         og = re.search(r'property="og:image" content="([^"]+)"', html).group(1)
         self.assertTrue(og.startswith("http://gemileads.gr/"), og)
-        # Hashed by ManifestStaticFilesStorage: logo.<hash>.png
-        self.assertRegex(og, r"logo(\.[0-9a-f]{12})?\.png$")
+        # Hashed by ManifestStaticFilesStorage: gemi-leads-og.<hash>.png
+        self.assertRegex(og, r"gemi-leads-og(\.[0-9a-f]{12})?\.png$")
 
 
 class CachedAggregateTests(TestCase):

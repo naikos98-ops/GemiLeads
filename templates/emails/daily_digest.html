@@ -1,116 +1,94 @@
-<!DOCTYPE html>
-<html lang="el">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; -webkit-font-smoothing: antialiased;">
-  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #f8fafc; padding: 40px 16px;">
-    <tr>
-      <td align="center">
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);">
-          <!-- Header -->
+{% extends "emails/_base.html" %}
+{% comment %}
+The digest is the Signals register by email: rows separated by the product line colour,
+Radar matches marked with the amber match stroke (3px left rule, as .product-signal.selected),
+GEMI numbers and places in mono. Same context as before -- company_data, general_companies,
+frequency, digest_date, export_url, unsubscribe_url.
+{% endcomment %}
+{% block title %}Gemi Leads · {% if frequency == 'intraday' %}Priority Alert{% else %}Ημερήσια ενημέρωση{% endif %}{% endblock %}
+{% block preheader %}{{ company_data|length }} στα Ραντάρ σου · {{ general_companies|length }} ακόμη νέες εγγραφές ΓΕΜΗ{% endblock %}
+{% block kicker %}{% if frequency == 'intraday' %}Priority alert{% else %}Ημερήσια ενημέρωση{% endif %}{% endblock %}
+{% block kicker_detail %}{{ digest_date|date:'d/m/Y' }}{% endblock %}
+
+{% block content %}
+{% with radar_count=company_data|length general_count=general_companies|length %}{% with total=radar_count|add:general_count %}
           <tr>
-            <td style="background-color: #0f172a; padding: 40px 32px; text-align: center;">
-              <img src="https://gemileads.gr/static/images/favicon.png" alt="Logo" width="48" height="48" style="display: block; margin: 0 auto 16px; border: 0;">
-              <h1 style="margin: 0; font-size: 28px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">Gemi <span style="color: #3b82f6;">Leads</span></h1>
-              <p style="margin: 8px 0 0; font-size: 15px; color: #94a3b8;">Ημερήσια Ενημέρωση Αγοράς ({% if frequency == 'intraday' %}Priority Alert{% else %}{{ digest_date|date:'d/m/Y' }}{% endif %})</p>
+            <td class="gl-pad" style="padding: 28px 32px 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+              <p style="margin: 0 0 6px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #66716e;">{% if frequency == 'intraday' %}Από την προηγούμενη ειδοποίηση{% else %}Εγγραφές ΓΕΜΗ · {{ digest_date|date:'d/m/Y' }}{% endif %}</p>
+              <p style="margin: 0; font-size: 24px; line-height: 30px; font-weight: 700; color: #12201e;">{{ total }} {% if total == 1 %}νέα επιχείρηση{% else %}νέες επιχειρήσεις{% endif %}</p>
+              <p style="margin: 6px 0 0; font-size: 15px; line-height: 22px; color: #66716e;">{{ company_data|length }} {% if company_data|length == 1 %}ταιριάζει{% else %}ταιριάζουν{% endif %} στα Ραντάρ σου · {{ general_companies|length }} ακόμη {% if general_companies|length == 1 %}νέα εγγραφή{% else %}νέες εγγραφές{% endif %}</p>
             </td>
           </tr>
-          <!-- Content -->
+{% endwith %}{% endwith %}
+
           <tr>
-            <td style="padding: 32px;">
-              
-              <!-- Section 1: Radar Matches -->
-              <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 800; color: #1e293b; border-bottom: 2px solid #2563eb; padding-bottom: 8px;">
-                🎯 Εντοπισμένα Leads από τα Ραντάρ σου ({{ company_data|length }})
-              </h2>
-
-              {% for item in company_data %}
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 16px; border: 1px solid #e2e8f0; border-radius: 12px;">
+            <td class="gl-pad" style="padding: 0 32px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom: 1px solid #12201e;">
                 <tr>
-                  <td style="padding: 16px;">
-                    <h3 style="margin: 0 0 6px; font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.4;">{{ item.company.name }}</h3>
-                    <p style="margin: 0 0 12px; font-size: 13px; color: #64748b; line-height: 1.5;">
-                      <strong style="color: #475569;">ΓΕΜΗ:</strong> {{ item.company.gemi_number }} &nbsp;&bull;&nbsp; 
-                      {{ item.company.legal_type|default:'Νέα επιχείρηση' }} &nbsp;&bull;&nbsp; 
-                      {{ item.company.city|default:item.company.prefecture|default:'Ελλάδα' }}
-                    </p>
-                    <table border="0" cellspacing="0" cellpadding="0">
-                      <tr>
-                        {% for radar in item.radars %}
-                        <td style="padding-right: 8px; padding-bottom: 4px;">
-                          <span style="display: inline-block; background-color: #eff6ff; color: #2563eb; font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 6px; border: 1px solid #bfdbfe;">
-                            {{ radar }}
-                          </span>
-                        </td>
-                        {% endfor %}
-                      </tr>
-                    </table>
-                  </td>
+                  <td style="padding: 0 0 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #12201e;">Ταιριάζουν στα Ραντάρ σου</td>
+                  <td align="right" style="padding: 0 0 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 11px; color: #66716e;">{{ company_data|length }}</td>
                 </tr>
               </table>
-              {% empty %}
-              <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
-                <p style="margin: 0; font-size: 13px; color: #64748b;">Δεν καταγράφηκαν νέα στοχευμένα leads στα ενεργά Ραντάρ σου για αυτό το διάστημα.</p>
-              </div>
-              {% endfor %}
-
-              <!-- Section 2: General GEMI Companies -->
-              <h2 style="margin: 32px 0 16px; font-size: 20px; font-weight: 800; color: #1e293b; border-bottom: 2px solid #94a3b8; padding-bottom: 8px;">
-                📋 {% if frequency == 'intraday' %}Νέες Εγγραφές ΓΕΜΗ που δημοσιεύθηκαν πρόσφατα{% else %}Όλες οι Νέες Εγγραφές ΓΕΜΗ της Ημέρας{% endif %} ({{ general_companies|length }})
-              </h2>
-
-              {% for company in general_companies %}
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 12px; border: 1px solid #f1f5f9; background-color: #fafafa; border-radius: 10px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                {% for item in company_data %}
                 <tr>
-                  <td style="padding: 14px 16px;">
-                    <h4 style="margin: 0 0 4px; font-size: 14px; font-weight: 600; color: #334155;">{{ company.name }}</h4>
-                    <p style="margin: 0; font-size: 12px; color: #64748b;">
-                      ΓΕΜΗ {{ company.gemi_number }}{% if company.vat_number %} &bull; ΑΦΜ {{ company.vat_number }}{% endif %} &bull; {{ company.legal_type|default:'Επιχείρηση' }} &bull; {{ company.city|default:company.prefecture|default:'Ελλάδα' }}
-                    </p>
+                  <td style="padding: 14px 0 14px 14px; border-left: 3px solid #e6a029; border-bottom: 1px solid #cbd0cb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                    <p style="margin: 0; font-size: 16px; line-height: 22px; font-weight: 600; color: #12201e;">{{ item.company.name }}</p>
+                    <p style="margin: 4px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 12px; line-height: 18px; color: #66716e;">ΓΕΜΗ {{ item.company.gemi_number }}{% if item.company.legal_type %} · {{ item.company.legal_type }}{% endif %}{% with place=item.company.city|default:item.company.prefecture %}{% if place %} · {{ place }}{% endif %}{% endwith %}</p>
+                    <p style="margin: 6px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 16px; letter-spacing: 0.06em; color: #775215;">ΡΑΝΤΑΡ · {{ item.radars|join:", " }}</p>
                   </td>
                 </tr>
-              </table>
-              {% empty %}
-              <div style="background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 16px; text-align: center;">
-                <p style="margin: 0; font-size: 13px; color: #64748b;">Δεν υπάρχουν επιπλέον νέες γενικές εγγραφές.</p>
-              </div>
-              {% endfor %}
-
-              <!-- CTA -->
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-top: 36px;">
+                {% empty %}
                 <tr>
-                  <td align="center">
-                    <a href="https://gemileads.gr/dashboard/" style="display: inline-block; background-color: #0f172a; color: #ffffff; font-size: 15px; font-weight: 700; text-decoration: none; padding: 14px 32px; border-radius: 10px;">
-                      Προβολή στο Dashboard &rarr;
-                    </a>
-                  </td>
+                  <td style="padding: 14px 0; border-bottom: 1px solid #cbd0cb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 20px; color: #66716e;">Καμία νέα επιχείρηση δεν ταίριαξε στα ενεργά Ραντάρ σου σε αυτό το διάστημα.</td>
                 </tr>
-                {% if export_url %}
-                <tr>
-                  <td align="center" style="padding-top: 12px;">
-                    <a href="{{ export_url }}" style="display: inline-block; border: 1px solid #cbd5e1; color: #0f172a; font-size: 14px; font-weight: 600; text-decoration: none; padding: 12px 28px; border-radius: 10px;">
-                      Λήψη σε CSV
-                    </a>
-                  </td>
-                </tr>
-                {% endif %}
+                {% endfor %}
               </table>
             </td>
           </tr>
-          <!-- Footer -->
+
           <tr>
-            <td style="background-color: #f8fafc; padding: 24px 32px; border-top: 1px solid #e2e8f0; text-align: center;">
-              <p style="margin: 0; font-size: 13px; color: #94a3b8; line-height: 1.5;">
-                Λαμβάνεις αυτό το email επειδή έχεις ενεργή συνδρομή στο Gemi Leads.<br>
-                <a href="{{ unsubscribe_url }}" style="color: #64748b; text-decoration: underline; margin-top: 8px; display: inline-block;">Απεγγραφή από τα digests</a>
-              </p>
+            <td class="gl-pad" style="padding: 32px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom: 1px solid #12201e;">
+                <tr>
+                  <td style="padding: 0 0 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #12201e;">{% if frequency == 'intraday' %}Νέες εγγραφές ΓΕΜΗ{% else %}Όλες οι νέες εγγραφές ΓΕΜΗ της ημέρας{% endif %}</td>
+                  <td align="right" style="padding: 0 0 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 11px; color: #66716e;">{{ general_companies|length }}</td>
+                </tr>
+              </table>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                {% for company in general_companies %}
+                <tr>
+                  <td style="padding: 11px 0; border-bottom: 1px solid #cbd0cb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+                    <p style="margin: 0; font-size: 15px; line-height: 20px; font-weight: 600; color: #12201e;">{{ company.name }}</p>
+                    <p style="margin: 3px 0 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 12px; line-height: 18px; color: #66716e;">ΓΕΜΗ {{ company.gemi_number }}{% if company.vat_number %} · ΑΦΜ {{ company.vat_number }}{% endif %}{% if company.legal_type %} · {{ company.legal_type }}{% endif %}{% with place=company.city|default:company.prefecture %}{% if place %} · {{ place }}{% endif %}{% endwith %}</p>
+                  </td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td style="padding: 14px 0; border-bottom: 1px solid #cbd0cb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 20px; color: #66716e;">Δεν υπάρχουν άλλες νέες εγγραφές.</td>
+                </tr>
+                {% endfor %}
+              </table>
             </td>
           </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
+
+          <tr>
+            <td class="gl-pad" style="padding: 28px 32px 32px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td valign="middle">{% include "emails/_button.html" with href="https://gemileads.gr/dashboard/" label="Άνοιγμα στο Gemi Leads" %}</td>
+                  {% if export_url %}
+                  <td valign="middle" style="padding-left: 20px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 13px; font-weight: 600; letter-spacing: 0.06em;">
+                    <a href="{{ export_url }}" style="color: #12201e; text-decoration: underline;">Λήψη CSV</a>
+                  </td>
+                  {% endif %}
+                </tr>
+              </table>
+            </td>
+          </tr>
+{% endblock %}
+
+{% block footer %}
+              <p style="margin: 0;">Λαμβάνεις αυτό το μήνυμα επειδή έχεις ενεργές ενημερώσεις στο Gemi Leads. Πότε τα λαμβάνεις αλλάζει από τις <a href="https://gemileads.gr/settings/" style="color: #12201e; text-decoration: underline;">Ρυθμίσεις</a>.</p>
+              <p style="margin: 8px 0 0;"><a href="{{ unsubscribe_url }}" style="color: #12201e; text-decoration: underline;">Διακοπή αυτών των email</a></p>
+{% endblock %}

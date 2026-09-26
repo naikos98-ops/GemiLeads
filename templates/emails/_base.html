@@ -1,0 +1,66 @@
+{% comment %}
+Shared frame for every HTML email Gemi Leads sends. It is the Signal Ledger product chrome
+translated to what mail clients render: paper canvas, one white sheet with a 1px ink rule,
+the logo left and mono metadata right (the product topbar), square corners, no shadows,
+no pills, no emoji. Colours are the product-ui.css tokens, written out because mail clients
+ignore custom properties:
+  ink #12201e · paper #f3f2ec · white #fbfbf7 · line #cbd0cb · muted #66716e
+  amber #e6a029 (rules only) · amber text #775215
+
+Everything is inline and table-based on purpose: Gmail strips <style> in some contexts and
+Outlook for Windows renders with Word. The single <style> block only adds the phone padding.
+{% endcomment %}<!DOCTYPE html>
+<html lang="el">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>{% block title %}Gemi Leads{% endblock %}</title>
+  <style>
+    @media (max-width: 620px) {
+      .gl-pad { padding-left: 20px !important; padding-right: 20px !important; }
+      .gl-meta { display: none !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f3f2ec; color: #12201e; -webkit-text-size-adjust: 100%;">
+  {# Inbox preview line. Hidden in the body, shown by clients next to the subject. #}
+  <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; color: #f3f2ec; opacity: 0;">{% block preheader %}{% endblock %}&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f3f2ec" style="background-color: #f3f2ec;">
+    <tr>
+      <td align="center" style="padding: 32px 12px 40px;">
+
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbfbf7" style="width: 100%; max-width: 600px; background-color: #fbfbf7; border: 1px solid #12201e;">
+          <tr>
+            <td class="gl-pad" style="padding: 18px 32px; border-bottom: 1px solid #12201e;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td valign="middle">
+                    <a href="https://gemileads.gr/" style="text-decoration: none;"><img src="https://gemileads.gr/static/images/gemi-leads-logo-email.png" width="128" height="32" alt="Gemi Leads" style="display: block; width: 128px; height: 32px; border: 0; outline: none;"></a>
+                  </td>
+                  <td class="gl-meta" align="right" valign="middle" style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 16px; letter-spacing: 0.08em; text-transform: uppercase; color: #66716e;">
+                    <b style="font-weight: 700; color: #12201e;">{% block kicker %}{% endblock %}</b><br>{% block kicker_detail %}{% endblock %}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          {% block content %}{% endblock %}
+        </table>
+
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width: 100%; max-width: 600px;">
+          <tr>
+            <td class="gl-pad" style="padding: 20px 32px 0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 11px; line-height: 18px; color: #66716e;">
+              {% block footer %}{% endblock %}
+              <p style="margin: 12px 0 0;">GEMI LEADS — προϊόν της NORVA Ι.Κ.Ε. · Δεδομένα από το επίσημο Open Data API του ΓΕΜΗ.</p>
+            </td>
+          </tr>
+        </table>
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

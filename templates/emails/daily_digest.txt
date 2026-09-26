@@ -1,22 +1,32 @@
-Καλημέρα {{ user.first_name|default:user.email }},
+{% autoescape off %}GEMI LEADS · {% if frequency == 'intraday' %}PRIORITY ALERT{% else %}ΗΜΕΡΗΣΙΑ ΕΝΗΜΕΡΩΣΗ{% endif %} · {{ digest_date|date:'d/m/Y' }}
 
-Για τις {{ digest_date|date:'d/m/Y' }} βρέθηκαν {{ company_data|length }} νέες επιχειρήσεις.
+{{ company_data|length }} ταιριάζουν στα Ραντάρ σου · {{ general_companies|length }} ακόμη νέες εγγραφές ΓΕΜΗ
 
-{% for item in company_data %}- {{ item.company.name }} | ΓΕΜΗ {{ item.company.gemi_number }} | {{ item.company.city|default:item.company.prefecture }}
-  [Ραντάρ: {{ item.radars|join:", " }}]
-{% empty %}Δεν καταγράφηκαν νέες επιχειρήσεις με βάση τα ενεργά Ραντάρ σου.
+
+ΤΑΙΡΙΑΖΟΥΝ ΣΤΑ ΡΑΝΤΑΡ ΣΟΥ ({{ company_data|length }})
+{% for item in company_data %}
+{{ item.company.name }}
+  ΓΕΜΗ {{ item.company.gemi_number }}{% if item.company.legal_type %} · {{ item.company.legal_type }}{% endif %}{% with place=item.company.city|default:item.company.prefecture %}{% if place %} · {{ place }}{% endif %}{% endwith %}
+  Ραντάρ: {{ item.radars|join:", " }}
+{% empty %}
+Καμία νέα επιχείρηση δεν ταίριαξε στα ενεργά Ραντάρ σου σε αυτό το διάστημα.
 {% endfor %}
 
-{% if general_companies %}
-{% if frequency == 'intraday' %}ΝΕΕΣ ΕΓΓΡΑΦΕΣ ΓΕΜΗ ΠΟΥ ΔΗΜΟΣΙΕΥΘΗΚΑΝ ΠΡΟΣΦΑΤΑ{% else %}ΟΛΕΣ ΟΙ ΝΕΕΣ ΕΓΓΡΑΦΕΣ ΓΕΜΗ ΤΗΣ ΗΜΕΡΑΣ{% endif %} ({{ general_companies|length }})
-
-{% for company in general_companies %}- {{ company.name }} | ΓΕΜΗ {{ company.gemi_number }} | {{ company.city|default:company.prefecture }}
+{% if frequency == 'intraday' %}ΝΕΕΣ ΕΓΓΡΑΦΕΣ ΓΕΜΗ{% else %}ΟΛΕΣ ΟΙ ΝΕΕΣ ΕΓΓΡΑΦΕΣ ΓΕΜΗ ΤΗΣ ΗΜΕΡΑΣ{% endif %} ({{ general_companies|length }})
+{% for company in general_companies %}
+{{ company.name }}
+  ΓΕΜΗ {{ company.gemi_number }}{% if company.vat_number %} · ΑΦΜ {{ company.vat_number }}{% endif %}{% if company.legal_type %} · {{ company.legal_type }}{% endif %}{% with place=company.city|default:company.prefecture %}{% if place %} · {{ place }}{% endif %}{% endwith %}
+{% empty %}
+Δεν υπάρχουν άλλες νέες εγγραφές.
 {% endfor %}
-{% endif %}
-Συνδέσου στο Gemi Leads Inbox (https://gemileads.gr/leads/) για πλήρη διαχείριση.
-{% if export_url %}
-Λήψη σε CSV: {{ export_url }}
-{% endif %}
 
-Για να σταματήσετε να λαμβάνετε αυτά τα email, κάντε κλικ εδώ:
-{{ unsubscribe_url }}
+Άνοιγμα στο Gemi Leads: https://gemileads.gr/dashboard/
+{% if export_url %}Λήψη CSV: {{ export_url }}
+{% endif %}
+--
+Λαμβάνεις αυτό το μήνυμα επειδή έχεις ενεργές ενημερώσεις στο Gemi Leads.
+Πότε τα λαμβάνεις: https://gemileads.gr/settings/
+Διακοπή αυτών των email: {{ unsubscribe_url }}
+
+GEMI LEADS — προϊόν της NORVA Ι.Κ.Ε.
+{% endautoescape %}

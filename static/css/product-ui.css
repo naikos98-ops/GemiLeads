@@ -79,10 +79,6 @@ body.product-body {
   font-weight: 600;
 }
 
-.product-brand b {
-  font-weight: 800;
-}
-
 .product-brand small {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: var(--type-meta);
@@ -94,40 +90,13 @@ body.product-body {
   letter-spacing: 0.05em;
 }
 
-.product-mark {
-  width: 22px;
-  height: 22px;
-  border: 1px solid var(--product-ink);
-  border-radius: 50%;
-  position: relative;
-  display: inline-block;
+/* The brand artwork (icon + GEMI LEADS wordmark) -- one size in every topbar.
+   25px keeps logo + BETA inside the 184px rail column, next to its 17px padding. */
+.brand-logo {
+  display: block;
+  height: 25px;
+  width: auto;
   flex-shrink: 0;
-}
-
-.product-mark::before,
-.product-mark::after {
-  content: "";
-  position: absolute;
-  inset: 4px;
-  border: 1px solid var(--product-ink);
-  border-radius: 50%;
-}
-
-.product-mark::after {
-  inset: 9px;
-  background: var(--product-amber);
-  border: 0;
-}
-
-.product-mark i {
-  position: absolute;
-  width: 11px;
-  height: 1px;
-  background: var(--product-ink);
-  right: -5px;
-  top: 5px;
-  transform: rotate(-30deg);
-  transform-origin: right;
 }
 
 .product-source-meta {
@@ -2015,8 +1984,6 @@ body.public-body .mono-text {
   flex-shrink: 0;
 }
 
-.public-brand b { font-weight: 800; }
-
 .public-brand small {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: var(--type-meta);
@@ -2608,8 +2575,6 @@ body.admin-body input:focus-visible {
   letter-spacing: .08em;
   font-weight: 600;
 }
-
-.admin-brand b { font-weight: 800; }
 
 .admin-brand small {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
