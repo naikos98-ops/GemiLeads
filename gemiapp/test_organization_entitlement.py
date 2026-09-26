@@ -330,7 +330,12 @@ class NoAutomaticOrganizationTests(TestCase):
         callers = [str(path) for path in pathlib.Path("gemiapp").rglob("*.py")
                    if "create_organization(" in path.read_text(encoding="utf-8")
                    and not path.name.startswith("test") and path.name != "organizations.py"]
-        self.assertEqual(callers, [str(pathlib.Path("gemiapp/management/commands/provision_organization_for_user.py"))])
+        # Only the two operator-run paths: the single-user command and the explicit existing-user provisioning
+        # (called only by provision_existing_user_organizations). No migration, signal, view or task.
+        self.assertEqual(sorted(callers), sorted([
+            str(pathlib.Path("gemiapp/existing_user_provisioning.py")),
+            str(pathlib.Path("gemiapp/management/commands/provision_organization_for_user.py")),
+        ]))
 
     def test_legacy_access_follows_the_users_own_subscription_as_before(self):
         paid = entitled_user("paid-legacy@example.com")

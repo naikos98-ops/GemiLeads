@@ -159,7 +159,49 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
-- **Legacy Radar migration: στο `main` (`da69d3f`), επαληθευμένο, ΔΕΝ έχει τρέξει σε production.**
+- **Provisioning Organization για υπάρχοντες legacy Radar owners (2026-09-27). ΔΕΝ έχει τρέξει σε production.**
+  - **Γιατί:** το production dry-run της Radar migration
+    (`migrate_legacy_radars_to_organizations --dry-run --limit 10000`) έδωσε `legacy_radars_examined=16`,
+    `eligible=2`, **`missing_organization=14`**, `ambiguous_organization=0`, `unsupported_mapping=0`,
+    `invalid_reference_data=0`, `errors=0`. Ο blocker δεν είναι η αντιστοίχιση των Radars αλλά owners χωρίς
+    Organization.
+  - **Εντολή (μόνο operator):** `python manage.py provision_existing_user_organizations [--dry-run] [--limit N]
+    [--user-id ID] [--include-staff]` (`--limit` 1–10.000, προεπιλογή 100). `gemiapp/existing_user_provisioning.py`.
+    Κανένα schedule, AppConfig/startup hook, `post_save` ή task. Δεν καλεί τη Radar migration.
+  - **Πληθυσμός (ο στενότερος):** μόνο χρήστες με τουλάχιστον ένα **live** (όχι soft-deleted) `CustomerRadar`,
+    δηλαδή ακριβώς όσους εξετάζει η Radar migration. Το `--user-id` μόνο στενεύει (χρήστης χωρίς Radar →
+    `skipped_out_of_scope`). Οι υπόλοιποι ενεργοί χρήστες χωρίς Organization μόνο μετριούνται
+    (`out_of_scope_active_users_without_organization`).
+  - **Κανόνας memberships, ίδιος με τη Radar migration και ανεξαρτήτως ρόλου:** ακριβώς 1 `OrganizationMember` →
+    `already_provisioned` (π.χ. NORVA)· >1 → `ambiguous_organization`· 0 → υποψήφιος. Καμία υπάρχουσα membership
+    δεν αλλάζει. Από τους υποψήφιους **παραλείπονται:** ανενεργοί/μη επιβεβαιωμένοι (`skipped_inactive` —
+    το signup δημιουργεί `is_active=False` μέχρι το verification), ο demo seed λογαριασμός `demo@gemileads.gr`
+    (`skipped_demo`, πάντα) και staff/superuser (`skipped_staff`, εκτός αν δοθεί ρητά `--include-staff`).
+  - **Δημιουργία:** μέσω του canonical `create_organization` (Organization + OWNER membership + κενό profile). Όνομα
+    = `default_organization_name` (ονοματεπώνυμο, αλλιώς email, αλλιώς username) — ο ίδιος κανόνας του
+    `provision_organization_for_user`, που τώρα το μοιράζεται από το `gemiapp/organizations.py`. Δεν υπάρχει slug.
+  - **Ανά χρήστη μία συναλλαγή:** `select_for_update` στον User (σειριοποιεί με το `provision_organization_for_user`
+    και με δεύτερη εκτέλεση), ξανα-έλεγχος memberships/λογαριασμού (αλλαγή → `race_skipped`), δημιουργία, έλεγχος ότι
+    υπάρχει ακριβώς μία OWNER membership και ότι το παράγωγο entitlement του Organization ισούται με του χρήστη·
+    οτιδήποτε αποτύχει → πλήρες rollback, `errors`, συνέχεια στον επόμενο. Idempotent (δεύτερη εκτέλεση →
+    `already_provisioned`). Δεν υπάρχει DB constraint «ένας Organization ανά χρήστη»: η προστασία είναι το κλείδωμα.
+  - **Billing μένει user-owned:** καμία αλλαγή σε `UserSubscription`, Stripe, tier, status ή complimentary· κανένα
+    grant. Το entitlement του Organization προκύπτει από το **αμετάβλητο** bridge (`organization_entitlement`):
+    Free → όχι entitled, πληρωμένος → entitled με το ίδιο tier.
+  - **Δεν μεταφέρει:** Radars, leads, digests, notes, tasks, Signals, Opportunities, billing. G4/Discovery/hydration
+    αμετάβλητα. Καμία migration.
+  - **Dry-run = μηδέν εγγραφές.** Έξοδος μόνο counters (κανένα όνομα/email): `users_examined`,
+    `users_without_organization`, `eligible`, `provisioned`, `already_provisioned`, `ambiguous_organization`,
+    `skipped_*`, `race_skipped`, `errors`, `eligible_entitled`/`eligible_not_entitled`,
+    `eligible_with_legacy_leads`, `legacy_radars_owned`, **`legacy_radars_unblocked`** (live Radars που δεν θα είναι
+    πια `missing_organization` — περνούν ακόμη από τον έλεγχο αντιστοίχισης της Radar migration),
+    `legacy_radars_still_blocked`, `out_of_scope_active_users_without_organization`.
+  - 27 tests (`gemiapp/test_existing_user_provisioning.py`)· έλεγχος mutation (χωρίς recheck υπό κλείδωμα, χωρίς
+    skip μίας membership/staff/inactive, dry-run που γράφει, διευρυμένο scope, χωρίς post-create έλεγχο) → όλα
+    πιάνονται.
+
+- **Legacy Radar migration: στο `main` (`da69d3f`), επαληθευμένο· η πραγματική μεταφορά ΔΕΝ έχει τρέξει σε
+  production (μόνο dry-run, βλ. baseline παραπάνω).**
   Cherry-pick του `ebf3a215` χωρίς συγκρούσεις· ίδιο tree. Η `0056` είναι μόνο `CreateModel` για το
   `LegacyRadarMigrationMap` (άδειος πίνακας)· κανένα αυτόματο Radar copy, schedule/startup hook ή
   Signal/Opportunity/backfill. CustomerRadar, legacy και OrganizationRadar matching, G4/Discovery,
@@ -1916,10 +1958,16 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Legacy Radar migration σε production — χειροκίνητο, μετά από ξεχωριστή έγκριση.** Η `0056` εφαρμόζεται
-  με το deploy (άδειος provenance πίνακας). Η εντολή `migrate_legacy_radars_to_organizations` **δεν** έχει τρέξει
-  σε production, ούτε ως dry-run: πρώτα `--dry-run`, αξιολόγηση των κατατάξεων (ιδίως
-  `only_active_currently_inert`, `missing_organization`, `ambiguous_organization`) και μετά νέα έγκριση.
+- **Legacy Radar migration σε production — χειροκίνητο, σε τέσσερα ξεχωριστά βήματα.** Το production dry-run
+  έχει τρέξει (baseline: `missing_organization=14` από 16)· η πραγματική μεταφορά **όχι**. Σειρά:
+  (A) deploy και `python manage.py provision_existing_user_organizations --dry-run --limit 10000` → έλεγχος
+  `eligible` / `skipped_staff` / `skipped_inactive` / `legacy_radars_unblocked` → μόνο μετά έγκριση η ίδια εντολή
+  χωρίς `--dry-run` (staff μόνο ρητά, `--include-staff --user-id N`)· (B) ξανά
+  `migrate_legacy_radars_to_organizations --dry-run --limit 10000`· (C) αξιολόγηση (ιδίως
+  `only_active_currently_inert`)· (D) μόνο τότε, με νέα έγκριση, η Radar migration χωρίς `--dry-run`.
+- **Legacy χρήστες χωρίς Radar και χωρίς Organization — απόφαση προϊόντος.** Δεν καλύπτονται από το provisioning·
+  μετριούνται ως `out_of_scope_active_users_without_organization`. Αν πρέπει να αποκτήσουν Organization (π.χ.
+  πληρωμένοι χωρίς Radar), χρειάζεται ξεχωριστή, ρητή επέκταση του scope.
 
 - **Email templates — ανοιχτά:** (α) τα allauth emails (π.χ. reset από το `/accounts/password/reset/`, που
   είναι ακόμη προσβάσιμο) μένουν στα default plain-text του allauth, εκτός του νέου σχεδίου· (β) το
@@ -2104,6 +2152,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-27 — Provisioning Organization για υπάρχοντες legacy Radar owners.** Νέα:
+  `gemiapp/existing_user_provisioning.py`, `manage.py provision_existing_user_organizations`,
+  `gemiapp/test_existing_user_provisioning.py`. Αλλαγές: `gemiapp/organizations.py` (`default_organization_name`,
+  μεταφορά αυτούσια από το `provision_organization_for_user`, που τώρα το εισάγει). Καμία migration, κανένα
+  schedule, καμία εκτέλεση σε production.
 
 - **2026-09-26/27 — Integration legacy Radar migration στο main.** Cherry-pick `ebf3a215` → `da69d3f`, χωρίς
   συγκρούσεις· κανένα push/deploy/production command. Τελική επαλήθευση στο ίδιο tree: **500 focused tests OK**

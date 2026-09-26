@@ -73,6 +73,11 @@ def _saved_active_user(user):
     return user
 
 
+def default_organization_name(user) -> str:
+    """The operator-provisioning default name: the user's full name, else their email, else their username."""
+    return f"{user.first_name} {user.last_name}".strip() or user.email or user.username
+
+
 def create_organization(*, owner, name: str, **profile) -> CreatedOrganization:
     """Create an organization with its OWNER membership and profile, atomically."""
     Organization = apps.get_model("gemiapp", "Organization")

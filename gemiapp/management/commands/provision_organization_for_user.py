@@ -21,7 +21,7 @@ from django.db.models import Q
 
 from gemiapp.models import OrganizationMember
 from gemiapp.organization_entitlement import resolve_organization_entitlement
-from gemiapp.organizations import OrganizationError, create_organization
+from gemiapp.organizations import OrganizationError, create_organization, default_organization_name
 
 
 def _find_user(identifier: str) -> User:
@@ -37,10 +37,6 @@ def _find_user(identifier: str) -> User:
     if len(matches) > 1:
         raise CommandError(f"{identifier!r} matches {len(matches)} users; use the numeric user id instead.")
     return matches[0]
-
-
-def _default_name(user: User) -> str:
-    return f"{user.first_name} {user.last_name}".strip() or user.email or user.username
 
 
 class Command(BaseCommand):
@@ -72,7 +68,7 @@ class Command(BaseCommand):
                 organization = owned[0].organization
                 self._report("unchanged: already owns", organization)
                 return
-            name = (options.get("name") or _default_name(user)).strip()
+            name = (options.get("name") or default_organization_name(user)).strip()
             if options["dry_run"]:
                 self.stdout.write(f"dry run: would create organization {name!r} with user #{user.pk} as owner; "
                                   "nothing written.")
