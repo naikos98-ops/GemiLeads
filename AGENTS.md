@@ -159,6 +159,54 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Gemi Leads 2.0 — pending-company hydration (2026-09-26). ΚΛΕΙΣΤΟ εξ ορισμού, κανένα schedule.**
+  Η ασφαλής διαδρομή για τα ευρήματα Discovery v2 που μένουν `pending_no_company` (στο πρώτο G4 SHADOW cycle
+  σε production: **578**). `gemiapp/pending_company_hydration.py` + `manage.py hydrate_pending_discovery_companies`.
+  - **Ροή:** παρατήρηση Discovery → λείπει τοπικό `Company` → **αυτό:** δημιουργία canonical `Company` →
+    **αμετάβλητο** `materialize_new_company_signals` → SHADOW NEW_COMPANY signal → αμετάβλητο G2 pipeline →
+    SHADOW opportunities. Η hydration **μόνο** δημιουργεί `Company`: κανένα signal/snapshot/opportunity/match/
+    lead/ειδοποίηση/email.
+  - **Flag:** `GEMI_DISCOVERY_PENDING_COMPANY_HYDRATION_ENABLED`, **προεπιλογή 0** (settings + `.env.example`).
+    Αφιερωμένο flag: το `GEMI_DISCOVERY_V2_ENABLED` ανοίγει και το ingest mode του Discovery (cutover), άρα δεν
+    επαναχρησιμοποιείται. Με 0 η εντολή **αρνείται πριν επιλέξει, ζητήσει ή γράψει οτιδήποτε** — και σε
+    `--dry-run`. **Καμία εγγραφή στο `apps.SCHEDULES`**, κανένα task.
+  - **Επιλογή:** ακριβώς το pending σύνολο του materialiser (`ELIGIBLE_CLASSIFICATIONS` + κανένα τοπικό
+    `Company`), ένας αριθμός ΓΕΜΗ ανά γραμμή όσες παρατηρήσεις κι αν έχει, παλαιότερο τεκμήριο πρώτο. Η
+    ημερομηνία σύστασης **δεν** είναι κριτήριο (late publications και invalid dates περνούν).
+  - **Πηγή:** ένα `GET /companies?arGemi=<n>` ανά εταιρεία μέσω του **κοινού** `GemiClient` (κοινό budget, bounded
+    retries, G6 metrics, A4 source records), επικυρωμένο ως `company_search`, lane **`MONITORED_REFRESH`** (κάτω από
+    DISCOVERY και DIGEST_IMPORT, όπως ο legacy backfill). Search item και όχι detail: είναι ακριβώς το σχήμα του
+    `raw_data` του legacy importer, που ο materialiser ξαναεπικυρώνει για το detection-time baseline. Γίνεται δεκτό
+    μόνο item με **ίδιο** `arGemi` (ποτέ Y κάτω από X). Multi-value `arGemi` δεν είναι επαληθευμένο → δεν
+    χρησιμοποιείται. **Pacing** 20 s ανάμεσα σε αιτήματα (≤3/λεπτό, μέσα στο headroom 4/λεπτό του G6).
+  - **Create-only:** ξανα-έλεγχος ύπαρξης πριν το fetch (αν υπάρχει: skip χωρίς αίτημα) και ξανά μέσα σε **ένα
+    savepoint**, μετά `Company.objects.create(**company_defaults(item))` + `sync_company_activities` — τα ίδια
+    primitives του legacy importer, καμία δεύτερη normalisation. Race στο insert → `IntegrityError` (unique
+    `gemi_number`) → rollback → `race_skipped`, η γραμμή του άλλου writer μένει ανέγγιχτη. Ποτέ `update_or_create`
+    (και ο `_ingest` του Discovery το χρησιμοποιεί, γι' αυτό δεν επαναχρησιμοποιήθηκε). Κανένα placeholder.
+  - **Αποτυχίες:** ανά εταιρεία (validation, `not_found`, `ambiguous`, σφάλμα εγγραφής) → καταγραφή και
+    συνέχεια· σε επίπεδο client (budget timeout/unavailable, retries exhausted, configuration/staging, auth,
+    bad request) → **σταματά** η εκτέλεση (`aborted`). Καμία μερική γραμμή, **non-zero exit**, μόνο τύπος
+    σφάλματος και αριθμοί ΓΕΜΗ στην έξοδο — ποτέ payload/PII.
+  - **`--dry-run` = καμία αλλαγή στη βάση, ΟΧΙ «κανένα αίτημα ΓΕΜΗ»** (κάνει fetch για να δείξει τι θα γινόταν).
+  - **Έκθεση στο legacy προϊόν — η απόφαση που προστατεύει το flag:** ένα `Company` είναι canonical, άρα το
+    legacy προϊόν το βλέπει όπως κάθε import (dashboard, CSV και — όταν το `incorporation_date` ισούται με την
+    ημερομηνία ενός import run — legacy matching/digest). Το `company_defaults` (αμετάβλητο) αποθηκεύει
+    missing/invalid/future ημερομηνία ως **σήμερα**: ένα `invalid_date` θα έμπαινε στο **σημερινό** legacy digest
+    σαν να συστάθηκε σήμερα. Η αναφορά μετρά σε κάθε εκτέλεση (και dry run) `stored_as_today` και `date_clamped`.
+  - **Signal timing αμετάβλητο:** evidence = η αρχική (παλαιότερη) παρατήρηση· `detected_at` = ο κανόνας B2
+    `max(discovery, baseline observed_at)`, δηλαδή η στιγμή της hydration (τότε υπάρχει πρώτη φορά state).
+  - **G4 ανεξάρτητο:** κανένα άγγιγμα σε `run_g4_shadow_cycle`, cursor, παρατηρήσεις, schedules, flags. **LIVE
+    παραμένει απαγορευμένη** — η εντολή δεν έχει επιλογή mode/live και δεν δημιουργεί σήματα.
+  - **Χρήση (μόνο μετά από ρητή απόφαση):**
+    `GEMI_DISCOVERY_PENDING_COMPANY_HYDRATION_ENABLED=1 python manage.py hydrate_pending_discovery_companies
+    --dry-run --limit 20` → έλεγχος `stored_as_today`/`date_clamped` → χωρίς `--dry-run` → `python manage.py
+    materialize_new_company_signals`. Επιλογές: `--limit N` (1–200, προεπιλογή 20), `--pace-seconds S`
+    (προεπιλογή 20).
+  - **Καμία migration.** 26 νέα tests (`gemiapp/test_pending_company_hydration.py`)· έλεγχος mutation: overwrite,
+    χωρίς flag, χωρίς pacing, χωρίς recheck, χωρίς identity check, χωρίς savepoint → όλα πιάνονται.
+    **2.124 tests OK** (στο feature branch)· `check`, `makemigrations --check` καθαρά.
+
 - **Νέα email templates στο Signal Ledger (2026-09-26). Μόνο εμφάνιση/κείμενο· καμία αλλαγή σε αποστολή.**
   - **Κοινό πλαίσιο `templates/emails/_base.html`** (+ `_button.html`): paper `#f3f2ec`, ένα φύλλο `#fbfbf7` με
     1px ink rule, logo αριστερά και mono metadata δεξιά (το topbar του προϊόντος), τετράγωνες γωνίες. **Όχι**
@@ -177,7 +225,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     `registration/password_reset_email.txt` + `email_template_name` στο `config/urls.py`·
     `TransactionalEmailFormatTests` το κλειδώνει.
   - Subjects, tags Brevo, links, unsubscribe/CSV tokens **αμετάβλητα**. Το `client_outreach.*` **δεν** άλλαξε
-    (cold outreach παγωμένο). **2.101 tests OK**· καμία migration.
+    (cold outreach παγωμένο). **2.101 tests OK** (στο feature branch)· καμία migration.
 
 - **Νέο branding: artwork αντί για CSS mark (2026-09-26). Μόνο assets/references, κανένα άλλο UI.**
   - **Assets (`static/images/`, μία πηγή, χωρίς διπλότυπα):** `gemi-leads-logo-horizontal.png` (icon + λεκτικό,
@@ -197,7 +245,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     Favicon set σε `base.html` **και** `superadmin/base.html` (που πριν δεν είχε κανένα favicon). `og:image` →
     `gemi-leads-og.png`, JSON-LD `logo` → `gemi-leads-icon.png`. Τα emails: βλ. «Νέα email templates».
   - Νέο `BrandAssetTests`: κάθε `static 'images/…'` / `gemileads.gr/static/images/…` σε template πρέπει να
-    υπάρχει, και τα headers αποδίδουν το artwork χωρίς το παλιό mark. **2.100 tests OK**· καμία migration.
+    υπάρχει, και τα headers αποδίδουν το artwork χωρίς το παλιό mark. **2.100 tests OK** (στο feature branch)· καμία migration.
 
 - **Gemi Leads 2.0 — G6: παρατηρησιμότητα του request budget του ΓΕΜΗ (2026-09-21). Μέτρηση, όχι απόφαση.**
   - **Τι μετριέται:** **κάθε πραγματική εξερχόμενη απόπειρα**, όχι οι λογικές κλήσεις. Μία κλήση που κάνει
@@ -1809,13 +1857,17 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   `base.html` είναι ακόμη το παλιό navy (το superadmin έχει `#12201e`)· αφέθηκε γιατί είναι χρώμα, όχι asset.
   (β) Το public footer δεν είχε ποτέ logo, μόνο το νομικό «© 2026 GEMI LEADS»· δεν προστέθηκε logo για να μην
   αλλάξει το layout. (γ) Τα email δείχνουν τα logos με απόλυτο URL `https://gemileads.gr/static/images/…`:
-  λειτουργούν μόνο αφού γίνει deploy αυτό το branch.
+  λειτουργούν μόνο μετά το deploy αυτών των assets.
 
 - **G4 blocker A — late publications (ανοιχτό, μετρούμενο):** εταιρείες που ο legacy importer δεν αποθηκεύει
   ποτέ τοπικά (φέρνει μόνο όσες έχουν ημερομηνία σύστασης = ημερομηνία στόχου) μένουν `pending_no_company` και
   **δεν** παίρνουν σήμα NEW_COMPANY μέχρι το cutover του Discovery v2. Δεν λύθηκε σκόπιμα: μετριέται στο G4 ως
   `unmaterialised (no Company yet)` και ως `v2_only → late_publication`. Η λύση σημαίνει δημιουργία `Company`
-  εκτός του legacy importer, δηλαδή την πύλη του cutover.
+  εκτός του legacy importer, δηλαδή την πύλη του cutover. **Η διαδρομή υπάρχει πλέον** (pending-company
+  hydration, 2026-09-26) αλλά είναι **κλειστή**. Πριν ανοίξει χρειάζεται απόφαση για την έκθεση στο legacy
+  προϊόν: (α) αν οι hydrated εταιρείες πρέπει να φαίνονται στο legacy dashboard/CSV· (β) τι γίνεται με τα
+  `invalid_date`, που το `company_defaults` αποθηκεύει ως «σήμερα» και άρα μπαίνουν στο σημερινό legacy
+  digest/matching· (γ) μία δοκιμαστική εκτέλεση `--dry-run` σε production για τα πραγματικά `stored_as_today`.
 - **G4 blocker B — χρονοπρογραμματισμός: ΛΥΘΗΚΕ (2026-09-20).** Η κατάταξη του Discovery v2 κρίνεται πλέον από το
   σύνορο στην αρχή του run, όχι από το αν ο legacy importer είχε προλάβει να γράψει τη γραμμή· η σειρά των runs δεν
   επηρεάζει πια ποια σήματα NEW_COMPANY παράγονται. Η σταθερή ακολουθία discovery → materialization →
@@ -1976,6 +2028,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-26 — Pending-company hydration (κλειστό).** Νέα: `gemiapp/pending_company_hydration.py`,
+  `gemiapp/management/commands/hydrate_pending_discovery_companies.py`,
+  `gemiapp/test_pending_company_hydration.py`. Αλλαγές: `config/settings.py` και `.env.example` (flag = 0),
+  `AGENTS.md`. Επαλήθευση: 26 focused tests + mutation check, discovery/B2/G4/client/metrics/pipeline suites (310
+  OK), `check`, `makemigrations --check`, 2.124 tests OK, άρνηση της εντολής με flag 0 σε αντίγραφο της dev βάσης.
+  Καμία migration, κανένα schedule, κανένα άγγιγμα στο G4.
 
 - **2026-09-26 — Email templates στο Signal Ledger.** Νέα: `templates/emails/_base.html`, `_button.html`,
   `registration/password_reset_email.txt`, `static/images/gemi-leads-logo-email.png` (αντικατέστησε το

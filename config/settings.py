@@ -427,6 +427,15 @@ GEMI_KAD_PICKER_CURRENT_TAXONOMY_ONLY = os.environ.get("GEMI_KAD_PICKER_CURRENT_
 # approved. The legacy importer remains the production source of companies and digests either way.
 GEMI_DISCOVERY_V2_ENABLED = os.environ.get("GEMI_DISCOVERY_V2_ENABLED", "0") == "1"
 GEMI_DISCOVERY_V2_SHADOW = os.environ.get("GEMI_DISCOVERY_V2_SHADOW", "1") == "1"
+# Pending-company hydration (gemiapp.pending_company_hydration): creates the missing canonical Company rows for
+# Discovery evidence that stays pending_no_company, create-only, through the legacy importer's own primitives.
+# A dedicated flag on purpose -- GEMI_DISCOVERY_V2_ENABLED also opens Discovery's ingest mode. Off by default
+# and never scheduled: while 0, `manage.py hydrate_pending_discovery_companies` refuses before selecting,
+# fetching or writing anything, dry runs included. Enabling it makes the created companies visible to the
+# legacy product like any imported company (see the module docstring), so it is a separate, explicit decision.
+GEMI_DISCOVERY_PENDING_COMPANY_HYDRATION_ENABLED = (
+    os.environ.get("GEMI_DISCOVERY_PENDING_COMPANY_HYDRATION_ENABLED", "0") == "1"
+)
 # Paging and safety limits. The overlap is how many already-known records must be seen beyond the frontier
 # before a run may stop: stopping at the first known record would miss irregular ordering and late arrivals.
 GEMI_DISCOVERY_PAGE_SIZE = int(os.environ.get("GEMI_DISCOVERY_PAGE_SIZE", "200"))
