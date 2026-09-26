@@ -103,8 +103,10 @@ def _skip_reason(user, include_staff: bool):
 def _provision(user_id: int, include_staff: bool) -> bool:
     """Create the user's Organization unless something changed since selection. True when created."""
     with transaction.atomic():
-        # Serializes with provision_organization_for_user and with a second run of this command.
-        user = User.objects.select_for_update().select_related("subscription").get(pk=user_id)
+        # Serializes with provision_organization_for_user and with a second run of this command. Lock the User row
+        # alone: PostgreSQL rejects FOR UPDATE on the nullable side of an outer join, which select_related on the
+        # optional subscription would add. The subscription is read afterwards by the entitlement checks.
+        user = User.objects.select_for_update().get(pk=user_id)
         if OrganizationMember.objects.filter(user=user).exists() or _skip_reason(user, include_staff):
             return False
         entitled_before = _owner_entitled(user)

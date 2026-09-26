@@ -185,6 +185,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     υπάρχει ακριβώς μία OWNER membership και ότι το παράγωγο entitlement του Organization ισούται με του χρήστη·
     οτιδήποτε αποτύχει → πλήρες rollback, `errors`, συνέχεια στον επόμενο. Idempotent (δεύτερη εκτέλεση →
     `already_provisioned`). Δεν υπάρχει DB constraint «ένας Organization ανά χρήστη»: η προστασία είναι το κλείδωμα.
+  - **Hotfix (2026-09-27):** η πρώτη πραγματική εκτέλεση σε production έδωσε `eligible=10`, `provisioned=0`,
+    `errors=10` (όλα rollback, τίποτα δεν γράφτηκε): `NotSupportedError: FOR UPDATE cannot be applied to the
+    nullable side of an outer join`, από το `select_related("subscription")` μέσα στο κλείδωμα του User. Το κλείδωμα
+    είναι πλέον **μόνο** στη γραμμή του User· η συνδρομή διαβάζεται χωριστά από τους ελέγχους entitlement (ίδια
+    σημασιολογία). Το SQLite αγνοεί το FOR UPDATE, γι' αυτό το `PostgresRowLockTests` μεταγλωττίζει offline για
+    PostgreSQL το queryset που πραγματικά κλειδώνει και απαιτεί `FOR UPDATE` χωρίς `JOIN`. Μετά το deploy: ξανά
+    `--dry-run`, μετά η πραγματική εκτέλεση.
   - **Billing μένει user-owned:** καμία αλλαγή σε `UserSubscription`, Stripe, tier, status ή complimentary· κανένα
     grant. Το entitlement του Organization προκύπτει από το **αμετάβλητο** bridge (`organization_entitlement`):
     Free → όχι entitled, πληρωμένος → entitled με το ίδιο tier.
@@ -2152,6 +2159,10 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-27 — Hotfix: row lock του provisioning χωρίς nullable join.** `gemiapp/existing_user_provisioning.py`
+  (`select_for_update()` μόνο στον User), 3 νέα tests (`PostgresRowLockTests`). Αιτία: `errors=10` στην πρώτη
+  πραγματική εκτέλεση σε production (PostgreSQL `NotSupportedError`, όλα rollback). Καμία migration.
 
 - **2026-09-27 — Provisioning Organization για υπάρχοντες legacy Radar owners.** Νέα:
   `gemiapp/existing_user_provisioning.py`, `manage.py provision_existing_user_organizations`,

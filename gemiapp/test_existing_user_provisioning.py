@@ -10,6 +10,8 @@ from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError, connection
+from django.db.backends.postgresql.base import DatabaseWrapper as PostgresDatabaseWrapper
+from django.db.models.query import QuerySet
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -278,6 +280,63 @@ class RaceAndFailureTests(ProvisioningTestCase):
         self.assertEqual((report.counters["errors"], report.counters["provisioned"]), (1, 1))
         self.assertEqual(self.memberships(first), [])
         self.assertEqual(tenancy_counts(), (1, 1, 1))
+
+
+class PostgresRowLockTests(ProvisioningTestCase):
+    """Production regression: PostgreSQL rejects FOR UPDATE on the nullable side of an outer join
+    (NotSupportedError), which select_related("subscription") added to the User lock. SQLite ignores FOR UPDATE, so
+    the locking querysets _provision really builds are captured and compiled offline for PostgreSQL."""
+
+    def locking_querysets(self, **options):
+        captured, real_get = [], QuerySet.get
+
+        def spy(queryset, *args, **kwargs):
+            if queryset.query.select_for_update:
+                captured.append(queryset)
+            return real_get(queryset, *args, **kwargs)
+
+        with patch.object(QuerySet, "get", spy):
+            report = self.provision(**options)
+        return report, captured
+
+    def postgres_sql(self, queryset):
+        compile_only = PostgresDatabaseWrapper(
+            dict(connection.settings_dict, ENGINE="django.db.backends.postgresql", NAME="compile_only"),
+            alias="postgres-compile-only",
+        )
+        compile_only.get_autocommit = lambda: False  # compile as inside a transaction; never connects
+        sql, _ = queryset.query.get_compiler(connection=compile_only).as_sql()
+        self.assertIsNone(compile_only.connection)
+        return sql
+
+    def test_the_user_row_lock_has_no_outer_join(self):
+        self.radar(self.paid(self.user("locked@example.com")))
+        report, locks = self.locking_querysets()
+        self.assertEqual(report.counters["provisioned"], 1)
+        self.assertEqual([qs.model for qs in locks], [User])  # the row lock is kept, on the User only
+        self.assertFalse(locks[0].query.select_related)
+        sql = self.postgres_sql(locks[0])
+        self.assertIn("FOR UPDATE", sql)
+        self.assertNotIn("JOIN", sql)
+
+    def test_the_old_query_shape_is_the_one_postgres_rejects(self):
+        sql = self.postgres_sql(User.objects.select_for_update().select_related("subscription").filter(pk=1))
+        self.assertIn("LEFT OUTER JOIN", sql)  # proves the check above would catch a regression
+
+    def test_users_with_and_without_a_subscription_row_are_provisioned_with_equivalent_entitlement(self):
+        paid = self.paid(self.user("with-row@example.com"), tier="business")
+        without = self.user("without-row@example.com")
+        UserSubscription.objects.filter(user=without).delete()
+        for user in (paid, without):
+            self.radar(user)
+        report = self.provision()
+        self.assertEqual((report.counters["provisioned"], report.counters["errors"]), (2, 0))
+        self.assertFalse(UserSubscription.objects.filter(user=without).exists())  # nothing written to billing
+        paid_org = OrganizationMember.objects.get(user=paid).organization
+        without_org = OrganizationMember.objects.get(user=without).organization
+        self.assertEqual((resolve_organization_entitlement(paid_org).entitled,
+                          resolve_organization_entitlement(paid_org).effective_tier), (True, "business"))
+        self.assertFalse(resolve_organization_entitlement(without_org).entitled)
 
 
 class BillingAndBoundaryTests(ProvisioningTestCase):
