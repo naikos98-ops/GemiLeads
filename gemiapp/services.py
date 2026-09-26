@@ -316,6 +316,8 @@ def import_for_date(target_date: date) -> ImportRun:
 
 NO_ENTITLEMENT = "No active subscription entitlement"
 TOP_TIERS = ("enterprise", "custom")
+# The one digest frequency the Free plan includes (digest_skip_reason).
+FREE_DIGEST_FREQUENCY = "daily"
 
 
 def digest_skip_reason(user, frequency):
@@ -325,18 +327,22 @@ def digest_skip_reason(user, frequency):
     `diagnose_intraday` management commands, so every send path and every diagnostic applies the
     same rule and cannot drift apart.
 
-    Two independent gates, both required:
+    Gates, in order:
 
       PREFERENCE  -- the user wants the email: a DigestPreference exists and is not "off".
-      ENTITLEMENT -- the user may receive paid product data: UserSubscription.has_entitlement,
-                     i.e. an active paid subscription OR unexpired complimentary access (the
-                     existing beta/comp mechanism). BETA_MODE is only a label and grants nothing.
+      ACCOUNT     -- the account is active (verified) and has an address.
+      ENTITLEMENT -- for every frequency except DAILY: UserSubscription.has_entitlement, i.e. an
+                     active paid subscription OR unexpired complimentary access (the existing
+                     beta/comp mechanism). BETA_MODE is only a label and grants nothing.
+      TIER        -- intraday additionally needs an Enterprise/Custom effective tier.
 
-    A DigestPreference is created with frequency="daily" for every signup, so preference alone
-    must never be read as entitlement. The daily digest carries up to 100 newly registered
-    companies whether or not any Radar matched -- the core paid feed -- so entitlement applies to
-    every frequency, daily included. Cancelled, past-due, unpaid and inactive subscriptions all
-    fail has_active_paid_subscription (ALLOWED_PAID_STATUSES is ("active",)).
+    The DAILY digest is part of the Free plan: any account that passes PREFERENCE and ACCOUNT
+    receives it, paid or not. That is the whole product rule and nothing wider -- Free still has
+    no Radars (RADAR_LIMITS["free"] == 0) and no CSV, and ``send_digests`` gives an account without
+    an entitlement the general registrations only, never a Radar section. It also means an account
+    whose subscription is cancelled, past due, unpaid, expired or inactive is a Free account for
+    the daily digest. Every other frequency keeps the entitlement gate, so Free never receives the
+    intraday alert. (Until the Free plan included it, the daily digest required an entitlement too.)
     """
     preference = getattr(user, "digest_preference", None)
     if preference is None:
@@ -348,6 +354,8 @@ def digest_skip_reason(user, frequency):
     if not user.email:
         return "Ο λογαριασμός δεν έχει email"
 
+    if frequency == FREE_DIGEST_FREQUENCY:
+        return None  # included in the Free plan: no paid entitlement required
     subscription = getattr(user, "subscription", None)
     if subscription is None or not subscription.has_entitlement:
         return NO_ENTITLEMENT
@@ -453,6 +461,9 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
 
         subscription = getattr(user, "subscription", None)
         last_sent_id = (subscription.last_sent_company_id or 0) if subscription else 0
+        # A Free account (no entitlement) gets the daily digest but not Radars: no Radar section,
+        # no stale match from before a subscription lapsed, no CSV token. See digest_skip_reason.
+        radar_features = subscription is not None and subscription.has_entitlement
 
         radar_filter = {
             "radar__user": user,
@@ -469,7 +480,10 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
         else:
             radar_filter["radar__frequency"] = frequency
 
-        matches = RadarMatch.objects.filter(**radar_filter).select_related("company", "radar")
+        matches = (
+            RadarMatch.objects.filter(**radar_filter).select_related("company", "radar")
+            if radar_features else RadarMatch.objects.none()
+        )
 
         companies_dict = {}
         radar_company_ids = set()
@@ -502,7 +516,7 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
             if frequency == "intraday":
                 skipped += 1
                 continue
-            has_radars = CustomerRadar.objects.filter(user=user, is_active=True, frequency=frequency, deleted_at__isnull=True).exists()
+            has_radars = radar_features and CustomerRadar.objects.filter(user=user, is_active=True, frequency=frequency, deleted_at__isnull=True).exists()
             if not (preference.include_empty_digest and has_radars):
                 DigestDelivery.objects.update_or_create(user=user, digest_date=target_date, frequency=frequency, defaults={"status": "skipped", "company_count": 0, "error_message": ""})
                 skipped += 1
@@ -518,8 +532,10 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
 
             from .views import make_digest_export_token
 
-            export_token = make_digest_export_token(user.id, target_date)
-            export_url = f"{settings.BASE_URL}{reverse('digest_export_csv', kwargs={'token': export_token})}"
+            export_url = None
+            if radar_features:
+                export_token = make_digest_export_token(user.id, target_date)
+                export_url = f"{settings.BASE_URL}{reverse('digest_export_csv', kwargs={'token': export_token})}"
 
             context = {
                 "user": user,
@@ -531,6 +547,8 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
                 "frequency": frequency,
                 "unsubscribe_url": unsubscribe_url,
                 "export_url": export_url,
+                "radar_features": radar_features,
+                "pricing_url": f"{settings.BASE_URL}{reverse('pricing')}",
             }
             if frequency == "intraday":
                 subject = f"Gemi Leads Priority Alert · {total_companies_count} νέες επιχειρήσεις"
@@ -607,21 +625,23 @@ def send_user_yesterday_digest(user) -> int:
     if not user.email:
         raise ValueError("Ο χρήστης δεν διαθέτει email διεύθυνση.")
 
-    # An operator-triggered send is still a digest: it carries the same paid feed and lands in
-    # the same inbox, so it obeys the same preference + entitlement rule as the scheduled ones.
-    # Without this it could mail an unentitled account, or someone who set their digest to off.
+    # An operator-triggered send is still a daily digest: it lands in the same inbox, so it obeys
+    # the same rule as the scheduled one (digest_skip_reason) -- never to someone who set their
+    # digest to off -- and a Free account gets the same Free content, no Radar section.
     # The Superadmin view already turns a raised exception into an error message.
     reason = digest_skip_reason(user, "daily")
     if reason:
         raise ValueError(reason)
 
     yesterday = timezone.localdate() - timedelta(days=1)
+    subscription = getattr(user, "subscription", None)
+    radar_features = subscription is not None and subscription.has_entitlement  # as in send_digests
     matches = RadarMatch.objects.filter(
         radar__user=user,
         radar__is_active=True,
         radar__deleted_at__isnull=True,
         matched_on=yesterday,
-    ).select_related("company", "radar")
+    ).select_related("company", "radar") if radar_features else RadarMatch.objects.none()
 
     companies_dict = {}
     radar_company_ids = set()
@@ -652,6 +672,8 @@ def send_user_yesterday_digest(user) -> int:
         "end_date": yesterday,
         "frequency": "daily",
         "unsubscribe_url": unsubscribe_url,
+        "radar_features": radar_features,
+        "pricing_url": f"{settings.BASE_URL}{reverse('pricing')}",
     }
     subject = f"Gemi Leads · Χθεσινές Εγγραφές ({yesterday:%d/%m/%Y}) · {total_count} επιχειρήσεις"
     body_text = render_to_string("emails/daily_digest.txt", context)

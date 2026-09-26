@@ -64,8 +64,9 @@
      checkout open?   -> LEGAL_BILLING_ACTIVE
      Free row         -> dashboard and company_detail need only a login (contact details and
                          representatives stay behind has_entitlement); export_csv and the Radar
-                         views need radar_limit > 0 (RADAR_LIMITS["free"] == 0); the digest needs
-                         has_entitlement (services.digest_skip_reason), so it is "not included"
+                         views need radar_limit > 0 (RADAR_LIMITS["free"] == 0); the daily digest
+                         needs no entitlement (services.digest_skip_reason, FREE_DIGEST_FREQUENCY)
+                         and carries no Radar section for Free; intraday still needs a top tier
    Claims without a backing implementation are not listed. {% endcomment %}
 
 <section class="public-section">
@@ -75,7 +76,8 @@
       <h2 style="font-size: var(--type-display);">Το πλάνο ορίζει πόσα Ραντάρ κρατάς ενεργά.</h2>
       <p>
         Όλα τα πλάνα διαβάζουν την ίδια πηγή — το επίσημο Open Data API του ΓΕΜΗ. Το Free σου
-        δείχνει τις νέες εγγραφές· οι συνδρομές δίνουν πλήρη πρόσβαση στα Signals, στα Leads και
+        δείχνει τις νέες εγγραφές και σου τις στέλνει κάθε μέρα με email· οι συνδρομές δίνουν
+        πλήρη πρόσβαση στα Signals, στα Leads και
         στο Business Dossier, και αυτό που αλλάζει ανάμεσά τους είναι πόσα Ραντάρ μπορείς να έχεις
         ενεργά ταυτόχρονα.
       </p>
@@ -113,9 +115,9 @@
     </header>
 
     {% comment %} Free: what a signed-up account without a subscription really gets.
-       Included and not included are both verified against the backend (see the header comment);
-       the daily digest is listed as not included because digest_skip_reason requires an
-       entitlement for every frequency. Not in the JSON-LD offers on purpose: a price-0 Offer is
+       Included and not included are both verified against the backend (see the header comment):
+       the daily digest needs no entitlement, Radars and CSV need radar_limit > 0. Not in the
+       JSON-LD offers on purpose: a price-0 Offer is
        what StructuredDataTests guards against, and this row is a starting point, not a sale. {% endcomment %}
     <div class="public-plan-row">
       <div>
@@ -128,10 +130,10 @@
         <ul class="plan-included">
           <li>Προβολή νέων εγγραφών επιχειρήσεων</li>
           <li>Βασικά στοιχεία επιχείρησης</li>
+          <li>Ημερήσιο email digest</li>
         </ul>
         <p class="plan-scope-label">Δεν περιλαμβάνει</p>
         <ul class="plan-excluded">
-          <li>Ημερήσιο email digest <span>από Pro</span></li>
           <li>Εξαγωγή / λήψη CSV <span>από Pro</span></li>
           <li>Ραντάρ <span>από Pro</span></li>
         </ul>
@@ -141,8 +143,8 @@
         <span>ενεργά Ραντάρ</span>
       </div>
       <div class="plan-frequency">
-        <strong>Dashboard</strong>
-        <span>χωρίς email digest</span>
+        <strong>Ημερήσια</strong>
+        <span>digest 09:00</span>
       </div>
       <div class="plan-price">
         <strong>€0</strong>
@@ -302,7 +304,7 @@
       </div>
       <div>
         <b>Digest email</b>
-        <p>Ημερήσιο digest σε κάθε πλάνο συνδρομής. Οι ενημερώσεις ανά 3 ώρες είναι διαθέσιμες σε Enterprise και Custom.</p>
+        <p>Ημερήσιο digest σε κάθε πλάνο, και στο Free. Οι ενημερώσεις ανά 3 ώρες είναι διαθέσιμες σε Enterprise και Custom.</p>
       </div>
       <div>
         <b>Έλεγχος επικοινωνίας</b>

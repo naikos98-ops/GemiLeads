@@ -873,8 +873,9 @@ class SuperadminTests(TestCase):
         from .models import AdminAuditLog
         self.assertTrue(AdminAuditLog.objects.filter(action="send_user_yesterday_digest", target_id=str(self.normal_user.id)).exists())
 
-    def test_send_user_yesterday_digest_refuses_an_unentitled_account(self):
+    def test_send_user_yesterday_digest_to_a_free_account_sends_the_free_digest(self):
         # normal_user is a plain signup: a daily DigestPreference from the signal, no entitlement.
+        # The daily digest is part of the Free plan, so the manual send goes through, general only.
         mail.outbox = []
         self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
         res = self.client.post(
@@ -882,10 +883,10 @@ class SuperadminTests(TestCase):
             follow=True,
         )
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(mail.outbox, [])
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertNotIn("Ταιριάζουν στα Ραντάρ σου", mail.outbox[0].alternatives[0][0])
         from .models import AdminAuditLog
-        self.assertFalse(AdminAuditLog.objects.filter(action="send_user_yesterday_digest", target_id=str(self.normal_user.id)).exists())
-        self.assertContains(res, "No active subscription entitlement")
+        self.assertTrue(AdminAuditLog.objects.filter(action="send_user_yesterday_digest", target_id=str(self.normal_user.id)).exists())
 
     def test_grant_complimentary_enterprise_and_custom_limits(self):
         self.client.login(username="admin@gemileads.gr", password="SuperPassword123")
@@ -2509,11 +2510,14 @@ class PricingFreePlanTests(TestCase):
     def test_free_row_lists_what_is_and_is_not_included(self):
         row = self._row(self.client.get(reverse("pricing")).content.decode())
         included = row[row.index('class="plan-included"'):row.index('class="plan-excluded"')]
-        excluded = row[row.index('class="plan-excluded"'):]
-        self.assertIn("Προβολή νέων εγγραφών επιχειρήσεων", included)
-        self.assertIn("Βασικά στοιχεία επιχείρησης", included)
-        for item in ("Ημερήσιο email digest", "Εξαγωγή / λήψη CSV", "Ραντάρ"):
+        excluded = row[row.index('class="plan-excluded"'):row.index("</ul>", row.index('class="plan-excluded"'))]
+        for item in ("Προβολή νέων εγγραφών επιχειρήσεων", "Βασικά στοιχεία επιχείρησης", "Ημερήσιο email digest"):
+            self.assertIn(item, included)
+        for item in ("Εξαγωγή / λήψη CSV", "Ραντάρ"):
             self.assertIn(item, excluded)
+        self.assertNotIn("digest", excluded)
+        self.assertNotIn("χωρίς email digest", row)
+        self.assertIn("digest 09:00", row)
         self.assertIn("€0", row)
 
     def test_every_free_claim_matches_the_backend(self):
@@ -2529,10 +2533,12 @@ class PricingFreePlanTests(TestCase):
                                          incorporation_date=timezone.localdate())
         self.assertEqual(self.client.get(reverse("dashboard")).status_code, 200)
         self.assertEqual(self.client.get(reverse("company_detail", args=[company.gemi_number])).status_code, 200)
-        # not included: CSV, Radars and -- today -- the daily digest
+        # included: the daily digest (no entitlement needed); not the intraday alert
+        self.assertIsNone(digest_skip_reason(user, "daily"))
+        self.assertEqual(digest_skip_reason(user, "intraday"), NO_ENTITLEMENT)
+        # not included: CSV and Radars
         self.assertRedirects(self.client.get(reverse("export_csv")), reverse("pricing"))
         self.assertEqual(get_user_radar_limit(user), 0)
-        self.assertEqual(digest_skip_reason(user, "daily"), NO_ENTITLEMENT)
 
     def test_anonymous_visitors_get_the_free_cta(self):
         row = self._row(self.client.get(reverse("pricing")).content.decode())
@@ -2557,6 +2563,145 @@ class PricingFreePlanTests(TestCase):
         html = self.client.get(reverse("pricing")).content.decode()
         self.assertNotIn("Ημερήσιο digest σε όλα τα πλάνα", html)
         self.assertIn("ΚΟΙΝΑ ΣΕ ΟΛΑ ΤΑ ΠΛΑΝΑ ΣΥΝΔΡΟΜΗΣ", html)
+
+
+class FreeDailyDigestTests(TestCase):
+    """The daily digest is part of Free: general registrations only, no Radar content, no CSV,
+    no intraday -- with every existing delivery guard in place and paid behaviour unchanged."""
+
+    def setUp(self):
+        self.today = timezone.localdate()
+        self.company = Company.objects.create(gemi_number="910000000001", name="ΝΕΑ ΕΓΓΡΑΦΗ ΙΚΕ",
+                                              incorporation_date=self.today, prefecture="ΑΤΤΙΚΗΣ")
+        mail.outbox = []
+
+    def _user(self, key, *, tier="free", status="inactive", comp_tier="none"):
+        user = User.objects.create_user(key, f"{key}@example.com", "StrongPass123", is_active=True)
+        UserSubscription.objects.filter(user=user).update(tier=tier, status=status, complimentary_tier=comp_tier)
+        return User.objects.get(pk=user.pk)
+
+    def _message_to(self, user):
+        return next(message for message in mail.outbox if user.email in message.to)
+
+    def test_free_is_in_the_daily_run_with_general_registrations_and_nothing_radar(self):
+        from .services import send_digests
+
+        free = self._user("free-digest")
+        # A Radar and a match left over from before the account became Free must not surface.
+        radar = CustomerRadar.objects.create(user=free, name="Παλιό Ραντάρ", frequency="daily",
+                                             monitor_from=timezone.now() - timedelta(days=30))
+        lead = UserCompanyLead.objects.create(user=free, company=self.company)
+        RadarMatch.objects.create(radar=radar, lead=lead, company=self.company, matched_on=self.today,
+                                  matched_activity_codes=[], match_reason={})
+
+        sent, _ = send_digests(self.today, frequency="daily")
+
+        self.assertEqual(sent, 1)
+        message = self._message_to(free)
+        html = message.alternatives[0][0]
+        self.assertIn("ΝΕΑ ΕΓΓΡΑΦΗ ΙΚΕ", message.body)
+        self.assertIn("ΝΕΑ ΕΓΓΡΑΦΗ ΙΚΕ", html)
+        for text in ("Ταιριάζουν στα Ραντάρ σου", "ταιριάζουν στα Ραντάρ σου", "Παλιό Ραντάρ", "ΡΑΝΤΑΡ ·"):
+            self.assertNotIn(text, html)
+        self.assertNotIn("ΤΑΙΡΙΑΖΟΥΝ ΣΤΑ ΡΑΝΤΑΡ ΣΟΥ", message.body)
+        self.assertNotIn("Παλιό Ραντάρ", message.body)
+        # no CSV download token for Free: the link goes to pricing instead
+        self.assertNotIn("/digest/", html)
+        self.assertIn(reverse("pricing"), html)
+        self.assertIn(reverse("pricing"), message.body)
+        row = DigestDelivery.objects.get(user=free, digest_date=self.today, frequency="daily")
+        self.assertEqual((row.status, row.company_count), ("sent", 1))
+
+    def test_free_with_no_radars_and_no_registrations_gets_no_empty_digest(self):
+        from .services import send_digests
+
+        Company.objects.all().delete()
+        free = self._user("free-empty")
+        free.digest_preference.include_empty_digest = True
+        free.digest_preference.save()
+        send_digests(self.today, frequency="daily")
+        self.assertEqual(mail.outbox, [])
+        self.assertEqual(DigestDelivery.objects.get(user=free).status, "skipped")
+
+    def test_free_never_receives_the_intraday_alert(self):
+        from .services import send_digests
+
+        self._user("free-intraday")
+        sent, _ = send_digests(self.today, frequency="intraday")
+        self.assertEqual((sent, mail.outbox), (0, []))
+
+    def test_free_still_has_no_radars_and_no_csv(self):
+        from .models import RADAR_LIMITS, get_user_radar_limit
+
+        free = self._user("free-limits")
+        self.assertEqual(RADAR_LIMITS["free"], 0)
+        self.assertEqual(get_user_radar_limit(free), 0)
+        self.client.force_login(free)
+        self.assertRedirects(self.client.get(reverse("export_csv")), reverse("pricing"))
+        # The Radar gate is on POST: with a limit of 0 the form refuses and nothing is saved.
+        response = self.client.post(reverse("radar_create"), {"name": "Δοκιμή", "frequency": "daily"})
+        self.assertContains(response, "Απαιτείται ενεργή συνδρομή")
+        self.assertEqual(CustomerRadar.objects.filter(user=free).count(), 0)
+
+    def test_a_second_daily_run_sends_nothing_new(self):
+        from .services import send_digests
+
+        free = self._user("free-twice")
+        self.assertEqual(send_digests(self.today, frequency="daily")[0], 1)
+        self.assertEqual(send_digests(self.today, frequency="daily")[0], 0)
+        self.assertEqual(len([m for m in mail.outbox if free.email in m.to]), 1)
+
+    def test_the_existing_guards_still_refuse(self):
+        from .services import digest_skip_reason, send_digests
+
+        opted_out = self._user("free-off")
+        opted_out.digest_preference.frequency = "off"
+        opted_out.digest_preference.save()
+        unverified = self._user("free-unverified")
+        User.objects.filter(pk=unverified.pk).update(is_active=False)
+        no_address = self._user("free-noaddress")
+        User.objects.filter(pk=no_address.pk).update(email="")
+        no_preference = self._user("free-nopref")
+        DigestPreference.objects.filter(user=no_preference).delete()
+
+        self.assertIn("frequency=off", digest_skip_reason(User.objects.get(pk=opted_out.pk), "daily"))
+        self.assertIn("Ανενεργός", digest_skip_reason(User.objects.get(pk=unverified.pk), "daily"))
+        self.assertIn("email", digest_skip_reason(User.objects.get(pk=no_address.pk), "daily"))
+        self.assertIn("DigestPreference", digest_skip_reason(User.objects.get(pk=no_preference.pk), "daily"))
+        send_digests(self.today, frequency="daily")
+        self.assertEqual(mail.outbox, [])
+
+    def test_the_unsubscribe_link_still_turns_the_free_digest_off(self):
+        from .services import send_digests
+
+        free = self._user("free-unsub")
+        send_digests(self.today, frequency="daily")
+        link = re.search(r"https?://[^\s]+/unsubscribe/[^\s]+", self._message_to(free).body).group(0)
+        self.client.get(link[link.index("/unsubscribe/"):])
+        free.digest_preference.refresh_from_db()
+        self.assertEqual(free.digest_preference.frequency, "off")
+
+    def test_paid_daily_and_intraday_are_unchanged(self):
+        from .services import send_digests
+
+        pro = self._user("paid-pro", tier="pro", status="active")
+        radar = CustomerRadar.objects.create(user=pro, name="Ραντάρ Pro", frequency="daily",
+                                             monitor_from=timezone.now() - timedelta(days=30))
+        lead = UserCompanyLead.objects.create(user=pro, company=self.company)
+        RadarMatch.objects.create(radar=radar, lead=lead, company=self.company, matched_on=self.today,
+                                  matched_activity_codes=[], match_reason={})
+        send_digests(self.today, frequency="daily")
+        message = self._message_to(pro)
+        html = message.alternatives[0][0]
+        self.assertIn("Ταιριάζουν στα Ραντάρ σου", html)
+        self.assertIn("Ραντάρ Pro", html)
+        self.assertIn("/digest/", html)                       # the CSV download link for paid plans
+        self.assertIn("ΤΑΙΡΙΑΖΟΥΝ ΣΤΑ ΡΑΝΤΑΡ ΣΟΥ", message.body)
+
+        mail.outbox = []
+        enterprise = self._user("paid-ent", tier="enterprise", status="active")
+        self.assertEqual(send_digests(self.today, frequency="intraday")[0], 1)
+        self.assertEqual([m.to for m in mail.outbox], [[enterprise.email]])
 
 
 class PricingDiscoverabilityTests(TestCase):
@@ -9038,12 +9183,12 @@ class QueueUndeliverableTests(TestCase):
 @SYNC_Q
 class DigestEntitlementTests(TestCase):
     """PREFERENCE (the user wants the email) and ENTITLEMENT (the user may receive paid product
-    data) are separate gates, and a digest needs both.
+    data) are separate gates.
 
-    Every signup gets a daily DigestPreference and a free/inactive UserSubscription from the
-    post_save signal, so preference alone is present on every account and must never be read as
-    entitlement. Before this class existed nothing asserted the unentitled + daily case, so the
-    suite passed both with and without the gate.
+    The DAILY digest is part of the Free plan: it needs the preference and a usable, active account,
+    not an entitlement. Every other frequency (intraday) needs both, plus the top tier. So an
+    account without an entitlement -- a plain signup, or a cancelled, lapsed, expired or inactive
+    subscription -- gets the daily digest and never the intraday alert.
     """
 
     def setUp(self):
@@ -9101,18 +9246,19 @@ class DigestEntitlementTests(TestCase):
 
         self.assertIsNone(digest_skip_reason(self._user("comp-forever", comp_tier="business"), "daily"))
 
-    def test_expired_complimentary_access_is_skipped(self):
+    def test_expired_complimentary_access_gets_only_the_free_daily_digest(self):
         from .services import digest_skip_reason
 
         user = self._user("comp-expired", comp_tier="pro", comp_until=timezone.now() - timedelta(days=1))
-        self.assertEqual(digest_skip_reason(user, "daily"), self.NO_ENTITLEMENT)
+        self.assertIsNone(digest_skip_reason(user, "daily"))                  # Free daily digest
+        self.assertEqual(digest_skip_reason(user, "intraday"), self.NO_ENTITLEMENT)
 
-    def test_unpaid_user_is_skipped_for_the_daily_digest(self):
-        """The case that was missing: nothing asserted digest_skip_reason(unpaid, "daily")."""
+    def test_a_free_account_gets_the_daily_digest_and_not_the_intraday_alert(self):
         from .services import digest_skip_reason
 
-        unpaid = self._user("unpaid", tier="free", status="inactive")
-        self.assertEqual(digest_skip_reason(unpaid, "daily"), self.NO_ENTITLEMENT)
+        free = self._user("unpaid", tier="free", status="inactive")
+        self.assertIsNone(digest_skip_reason(free, "daily"))
+        self.assertEqual(digest_skip_reason(free, "intraday"), self.NO_ENTITLEMENT)
 
     def test_a_default_preference_is_not_entitlement(self):
         from .services import digest_skip_reason
@@ -9122,34 +9268,41 @@ class DigestEntitlementTests(TestCase):
         user = User.objects.get(pk=user.pk)
         self.assertEqual(user.digest_preference.frequency, "daily")
         self.assertFalse(user.subscription.has_entitlement)
-        self.assertEqual(digest_skip_reason(user, "daily"), self.NO_ENTITLEMENT)
+        # The preference is still not entitlement: it only unlocks what Free includes.
+        self.assertIsNone(digest_skip_reason(user, "daily"))
+        self.assertEqual(digest_skip_reason(user, "intraday"), self.NO_ENTITLEMENT)
 
-    def test_account_without_a_subscription_row_is_skipped(self):
+    def test_account_without_a_subscription_row_gets_only_the_free_daily_digest(self):
         from .services import digest_skip_reason
 
         user = self._user("no-row")
         UserSubscription.objects.filter(user=user).delete()
-        self.assertEqual(digest_skip_reason(User.objects.get(pk=user.pk), "daily"), self.NO_ENTITLEMENT)
+        user = User.objects.get(pk=user.pk)
+        self.assertIsNone(digest_skip_reason(user, "daily"))
+        self.assertEqual(digest_skip_reason(user, "intraday"), self.NO_ENTITLEMENT)
 
-    def test_cancelled_subscription_is_skipped(self):
+    def test_cancelled_subscription_gets_only_the_free_daily_digest(self):
         from .services import digest_skip_reason
 
         user = self._user("cancelled", tier="pro", status="canceled")
-        self.assertEqual(digest_skip_reason(user, "daily"), self.NO_ENTITLEMENT)
+        self.assertIsNone(digest_skip_reason(user, "daily"))                  # now a Free account
+        self.assertEqual(digest_skip_reason(user, "intraday"), self.NO_ENTITLEMENT)
 
-    def test_lapsed_subscription_is_skipped(self):
+    def test_lapsed_subscription_gets_only_the_free_daily_digest(self):
         from .services import digest_skip_reason
 
         for status in ("past_due", "unpaid"):
             with self.subTest(status=status):
                 user = self._user(f"lapsed-{status}", tier="business", status=status)
-                self.assertEqual(digest_skip_reason(user, "daily"), self.NO_ENTITLEMENT)
+                self.assertIsNone(digest_skip_reason(user, "daily"))
+                self.assertEqual(digest_skip_reason(user, "intraday"), self.NO_ENTITLEMENT)
 
-    def test_inactive_subscription_is_skipped(self):
+    def test_inactive_subscription_gets_only_the_free_daily_digest(self):
         from .services import digest_skip_reason
 
         user = self._user("inactive-sub", tier="enterprise", status="inactive")
-        self.assertEqual(digest_skip_reason(user, "daily"), self.NO_ENTITLEMENT)
+        self.assertIsNone(digest_skip_reason(user, "daily"))
+        self.assertEqual(digest_skip_reason(user, "intraday"), self.NO_ENTITLEMENT)
 
     def test_intraday_applies_the_same_entitlement_and_the_tier_gate(self):
         from .services import digest_skip_reason
@@ -9165,34 +9318,33 @@ class DigestEntitlementTests(TestCase):
 
     # -- end to end: the recipient query cannot route around the rule ---------------------------
 
-    def test_daily_run_mails_only_entitled_accounts_with_the_preference_on(self):
+    def test_daily_run_mails_every_account_with_the_preference_on_and_nobody_else(self):
         from .services import send_digests
 
-        entitled = {
+        recipients = {
             self._user("e2e-paid", tier="pro", status="active").email,
             self._user("e2e-comp", comp_tier="pro", comp_until=timezone.now() + timedelta(days=7)).email,
+            # Free accounts, including every lapsed state: the daily digest is part of Free.
+            self._user("e2e-unpaid").email,
+            self._user("e2e-cancelled", tier="pro", status="canceled").email,
+            self._user("e2e-pastdue", tier="pro", status="past_due").email,
+            self._user("e2e-inactive", tier="business", status="inactive").email,
+            self._user("e2e-comp-expired", comp_tier="pro", comp_until=timezone.now() - timedelta(days=1)).email,
         }
-        refused = [
-            self._user("e2e-unpaid"),
-            self._user("e2e-cancelled", tier="pro", status="canceled"),
-            self._user("e2e-pastdue", tier="pro", status="past_due"),
-            self._user("e2e-inactive", tier="business", status="inactive"),
-            self._user("e2e-comp-expired", comp_tier="pro", comp_until=timezone.now() - timedelta(days=1)),
-            self._user("e2e-paid-off", tier="pro", status="active", frequency="off"),
-        ]
+        opted_out = self._user("e2e-paid-off", tier="pro", status="active", frequency="off")
+        unverified = self._user("e2e-unverified")
+        User.objects.filter(pk=unverified.pk).update(is_active=False)
 
         sent, skipped = send_digests(self.today, frequency="daily")
 
-        self.assertEqual(self._recipients(), entitled)
-        self.assertEqual(sent, len(entitled))
-        for user in refused:
-            self.assertNotIn(user.email, self._recipients())
-        # Unentitled accounts are still written to the delivery log as skipped for entitlement,
-        # which is what makes a missing digest diagnosable from the Superadmin.
-        for user in refused[:5]:
-            row = DigestDelivery.objects.get(user=user, digest_date=self.today, frequency="daily")
-            self.assertEqual(row.status, "skipped")
-            self.assertEqual(row.error_message, self.NO_ENTITLEMENT)
+        self.assertEqual(self._recipients(), recipients)
+        self.assertEqual(sent, len(recipients))
+        self.assertNotIn(opted_out.email, self._recipients())
+        self.assertNotIn(unverified.email, self._recipients())
+        for address in recipients:
+            row = DigestDelivery.objects.get(user__email=address, digest_date=self.today, frequency="daily")
+            self.assertEqual((row.status, row.error_message), ("sent", ""))
+        self.assertFalse(DigestDelivery.objects.filter(error_message=self.NO_ENTITLEMENT).exists())
 
     def test_intraday_run_mails_only_entitled_top_tier_accounts(self):
         from .services import send_digests
@@ -9209,12 +9361,14 @@ class DigestEntitlementTests(TestCase):
 
         self.assertEqual(self._recipients(), allowed)
 
-    def test_manual_yesterday_digest_refuses_an_unentitled_account(self):
+    def test_manual_yesterday_digest_to_a_free_account_has_no_radar_section(self):
         from .services import send_user_yesterday_digest
 
-        with self.assertRaisesMessage(ValueError, self.NO_ENTITLEMENT):
-            send_user_yesterday_digest(self._user("m-unpaid"))
-        self.assertEqual(mail.outbox, [])
+        send_user_yesterday_digest(self._user("m-unpaid"))
+        self.assertEqual(len(mail.outbox), 1)
+        html = mail.outbox[0].alternatives[0][0]
+        self.assertNotIn("Ταιριάζουν στα Ραντάρ σου", html)
+        self.assertNotIn("ΤΑΙΡΙΑΖΟΥΝ ΣΤΑ ΡΑΝΤΑΡ ΣΟΥ", mail.outbox[0].body)
 
     def test_manual_yesterday_digest_respects_an_opt_out(self):
         from .services import send_user_yesterday_digest
