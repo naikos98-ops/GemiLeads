@@ -1767,6 +1767,26 @@ class OrganizationRadar(models.Model):
         return f"{self.name} · organization #{self.organization_id}"
 
 
+class LegacyRadarMigrationMap(models.Model):
+    """Durable provenance for the explicit legacy-to-organization Radar copy operation.
+
+    The nullable destination Radar is deliberate: deleting a copied Radar leaves a tombstone, so an operator
+    rerun cannot resurrect configuration that the customer removed.
+    """
+
+    legacy_radar = models.OneToOneField(CustomerRadar, on_delete=models.CASCADE, related_name="+")
+    organization = models.ForeignKey(Organization, on_delete=models.CASCADE, related_name="+")
+    organization_radar = models.OneToOneField(
+        OrganizationRadar, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    mapping_version = models.PositiveSmallIntegerField(default=1)
+    migrated_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Legacy radar migration map"
+        ordering = ["legacy_radar_id"]
+
+
 class OrganizationRadarKad(models.Model):
     """§25 `radar_kads`: an exact KAD the Radar targets (GemiKad = code and version)."""
 

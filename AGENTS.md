@@ -159,6 +159,30 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Legacy `CustomerRadar` → `OrganizationRadar` migration (2026-09-26): έτοιμο, ΔΕΝ έχει τρέξει σε production.**
+  - Ρητή operator-only εντολή: `python manage.py migrate_legacy_radars_to_organizations [--dry-run]
+    [--limit N] [--user-id ID] [--organization-id ID] [--legacy-radar-id ID]`. Δεν υπάρχει schedule, startup
+    hook ή signal. Το dry-run δεν γράφει τίποτα.
+  - Προορισμός είναι ο μοναδικός οργανισμός στον οποίο ο owner του legacy Radar έχει `OrganizationMember`.
+    Στο τρέχον schema το ownership είναι `OrganizationMember(role="owner")`, όχι πεδίο `Organization.owner`,
+    άρα owner και member είναι η ίδια κανονική σχέση και αποδιπλασιάζονται από το unique constraint. Μηδέν
+    οργανισμοί → `missing_organization`, περισσότεροι από ένας → `ambiguous_organization`.
+  - Mapping: `name` αυτούσιο· `active = is_active AND frequency != "off"`; ρητό signal type μόνο
+    `new_company`; κάθε legacy ΚΑΔ code σε **όλες** τις present `GemiKad` versions με ίδιο `source_id`·
+    prefecture/legal type μόνο με exact source id ή μοναδική accent/case-insensitive exact description· κενά
+    municipality/exclusions· `score_threshold=None`. `name_query` και μελλοντικό `monitor_from` απορρίπτονται.
+    Το `only_active` καταγράφεται ως `only_active_currently_inert`: σήμερα όλα τα imported Company είναι active
+    λόγω του τεκμηριωμένου GEMI payload gap, άρα διατηρείται η τρέχουσα (όχι η μελλοντικά επιδιωκόμενη)
+    συμπεριφορά. Soft-deleted Radars αγνοούνται.
+  - Provenance: additive migration `0056_legacy_radar_migration_map`, ένα OneToOne ανά `CustomerRadar`, destination
+    Organization, rule version και nullable OneToOne προς το νέο Radar. Διαγραφή του νέου Radar κάνει `SET_NULL`
+    και αφήνει tombstone (`already_migrated_deleted`), οπότε rerun δεν το ανασταίνει. Καμία σύγκριση με όνομα.
+  - Κάθε Radar γράφεται σε δικό του transaction (root, criteria, provenance) και αποτυχία κάνει πλήρες rollback.
+    Είναι create-only: δεν ενημερώνει υπάρχον OrganizationRadar και δεν αγγίζει CustomerRadar/Lead/digest,
+    billing/entitlement, memberships, G4, Discovery ή hydration. Δεν δημιουργεί Signal/Opportunity και δεν κάνει
+    backfill/replay. Μελλοντικά, ενεργά migrated Radars σε entitled Organizations μπορούν να συμμετέχουν στον
+    υπάρχοντα SHADOW pipeline — ποτέ LIVE εξαιτίας αυτής της εντολής.
+
 - **Free: ημερήσιο email digest (2026-09-26).** Το DAILY digest είναι πλέον μέρος του Free plan.
   - **Κανόνας (`services.digest_skip_reason`):** PREFERENCE (υπάρχει `DigestPreference`, όχι `off`) → ACCOUNT
     (`is_active`, υπάρχει email) → για **κάθε συχνότητα εκτός DAILY** ENTITLEMENT (`has_entitlement`) → για intraday
@@ -1943,8 +1967,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   INSUFFICIENT_STATE για Radars με κριτήρια κατάστασης.
 - **Release gate για το C4 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0047` δημιουργεί δύο **άδειους**
   πίνακες· κανένα seed. Τα templates χρειάζονται A5 reference data και ελεγμένες αντιστοιχίσεις ΚΑΔ.
-- **Release gate για το C3 — `PRODUCTION_MIGRATION_STATUS = BLOCKED_BY_G0_G1`:** η `0046` δημιουργεί έξι **άδειους**
-  πίνακες Radar· καμία data migration από `CustomerRadar`.
+- **Legacy Radar production rollout — ΔΕΝ ΕΧΕΙ ΤΡΕΞΕΙ:** μετά το deploy της `0056`, πρώτο και μόνο επόμενο βήμα
+  είναι read-only απογραφή σε Render Shell:
+  `python manage.py migrate_legacy_radars_to_organizations --dry-run --limit 10000`. Τα αποτελέσματα
+  `missing_organization`, `ambiguous_organization`, `unsupported_mapping`, `invalid_reference_data` και
+  `only_active_currently_inert` πρέπει να αξιολογηθούν πριν εγκριθεί οποιοδήποτε write run. Η `0046` παραμένει
+  το αρχικό άδειο OrganizationRadar schema· η `0056` προσθέτει μόνο provenance και δεν εκτελεί data migration.
 - **Εκκρεμής απαίτηση — layer επαφών εταιρείας:** το Dossier δείχνει ήδη το τηλέφωνο ΓΕΜΗ μέσω του hotfix
   (read-through από `raw_data["phone"]`, βλ. «Τρέχουσα κατάσταση»), που είναι **προσωρινή γέφυρα**. Πρέπει να
   αντικατασταθεί από το εξής, με ρητή πηγή, χρόνο επαλήθευσης, διατήρηση και σημασιολογία ιδιωτικότητας. Κανόνας αρχιτεκτονικής:
@@ -2062,6 +2090,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-26 — Ασφαλής προετοιμασία migration legacy Radars.** Προστέθηκαν
+  `legacy_radar_migration.py`, η operator-only command `migrate_legacy_radars_to_organizations`, το provenance
+  model/migration `0056_legacy_radar_migration_map` και focused tests. Create-only, idempotent, per-Radar
+  transaction, tombstone μετά από διαγραφή destination Radar. Δεν εκτελέστηκε σε production, κανένα schedule,
+  κανένα Signal/Opportunity/backfill και καμία αλλαγή σε legacy matching, G4, Discovery, hydration ή billing.
+  Επαλήθευση: 17 focused migration tests, 212 affected regression tests, forward/reverse/reapply της `0056` σε
+  απομονωμένη SQLite βάση, `check`, `makemigrations --check` και 2.157 tests OK.
 
 - **2026-09-26 — Free: ημερήσιο email digest.** Αλλαγές: `gemiapp/services.py` (`FREE_DIGEST_FREQUENCY`,
   `digest_skip_reason`, `radar_features` σε `send_digests` και `send_user_yesterday_digest`),

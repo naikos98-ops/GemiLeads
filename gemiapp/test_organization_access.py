@@ -377,7 +377,7 @@ class SafetyTests(AccessTestCase):
         self.assertFalse([n for n in names if "Access" in n or "Permission" in n or "Assign" in n])
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0055_gemi_request_attempt")  # G6 owns 0055 (GemiRequestAttempt); any newer migration must update this pin deliberately
+                         "0056_legacy_radar_migration_map")
 
     def test_the_legacy_product_and_billing_are_untouched(self):
         legacy_user = entitled_user("legacy-g5@example.com")
