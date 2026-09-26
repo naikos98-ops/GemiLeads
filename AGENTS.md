@@ -159,6 +159,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Legacy Radar migration: στο `main` (`da69d3f`), επαληθευμένο, ΔΕΝ έχει τρέξει σε production.**
+  Cherry-pick του `ebf3a215` χωρίς συγκρούσεις· ίδιο tree. Η `0056` είναι μόνο `CreateModel` για το
+  `LegacyRadarMigrationMap` (άδειος πίνακας)· κανένα αυτόματο Radar copy, schedule/startup hook ή
+  Signal/Opportunity/backfill. CustomerRadar, legacy και OrganizationRadar matching, G4/Discovery,
+  billing/subscriptions/entitlements αμετάβλητα· hydration OFF. **Κανόνας προορισμού (επιβεβαιωμένος):** ο
+  μοναδικός Organization στον οποίο ανήκει ο χρήστης, **ανεξαρτήτως ρόλου** (και VIEWER)· μηδέν →
+  `missing_organization`, περισσότεροι → `ambiguous_organization`. Οι παλιότερες χρονολογημένες σημειώσεις
+  release gates περιγράφουν την τότε κατάσταση, όχι απαγόρευση του σημερινού schema.
+
 - **Legacy `CustomerRadar` → `OrganizationRadar` migration (2026-09-26): έτοιμο, ΔΕΝ έχει τρέξει σε production.**
   - Ρητή operator-only εντολή: `python manage.py migrate_legacy_radars_to_organizations [--dry-run]
     [--limit N] [--user-id ID] [--organization-id ID] [--legacy-radar-id ID]`. Δεν υπάρχει schedule, startup
@@ -1907,6 +1916,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Legacy Radar migration σε production — χειροκίνητο, μετά από ξεχωριστή έγκριση.** Η `0056` εφαρμόζεται
+  με το deploy (άδειος provenance πίνακας). Η εντολή `migrate_legacy_radars_to_organizations` **δεν** έχει τρέξει
+  σε production, ούτε ως dry-run: πρώτα `--dry-run`, αξιολόγηση των κατατάξεων (ιδίως
+  `only_active_currently_inert`, `missing_organization`, `ambiguous_organization`) και μετά νέα έγκριση.
+
 - **Email templates — ανοιχτά:** (α) τα allauth emails (π.χ. reset από το `/accounts/password/reset/`, που
   είναι ακόμη προσβάσιμο) μένουν στα default plain-text του allauth, εκτός του νέου σχεδίου· (β) το
   `client_outreach.*` μένει στο παλιό στυλ όσο το outreach είναι παγωμένο· (γ) χρειάζεται μία πραγματική
@@ -2090,6 +2104,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-26/27 — Integration legacy Radar migration στο main.** Cherry-pick `ebf3a215` → `da69d3f`, χωρίς
+  συγκρούσεις· κανένα push/deploy/production command. Τελική επαλήθευση στο ίδιο tree: **500 focused tests OK**
+  (migration, Radars, οργανισμοί/entitlement, matcher, G4, Discovery, hydration, pricing, Free digest),
+  **2.157 tests OK** στο πλήρες suite, `check` και `makemigrations --check` καθαρά, lifecycle
+  `0055 → 0056 → 0055 → 0056` σε αντίγραφο της τοπικής dev βάσης καθαρό (82 υπάρχοντες πίνακες ίδιοι σε counts +
+  hashes, foreign keys καθαρά, provenance table άδειος, μηδέν Radar copies). Όλα σε SQLite (στη μνήμη ή
+  αναλώσιμο αντίγραφο), locmem email, κενά external credentials· καμία σύνδεση σε staging/production. Η
+  `migrate_legacy_radars_to_organizations` **δεν** έτρεξε σε production.
 
 - **2026-09-26 — Ασφαλής προετοιμασία migration legacy Radars.** Προστέθηκαν
   `legacy_radar_migration.py`, η operator-only command `migrate_legacy_radars_to_organizations`, το provenance
