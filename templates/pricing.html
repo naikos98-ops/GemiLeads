@@ -62,6 +62,10 @@
      daily digest     -> DigestPreference.FREQUENCIES
      CSV export       -> views.export_csv (any tier with radar_limit > 0)
      checkout open?   -> LEGAL_BILLING_ACTIVE
+     Free row         -> dashboard and company_detail need only a login (contact details and
+                         representatives stay behind has_entitlement); export_csv and the Radar
+                         views need radar_limit > 0 (RADAR_LIMITS["free"] == 0); the digest needs
+                         has_entitlement (services.digest_skip_reason), so it is "not included"
    Claims without a backing implementation are not listed. {% endcomment %}
 
 <section class="public-section">
@@ -70,9 +74,10 @@
       <p class="product-eyebrow">ΕΠΙΛΟΓΗ ΠΛΑΝΟΥ</p>
       <h2 style="font-size: var(--type-display);">Το πλάνο ορίζει πόσα Ραντάρ κρατάς ενεργά.</h2>
       <p>
-        Όλα τα πλάνα διαβάζουν την ίδια πηγή — το επίσημο Open Data API του ΓΕΜΗ — και δίνουν
-        πλήρη πρόσβαση στα Signals, στα Leads και στο Business Dossier. Αυτό που αλλάζει είναι
-        πόσα Ραντάρ μπορείς να έχεις ενεργά ταυτόχρονα.
+        Όλα τα πλάνα διαβάζουν την ίδια πηγή — το επίσημο Open Data API του ΓΕΜΗ. Το Free σου
+        δείχνει τις νέες εγγραφές· οι συνδρομές δίνουν πλήρη πρόσβαση στα Signals, στα Leads και
+        στο Business Dossier, και αυτό που αλλάζει ανάμεσά τους είναι πόσα Ραντάρ μπορείς να έχεις
+        ενεργά ταυτόχρονα.
       </p>
     </div>
 
@@ -106,6 +111,55 @@
       <div>ΤΙΜΗ</div>
       <div>ΕΝΕΡΓΕΙΑ</div>
     </header>
+
+    {% comment %} Free: what a signed-up account without a subscription really gets.
+       Included and not included are both verified against the backend (see the header comment);
+       the daily digest is listed as not included because digest_skip_reason requires an
+       entitlement for every frequency. Not in the JSON-LD offers on purpose: a price-0 Offer is
+       what StructuredDataTests guards against, and this row is a starting point, not a sale. {% endcomment %}
+    <div class="public-plan-row">
+      <div>
+        <span class="plan-state">ΔΩΡΕΑΝ</span>
+        <h2>Free</h2>
+        <small class="plan-state">ΓΙΑ ΝΑ ΞΕΚΙΝΗΣΕΙΣ</small>
+      </div>
+      <div class="plan-scope">
+        <p class="plan-scope-label">Περιλαμβάνει</p>
+        <ul class="plan-included">
+          <li>Προβολή νέων εγγραφών επιχειρήσεων</li>
+          <li>Βασικά στοιχεία επιχείρησης</li>
+        </ul>
+        <p class="plan-scope-label">Δεν περιλαμβάνει</p>
+        <ul class="plan-excluded">
+          <li>Ημερήσιο email digest <span>από Pro</span></li>
+          <li>Εξαγωγή / λήψη CSV <span>από Pro</span></li>
+          <li>Ραντάρ <span>από Pro</span></li>
+        </ul>
+      </div>
+      <div class="plan-radars">
+        <strong>0</strong>
+        <span>ενεργά Ραντάρ</span>
+      </div>
+      <div class="plan-frequency">
+        <strong>Dashboard</strong>
+        <span>χωρίς email digest</span>
+      </div>
+      <div class="plan-price">
+        <strong>€0</strong>
+        <span>/ μήνα</span>
+      </div>
+      <div class="plan-action">
+        {% if not user.is_authenticated %}
+          <a class="outline" href="{% url 'signup' %}">Ξεκίνα δωρεάν</a>
+          <p class="plan-note">Χωρίς κάρτα πληρωμής.</p>
+        {% elif user.subscription.has_entitlement %}
+          <p class="plan-note">Περιλαμβάνεται στο πλάνο σου.</p>
+        {% else %}
+          <a class="outline" href="{% url 'dashboard' %}">Στα Signals</a>
+          <p class="plan-note">Τρέχον πλάνο.</p>
+        {% endif %}
+      </div>
+    </div>
 
     <div class="public-plan-row">
       <div>
@@ -226,7 +280,7 @@
 <section class="public-section">
   <div class="public-inner">
     <div class="public-section-head">
-      <p class="product-eyebrow">ΚΟΙΝΑ ΣΕ ΟΛΑ ΤΑ ΠΛΑΝΑ</p>
+      <p class="product-eyebrow">ΚΟΙΝΑ ΣΕ ΟΛΑ ΤΑ ΠΛΑΝΑ ΣΥΝΔΡΟΜΗΣ</p>
       <h2>Ίδια πηγή, ίδιο προϊόν.</h2>
     </div>
     <div class="public-list" style="margin-bottom: 44px;">
@@ -248,7 +302,7 @@
       </div>
       <div>
         <b>Digest email</b>
-        <p>Ημερήσιο digest σε όλα τα πλάνα. Οι ενημερώσεις ανά 3 ώρες είναι διαθέσιμες σε Enterprise και Custom.</p>
+        <p>Ημερήσιο digest σε κάθε πλάνο συνδρομής. Οι ενημερώσεις ανά 3 ώρες είναι διαθέσιμες σε Enterprise και Custom.</p>
       </div>
       <div>
         <b>Έλεγχος επικοινωνίας</b>

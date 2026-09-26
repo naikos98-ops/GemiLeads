@@ -2499,6 +2499,66 @@ class PricingAccuracyTests(TestCase):
         self.assertNotIn("08:00 - 00:00", html)
 
 
+class PricingFreePlanTests(TestCase):
+    """The Free row states only what a signed-up account without a subscription really gets."""
+
+    def _row(self, html):
+        start = html.index("<h2>Free</h2>")
+        return html[start:html.index('<div class="public-plan-row', start)]
+
+    def test_free_row_lists_what_is_and_is_not_included(self):
+        row = self._row(self.client.get(reverse("pricing")).content.decode())
+        included = row[row.index('class="plan-included"'):row.index('class="plan-excluded"')]
+        excluded = row[row.index('class="plan-excluded"'):]
+        self.assertIn("Προβολή νέων εγγραφών επιχειρήσεων", included)
+        self.assertIn("Βασικά στοιχεία επιχείρησης", included)
+        for item in ("Ημερήσιο email digest", "Εξαγωγή / λήψη CSV", "Ραντάρ"):
+            self.assertIn(item, excluded)
+        self.assertIn("€0", row)
+
+    def test_every_free_claim_matches_the_backend(self):
+        from .models import get_user_radar_limit
+        from .services import NO_ENTITLEMENT, digest_skip_reason
+
+        user = User.objects.create_user("free@example.com", "free@example.com", "StrongPass123")
+        DigestPreference.objects.get_or_create(user=user)
+        self.assertEqual(user.subscription.effective_tier, "free")
+        self.client.force_login(user)
+        # included: the registrations and a company's basic record need only a login
+        company = Company.objects.create(gemi_number="900000000001", name="ΔΩΡΕΑΝ ΙΚΕ",
+                                         incorporation_date=timezone.localdate())
+        self.assertEqual(self.client.get(reverse("dashboard")).status_code, 200)
+        self.assertEqual(self.client.get(reverse("company_detail", args=[company.gemi_number])).status_code, 200)
+        # not included: CSV, Radars and -- today -- the daily digest
+        self.assertRedirects(self.client.get(reverse("export_csv")), reverse("pricing"))
+        self.assertEqual(get_user_radar_limit(user), 0)
+        self.assertEqual(digest_skip_reason(user, "daily"), NO_ENTITLEMENT)
+
+    def test_anonymous_visitors_get_the_free_cta(self):
+        row = self._row(self.client.get(reverse("pricing")).content.decode())
+        self.assertIn(f'href="{reverse("signup")}"', row)
+        self.assertIn("Ξεκίνα δωρεάν", row)
+
+    def test_signed_in_accounts_are_not_sent_to_signup(self):
+        free = User.objects.create_user("free2@example.com", "free2@example.com", "StrongPass123")
+        self.client.force_login(free)
+        row = self._row(self.client.get(reverse("pricing")).content.decode())
+        self.assertNotIn(reverse("signup"), row)
+        self.assertIn("Τρέχον πλάνο", row)
+
+        paid = User.objects.create_user("paid2@example.com", "paid2@example.com", "StrongPass123")
+        UserSubscription.objects.filter(user=paid).update(tier="pro", status="active")
+        self.client.force_login(paid)
+        row = self._row(self.client.get(reverse("pricing")).content.decode())
+        self.assertNotIn(reverse("signup"), row)
+        self.assertIn("Περιλαμβάνεται στο πλάνο σου", row)
+
+    def test_all_plans_copy_no_longer_overclaims(self):
+        html = self.client.get(reverse("pricing")).content.decode()
+        self.assertNotIn("Ημερήσιο digest σε όλα τα πλάνα", html)
+        self.assertIn("ΚΟΙΝΑ ΣΕ ΟΛΑ ΤΑ ΠΛΑΝΑ ΣΥΝΔΡΟΜΗΣ", html)
+
+
 class PricingDiscoverabilityTests(TestCase):
     """P0-3: /pricing/ had zero inbound internal links from any public page."""
 

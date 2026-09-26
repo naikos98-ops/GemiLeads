@@ -159,6 +159,23 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Pricing: γραμμή Free (2026-09-26). Μόνο περιεχόμενο/UI της σελίδας τιμών.**
+  - Νέα πρώτη γραμμή «Free · €0 / μήνα» στο plan register (`templates/pricing.html`), στην ίδια γραμματική με τα
+    πληρωμένα πλάνα. **Περιλαμβάνει** (πράσινο ✓): προβολή νέων εγγραφών, βασικά στοιχεία επιχείρησης.
+    **Δεν περιλαμβάνει** (muted, «από Pro»): ημερήσιο email digest, εξαγωγή CSV, Ραντάρ. CTA «Ξεκίνα δωρεάν» →
+    signup για επισκέπτες· «Στα Signals · Τρέχον πλάνο» για συνδεδεμένο χωρίς συνδρομή· «Περιλαμβάνεται στο
+    πλάνο σου» για συνδρομητή.
+  - **Το digest εμφανίζεται ως ΜΗ περιλαμβανόμενο, με απόφαση του χρήστη:** το `digest_skip_reason` απαιτεί
+    entitlement για κάθε συχνότητα, daily μαζί (`37e639c`, 2026-09-11). Η παλαιότερη σημείωση ιστορικού «οι χρήστες
+    χωρίς συνδρομή λαμβάνουν το daily digest» (2026-09-06) **δεν ισχύει πια**. Αν αλλάξει ο κανόνας στο backend,
+    η γραμμή Free πρέπει να αλλάξει μαζί.
+  - Διορθώθηκαν δύο φράσεις που θα γίνονταν ψευδείς με το Free στη σελίδα: «όλα τα πλάνα δίνουν πλήρη πρόσβαση…»
+    και «ημερήσιο digest σε όλα τα πλάνα» → «πλάνα συνδρομής».
+  - **Χωρίς αλλαγή:** τιμές, billing, συνδρομές, δικαιώματα, backend, JSON-LD offers (ένα Offer με τιμή 0 το
+    απαγορεύει σκόπιμα το `StructuredDataTests`). CSS μόνο με τα υπάρχοντα tokens (`.plan-scope-label`,
+    `.plan-included`, `.plan-excluded`). 5 νέα tests (`PricingFreePlanTests`, και έλεγχος ότι κάθε ισχυρισμός
+    ταιριάζει με το backend)· **2.132 tests OK**.
+
 - **Gemi Leads 2.0 — pending-company hydration (2026-09-26). ΚΛΕΙΣΤΟ εξ ορισμού, κανένα schedule.**
   Η ασφαλής διαδρομή για τα ευρήματα Discovery v2 που μένουν `pending_no_company` (στο πρώτο G4 SHADOW cycle
   σε production: **578**). `gemiapp/pending_company_hydration.py` + `manage.py hydrate_pending_discovery_companies`.
@@ -2028,6 +2045,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-26 — Pricing: γραμμή Free.** Αλλαγές: `templates/pricing.html` (γραμμή Free, δύο φράσεις
+  «όλα τα πλάνα»), `static/css/product-ui.css` (λίστες περιλαμβάνει/δεν περιλαμβάνει), `gemiapp/tests.py`
+  (`PricingFreePlanTests`). Επαλήθευση: render σε desktop (επισκέπτης και συνδεδεμένος Free) και mobile, `check`,
+  `makemigrations --check`, 2.132 tests OK.
 
 - **2026-09-26 — Pending-company hydration (κλειστό).** Νέα: `gemiapp/pending_company_hydration.py`,
   `gemiapp/management/commands/hydrate_pending_discovery_companies.py`,

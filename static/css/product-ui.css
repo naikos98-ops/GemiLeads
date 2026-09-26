@@ -2372,6 +2372,55 @@ body.public-body .mono-text {
   background: var(--product-state-rule);
 }
 
+/* Free row: what the plan includes and what it leaves to a subscription, in the same
+   register. Included items read at full ink with a green check; the rest are muted with a
+   dash and name where they start ("από Pro"), so the row reads as a starting point rather
+   than a crossed-out card. The group labels carry the meaning, not colour alone. */
+.public-plan-row .plan-scope-label {
+  margin: 0 0 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+}
+
+.public-plan-row ul + .plan-scope-label { margin-top: 12px; }
+
+.public-plan-row ul.plan-included li { padding-left: 18px; }
+
+.public-plan-row ul.plan-included li::before {
+  content: "✓";
+  content: "✓" / "";
+  top: 0;
+  width: auto;
+  height: auto;
+  background: none;
+  color: var(--product-green);
+  font-weight: 700;
+}
+
+.public-plan-row ul.plan-excluded li {
+  padding-left: 18px;
+  color: var(--product-muted);
+}
+
+.public-plan-row ul.plan-excluded li::before {
+  width: 8px;
+  left: 1px;
+  top: 11px;
+  background: var(--product-line);
+}
+
+.public-plan-row ul.plan-excluded li span {
+  margin-left: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
 /* Frequency is a phrase, not a numeral, so it takes the same slot at a smaller size --
    the figure grammar stays for the two columns that really are figures. */
 .public-plan-row .plan-frequency strong {
