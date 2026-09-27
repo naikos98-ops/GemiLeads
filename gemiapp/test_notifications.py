@@ -412,14 +412,14 @@ class BoundaryTests(NotificationTestCase):
         self.assertIn(self.list_url(), html)
         self.assertIn('data-unread-notifications>1<', html)
         self.assertNotIn("data-unread-notifications", self.get(self.owner).content.decode())  # the owner has none
-        # Since the customer workspace, the product navigation links to Notifications -- but only for organization
-        # members (organizations/_workspace_rail.html, included by base.html); it never shows an unread count, and a
-        # user without a membership sees no link at all.
+        # The product navigation links to Notifications -- but only for users whose navigation resolves an
+        # organization (organizations/_primary_nav.html, included by base.html); it never shows an unread count, and
+        # a user without a membership sees no link at all.
         base = pathlib.Path("templates/base.html").read_text(encoding="utf-8")
         self.assertNotIn("notification", base.lower())
-        rail = pathlib.Path("templates/organizations/_workspace_rail.html").read_text(encoding="utf-8")
-        self.assertIn("organization_notifications", rail)
-        self.assertNotIn("unread", rail)
+        nav = pathlib.Path("templates/organizations/_primary_nav.html").read_text(encoding="utf-8")
+        self.assertIn("organization_notifications", nav)
+        self.assertNotIn("unread", nav)
         stranger = User.objects.create_user("no-org@example.com", "no-org@example.com", "x")
         self.client.force_login(stranger)
         self.assertNotIn("/notifications/", self.client.get(reverse("dashboard")).content.decode())

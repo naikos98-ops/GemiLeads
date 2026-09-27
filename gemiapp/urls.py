@@ -23,6 +23,8 @@ urlpatterns = [
     path("leads/<int:pk>/favorite/", views.lead_favorite, name="lead_favorite"),
     path("leads/<int:pk>/notes/", views.lead_notes, name="lead_notes"),
     path("companies/<str:gemi_number>/", views.company_detail, name="company_detail"),
+    # The post-login landing (LOGIN_REDIRECT_URL): the user's organization dashboard, else the legacy dashboard.
+    path("start/", organization_views.product_home, name="product_home"),
     # Gemi Leads 2.0: organization-scoped, authorized only through gemiapp.organization_access.
     path("organizations/<int:organization_id>/", organization_views.workspace_dashboard,
          name="organization_dashboard"),

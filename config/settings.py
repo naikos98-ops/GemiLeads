@@ -188,7 +188,9 @@ STORAGES = {
 WHITENOISE_MAX_AGE = 31536000
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-LOGIN_REDIRECT_URL = "dashboard"
+# The landing resolves the user's organization dashboard when they have exactly one usable organization, and the
+# legacy dashboard otherwise (gemiapp.organization_views.product_home). An explicit ?next= still wins.
+LOGIN_REDIRECT_URL = "product_home"
 LOGOUT_REDIRECT_URL = "home"
 LOGIN_URL = "login"
 

@@ -340,7 +340,14 @@
       setMenu(false); menuButton.focus();
     });
   }
+  // The organization's mobile bar scrolls sideways: bring the current section into view, horizontally only.
+  const centerMobileNav = () => {
+    const nav = document.querySelector('[data-mobile-nav]');
+    const current = nav && nav.querySelector('[aria-current="page"]');
+    if (!current || nav.scrollWidth <= nav.clientWidth) return;
+    nav.scrollLeft = current.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2;
+  };
   setTimeout(() => document.querySelectorAll('[data-toast]').forEach(x => { x.style.opacity = '0'; setTimeout(() => x.remove(), 300); }), 3500);
-  document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); initReferencePickers(); });
+  document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); initReferencePickers(); centerMobileNav(); });
   window.addEventListener('resize', sizeCompanyTable);
 })();

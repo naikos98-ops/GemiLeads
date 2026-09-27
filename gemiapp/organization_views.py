@@ -82,6 +82,19 @@ def workspace_navigation(request):
             "workspace_section": section}
 
 
+@login_required
+@require_GET
+def product_home(request):
+    """Where a signed-in user lands (``LOGIN_REDIRECT_URL``). A user whose navigation resolves one organization --
+    exactly one usable membership -- lands on that organization's dashboard; everyone else (no organization, or
+    several with none chosen) lands on the legacy dashboard exactly as before. The legacy dashboard itself stays
+    directly reachable. Read-only: one membership query, no tenant data."""
+    current = get_workspace_navigation(request.user).current
+    if current is not None:
+        return redirect("organization_dashboard", current.organization_id)
+    return redirect("dashboard")
+
+
 def _optional_id(value):
     """A positive whole number from a query string, None when absent; anything else is a 404."""
     if value in (None, ""):

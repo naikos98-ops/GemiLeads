@@ -80,7 +80,7 @@
   {% endif %}
   {% if user.is_authenticated %}
   <header class="product-topbar">
-    <a class="product-brand" href="{% url 'dashboard' %}" aria-label="Gemi Leads · Signals">
+    <a class="product-brand" href="{% if workspace_nav.current %}{% url 'organization_dashboard' workspace_nav.current.organization_id %}{% else %}{% url 'dashboard' %}{% endif %}" aria-label="Gemi Leads{% if not workspace_nav.current %} · Signals{% endif %}">
       <img class="brand-logo" src="{% static 'images/gemi-leads-logo-horizontal.png' %}" alt="Gemi Leads" width="100" height="25">
       {% if beta_mode %}<small>BETA</small>{% endif %}
     </a>
@@ -95,13 +95,20 @@
       <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button type="submit">Έξοδος</button></form>
     </div>
   </header>
-  <nav class="product-rail" aria-label="Κύρια πλοήγηση">
+  {% comment %} One primary navigation per user: the organization's (organizations/_primary_nav.html) when the
+     navigation resolves one organization, otherwise the legacy one below, unchanged (no organization, or several
+     with none named by the route). The legacy pages stay reachable by URL either way. {% endcomment %}
+  <nav class="product-rail{% if workspace_nav.current %} product-rail--workspace{% endif %}" aria-label="Κύρια πλοήγηση">
+    {% if workspace_nav.current %}
+    {% include "organizations/_primary_nav.html" with mobile=False %}
+    {% else %}
     <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><span>MARKET</span><b>Signals</b><small>new registrations</small></a>
     <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name and 'organization' not in request.resolver_match.url_name %}aria-current="page"{% endif %}><span>CRITERIA</span><b>Radars</b><small>matching definitions</small></a>
     <a href="{% url 'lead_list' %}" {% if request.resolver_match.url_name == 'lead_list' or request.resolver_match.url_name == 'company_detail' %}aria-current="page"{% endif %}><span>OUTCOME</span><b>Leads</b><small>qualified businesses</small></a>
     <a href="{% url 'settings' %}" {% if request.resolver_match.url_name == 'settings' %}aria-current="page"{% endif %}><span>SYSTEM</span><b>Settings</b><small>plan &amp; digest</small></a>
+    {% endif %}
     {% if workspace_nav.workspaces %}{% include "organizations/_workspace_rail.html" %}{% endif %}
-    <div class="product-flow" aria-label="Source to match to lead"><span>SOURCE</span><i></i><span>MATCH</span><i></i><span>LEAD</span></div>
+    {% if not workspace_nav.current %}<div class="product-flow" aria-label="Source to match to lead"><span>SOURCE</span><i></i><span>MATCH</span><i></i><span>LEAD</span></div>{% endif %}
     <div class="product-source"><span>PUBLIC DATA SOURCE</span><b>ΓΕΜΗ OPEN DATA</b></div>
   </nav>
   {% else %}
@@ -157,7 +164,10 @@
   </footer>
   {% endif %}
   {% if user.is_authenticated %}
-  <nav class="product-mobile-nav" aria-label="Κύρια πλοήγηση κινητού">
+  <nav class="product-mobile-nav{% if workspace_nav.current %} product-mobile-nav--workspace{% endif %}" aria-label="Κύρια πλοήγηση κινητού" data-mobile-nav>
+    {% if workspace_nav.current %}
+    {% include "organizations/_primary_nav.html" with mobile=True %}
+    {% else %}
     <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}>Signals</a>
     <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name and 'organization' not in request.resolver_match.url_name %}aria-current="page"{% endif %}>Radars</a>
     <a href="{% url 'lead_list' %}" {% if request.resolver_match.url_name == 'lead_list' or request.resolver_match.url_name == 'company_detail' %}aria-current="page"{% endif %}>Leads</a>
@@ -165,6 +175,7 @@
     {% with ws=workspace_nav.home %}{% if ws %}
     <a href="{% url 'organization_dashboard' ws.organization_id %}" data-mobile-workspace {% if workspace_nav.current_is_route %}aria-current="page"{% endif %}>Οργανισμός</a>
     {% endif %}{% endwith %}
+    {% endif %}
   </nav>
   {% endif %}
   <script src="{% static 'js/app.js' %}"></script>

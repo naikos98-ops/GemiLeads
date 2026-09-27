@@ -32,7 +32,7 @@
 
   <div class="product-dossier-grid">
     <div class="product-public-record">
-      <!-- Opportunity hero: the primary opportunity's frozen capture -->
+      {# Opportunity hero: the primary opportunity's frozen capture #}
       <h2><span>ΕΥΚΑΙΡΙΑ · RADAR «{{ page.primary.radar_name }}»</span></h2>
       <dl class="product-record-fields">
         <div>
@@ -53,7 +53,7 @@
         </div>
       </dl>
 
-      <!-- Current information: latest canonical snapshot, never legacy fields -->
+      {# Current information: latest canonical snapshot, never legacy fields #}
       <div class="product-record-section" id="current-information">
         <h3>ΤΡΕΧΟΝΤΑ ΣΤΟΙΧΕΙΑ ΓΕΜΗ</h3>
         {% if page.current.available %}
@@ -83,7 +83,7 @@
         {% endif %}
       </div>
 
-      <!-- Timeline: LIVE signals only, newest first -->
+      {# Timeline: LIVE signals only, newest first #}
       <div class="product-record-section" id="timeline">
         <h3>ΧΡΟΝΟΛΟΓΙΟ</h3>
         {% for item in page.timeline %}
@@ -105,7 +105,7 @@
     </div>
 
     <aside class="product-lead-work">
-      <!-- Why this lead: the frozen C8 capture, five v1 components -->
+      {# Why this lead: the frozen C8 capture, five v1 components #}
       <section class="product-match-proof" id="why-this-lead">
         <p>ΓΙΑΤΙ ΑΥΤΗ Η ΕΥΚΑΙΡΙΑ</p>
         <h2>{{ page.score }}/100 · {{ page.score_class_label }}</h2>
@@ -122,10 +122,10 @@
         {% endfor %}
       </section>
 
-      <!-- D37: this membership's own notifications in this organization -->
+      {# D37: this membership's own notifications in this organization #}
       <p style="font-size: var(--type-small);"><a href="{% url 'organization_notifications' page.organization_id %}" data-notifications-link>Ειδοποιήσεις{% if page.unread_notifications %} <strong data-unread-notifications>{{ page.unread_notifications }}</strong>{% endif %}</a></p>
 
-      <!-- D35: company-level Do Not Contact for the whole organization -- not a per-Radar status -->
+      {# D35: company-level Do Not Contact for the whole organization -- not a per-Radar status #}
       {% if page.do_not_contact_state %}
       <section class="product-history" id="do-not-contact" data-do-not-contact="{{ page.do_not_contact_state }}">
         <p>ΜΗ ΕΠΙΚΟΙΝΩΝΙΑ</p>
@@ -150,7 +150,7 @@
       </section>
       {% endif %}
 
-      <!-- Every visible opportunity for this company (one per Radar); statuses are never merged -->
+      {# Every visible opportunity for this company (one per Radar); statuses are never merged #}
       <section class="product-history" id="opportunities">
         <p>ΕΥΚΑΙΡΙΕΣ ΑΝΑ RADAR ({{ page.opportunities|length }})</p>
         <dl>

@@ -221,6 +221,27 @@ body.product-body {
   color: var(--product-white);
 }
 
+/* The organization's primary navigation has seven entries and longer labels (Opportunities, Notifications) than
+   the 90px label column of the rail grammar above, so the eyebrow sits above the label: same eyebrow, label,
+   descriptor and "selected" signature, stacked. The rail scrolls on short screens instead of clipping. */
+.product-rail--workspace {
+  overflow-y: auto;
+}
+
+.product-rail--workspace > a {
+  min-height: 56px;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto auto;
+  row-gap: 2px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.product-rail--workspace > a span {
+  grid-row: auto;
+  align-self: start;
+}
+
 .product-flow {
   margin: 18px 15px 0;
   padding-top: 12px;
@@ -1914,6 +1935,26 @@ body.product-body {
   .product-mobile-nav a[aria-current="page"] {
     color: var(--product-amber);
     border-top: 2px solid var(--product-amber);
+  }
+
+  /* The organization's seven entries do not fit a phone's width at a readable size, so the bar scrolls
+     sideways (app.js brings the current entry into view) rather than shrinking the labels. */
+  .product-mobile-nav--workspace {
+    grid-auto-columns: max-content;
+    column-gap: 4px;
+    padding: 0 8px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .product-mobile-nav--workspace::-webkit-scrollbar {
+    display: none;
+  }
+
+  .product-mobile-nav--workspace a {
+    padding: 0 10px;
+    font-size: var(--type-label);
   }
 }
 

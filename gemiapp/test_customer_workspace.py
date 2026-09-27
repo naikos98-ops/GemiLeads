@@ -30,6 +30,21 @@ from .test_organization_radars import entitle
 
 _numbers = iter(range(500_000, 900_000))
 
+PRIMARY = ["dashboard", "opportunities", "saved", "tasks", "radars", "notifications", "settings"]
+LEGACY_MOBILE = ["/dashboard/", "/radars/", "/leads/", "/settings/"]
+
+
+def nav_html(html, which="rail"):
+    """The desktop rail or the mobile bar of a rendered product page."""
+    marker = '<nav class="product-rail' if which == "rail" else '<nav class="product-mobile-nav'
+    return html.split(marker, 1)[1].split("</nav>", 1)[0] if marker in html else ""
+
+
+def nav_links(html, which="rail"):
+    """(key, href, is_current) of the organization's primary navigation entries, in order."""
+    return [(key, href, bool(current)) for href, key, current in
+            re.findall(r'<a href="([^"]+)" data-nav="(\w+)" ?(aria-current="page")?', nav_html(html, which))]
+
 
 class WorkspaceTestCase(TaskTestCase):
     """Tenant A (self.org) with a member of every role, a LIVE opportunity (self.row) and Maria (sales user);
@@ -91,40 +106,42 @@ class NavigationTests(WorkspaceTestCase):
     def test_every_workspace_link_of_a_member_resolves_to_a_page_they_can_open(self):
         for role, user in self.members.items():
             self.client.force_login(user)
-            rail = self.rail(self.client.get(reverse("dashboard")).content.decode())
-            links = re.findall(r'href="([^"]+)"', rail)
+            links = nav_links(self.client.get(reverse("dashboard")).content.decode())
             self.assertTrue(links, role)
-            for link in links:
-                self.assertTrue(link.startswith(f"/organizations/{self.org.pk}/"), (role, link))
-                self.assertEqual(resolve(link.split("?")[0]).func.__module__, "gemiapp.organization_views")
+            for key, link, _ in links:
+                if key == "settings":
+                    self.assertEqual(link, reverse("settings"))        # the user's own plan & digest page
+                else:
+                    self.assertTrue(link.startswith(f"/organizations/{self.org.pk}/"), (role, link))
+                    self.assertEqual(resolve(link.split("?")[0]).func.__module__, "gemiapp.organization_views")
                 self.assertEqual(self.client.get(link).status_code, 200, (role, link))
 
     def test_the_links_follow_the_role(self):
         for role, user in self.members.items():
             self.client.force_login(user)
-            rail = self.rail(self.client.get(reverse("dashboard")).content.decode())
-            self.assertEqual(self.ws_url("organization_radars") in rail, role != "sales_user", role)
-            self.assertIn(self.ws_url("organization_notifications"), rail, role)
+            keys = [key for key, _, _ in nav_links(self.client.get(reverse("dashboard")).content.decode())]
+            self.assertEqual("radars" in keys, role != "sales_user", role)
+            self.assertIn("notifications", keys, role)
         # the hidden link is also a refused page, not merely a hidden one
         self.assertEqual(self.status_of(self.members["sales_user"], "organization_radars"), 404)
 
     def test_the_active_section_is_marked_on_the_organizations_own_pages_only(self):
-        cases = {("organization_dashboard", ()): "Πίνακας", ("organization_opportunities", ()): "Ευκαιρίες",
-                 ("organization_opportunities", (("status", "saved"),)): "Αποθηκευμένες",
-                 ("organization_tasks", ()): "Εργασίες", ("organization_radars", ()): "Radars",
-                 ("organization_notifications", ()): "Ειδοποιήσεις"}
-        for (name, query), label in cases.items():
+        cases = {("organization_dashboard", ()): "dashboard", ("organization_opportunities", ()): "opportunities",
+                 ("organization_opportunities", (("status", "saved"),)): "saved",
+                 ("organization_tasks", ()): "tasks", ("organization_radars", ()): "radars",
+                 ("organization_notifications", ()): "notifications"}
+        for (name, query), key in cases.items():
             html = self.html(self.owner, name, **dict(query))
-            current = re.findall(r'aria-current="page">([^<]+)</a>', html)
-            self.assertIn(label, current, name)
-            self.assertNotIn("Signals", current)
-            self.assertNotRegex(html, r'href="/radars/" aria-current')  # the legacy Radars entry stays unselected
+            for nav in ("rail", "mobile"):
+                self.assertEqual([k for k, _, current in nav_links(html, nav) if current], [key], (name, nav))
         self.client.force_login(self.owner)
         html = self.client.get(reverse("organization_company_opportunity",
                                        args=[self.org.pk, self.company.pk])).content.decode()
-        self.assertIn('aria-current="page">Ευκαιρίες</a>', html)  # D29 belongs to Opportunities
+        self.assertEqual([k for k, _, current in nav_links(html) if current], ["opportunities"])  # D29
+        self.assertEqual([k for k, _, current in nav_links(self.client.get(reverse("settings")).content.decode())
+                          if current], ["settings"])
         legacy = self.client.get(reverse("dashboard")).content.decode()
-        self.assertNotIn('aria-current="page">Πίνακας', legacy)  # nothing of the workspace is "current" there
+        self.assertEqual([k for k, _, current in nav_links(legacy) if current], [])  # nothing is "current" there
 
     def test_the_organization_context_is_shown_by_name_and_role(self):
         html = self.html(self.members["sales_manager"], "organization_dashboard")
@@ -148,13 +165,137 @@ class NavigationTests(WorkspaceTestCase):
         # a route naming an organization the user is not in never becomes "current"
         self.assertFalse(get_workspace_navigation(self.members["viewer"], self.org_b.pk).current_is_route)
 
-    def test_the_mobile_navigation_offers_the_workspace_to_members(self):
+    def test_the_mobile_navigation_offers_the_same_areas_as_the_desktop_rail(self):
+        for name in ("organization_tasks", "organization_dashboard"):
+            html = self.html(self.owner, name)
+            rail = [(key, link) for key, link, _ in nav_links(html, "rail")]
+            self.assertEqual([(key, link) for key, link, _ in nav_links(html, "mobile")], rail, name)
+            self.assertNotIn("data-mobile-workspace", html)  # the old «Οργανισμός» shortcut is folded in
+        # with several organizations and none chosen, the old shortcut (to the first) is kept as before
+        add_organization_member(self.org_b, self.owner, "viewer")
         self.client.force_login(self.owner)
-        html = self.client.get(reverse("dashboard")).content.decode()
-        mobile = html.split('class="product-mobile-nav"', 1)[1]
-        self.assertIn(f'href="{self.ws_url("organization_dashboard")}" data-mobile-workspace', mobile)
-        on_page = self.html(self.owner, "organization_tasks").split('class="product-mobile-nav"', 1)[1]
-        self.assertRegex(on_page, r'data-mobile-workspace aria-current="page"')
+        mobile = nav_html(self.client.get(reverse("dashboard")).content.decode(), "mobile")
+        self.assertIn("data-mobile-workspace", mobile)
+
+
+class UnifiedNavigationTests(WorkspaceTestCase):
+    """One coherent navigation for a user whose navigation resolves one organization; the legacy navigation, unchanged,
+    for everyone else. Presentation only: legacy routes stay reachable and SHADOW opportunities stay invisible."""
+
+    def page(self, who, url):
+        self.client.force_login(who)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, url)
+        return response.content.decode()
+
+    def test_a_single_organization_customer_sees_exactly_the_seven_areas_on_desktop_and_mobile(self):
+        for url in (reverse("dashboard"), self.ws_url("organization_dashboard"), reverse("settings"),
+                    reverse("lead_list")):
+            html = self.page(self.owner, url)
+            for which in ("rail", "mobile"):
+                self.assertEqual([key for key, _, _ in nav_links(html, which)], PRIMARY, (url, which))
+
+    def test_no_second_dashboard_radars_or_legacy_signals_and_leads_entries(self):
+        html = self.page(self.owner, self.ws_url("organization_dashboard"))
+        for which in ("rail", "mobile"):
+            nav = nav_html(html, which)
+            for legacy in ('href="/dashboard/"', 'href="/radars/"', 'href="/leads/"', ">Signals<", ">Leads<"):
+                self.assertNotIn(legacy, nav, which)
+            self.assertEqual(re.findall(r">Radars<", nav), [">Radars<"], which)
+            self.assertEqual(re.findall(r">Dashboard<", nav), [">Dashboard<"], which)
+        self.assertNotIn("product-workspace-tabs", html)            # no second set of section links in the bar
+        brand = html.split('class="product-brand"', 1)[1].split(">", 1)[0]
+        self.assertIn(f'href="{self.ws_url("organization_dashboard")}"', brand)
+        visible = re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)\b.*?</\1>", " ", html, flags=re.S))
+        for word in ("Legacy", "legacy", "2.0", "SHADOW", "Shadow", "shadow"):
+            self.assertNotIn(word, visible, word)
+
+    def test_shadow_opportunities_stay_invisible_on_every_customer_surface(self):
+        shadow_company, shadow_row = self.new_company(mode=SHADOW)
+        self.assertEqual(shadow_row.latest_signal.mode, SHADOW)
+        for url in (self.ws_url("organization_dashboard"), self.ws_url("organization_opportunities"),
+                    self.ws_url("organization_opportunities", status="saved"),
+                    self.ws_url("organization_opportunities", status="all"), self.ws_url("organization_tasks")):
+            html = self.page(self.owner, url)                  # fixture companies share a name: match the id
+            self.assertNotIn(f'data-opportunity-company="{shadow_company.pk}"', html, url)
+            self.assertNotIn(f"/company/{shadow_company.pk}/", html, url)
+        self.client.force_login(self.owner)
+        self.assertEqual(self.client.get(reverse("organization_company_opportunity",
+                                                 args=[self.org.pk, shadow_company.pk])).status_code, 404)
+
+    def test_only_shadow_data_gives_the_proper_empty_state(self):
+        owner = entitle(User.objects.create_user("shadow-only@example.com", "shadow-only@example.com", "x"))
+        org = create_organization(owner=owner, name="Μόνο SHADOW").organization
+        company, row = self.new_company(org_radar=self.radar(org=org, name="Radar Γ", **self.everything()),
+                                        mode=SHADOW)
+        self.assertEqual((row.organization_id, row.latest_signal.mode), (org.pk, SHADOW))
+        for view in ({}, {"status": "all"}):
+            html = self.page(owner, self.ws_url("organization_opportunities", org=org, **view))
+            self.assertNotIn(f"/company/{company.pk}/", html)
+            self.assertIn("product-workspace-empty", html)
+
+    def test_legacy_routes_stay_reachable_for_organization_and_legacy_users(self):
+        legacy = entitled_user("legacy-routes@example.com")
+        for who in (self.owner, legacy):
+            self.client.force_login(who)
+            for name in ("dashboard", "radar_list", "lead_list", "settings"):
+                self.assertEqual(self.client.get(reverse(name)).status_code, 200, (who.email, name))
+
+    def test_the_landing_resolves_one_organization_and_falls_back_otherwise(self):
+        self.client.force_login(self.owner)
+        self.assertRedirects(self.client.get(reverse("product_home")), self.ws_url("organization_dashboard"),
+                             fetch_redirect_response=False)
+        legacy = entitled_user("legacy-landing@example.com")
+        self.client.force_login(legacy)
+        self.assertRedirects(self.client.get(reverse("product_home")), reverse("dashboard"),
+                             fetch_redirect_response=False)
+        add_organization_member(self.org_b, self.owner, "viewer")     # several: never guessed
+        self.client.force_login(self.owner)
+        self.assertRedirects(self.client.get(reverse("product_home")), reverse("dashboard"),
+                             fetch_redirect_response=False)
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse("product_home")).status_code, 302)  # login required
+
+    def test_a_user_without_an_organization_keeps_the_legacy_navigation(self):
+        legacy = entitled_user("legacy-fallback@example.com")
+        for url in (reverse("dashboard"), reverse("settings"), reverse("radar_list")):
+            html = self.page(legacy, url)
+            self.assertEqual(nav_links(html), [])
+            self.assertEqual(re.findall(r'href="([^"]+)"', nav_html(html, "mobile")), LEGACY_MOBILE)
+            self.assertIn(">Signals<", nav_html(html))
+        brand = html.split('class="product-brand"', 1)[1].split(">", 1)[0]
+        self.assertIn('href="/dashboard/"', brand)
+
+    def test_several_organizations_keep_their_resolution(self):
+        add_organization_member(self.org_b, self.owner, "viewer")
+        legacy_page = self.page(self.owner, reverse("dashboard"))          # none named by the route: listed
+        self.assertEqual(nav_links(legacy_page), [])
+        self.assertEqual(sorted(map(int, re.findall(r'data-workspace-switch="(\d+)"', legacy_page))),
+                         sorted([self.org.pk, self.org_b.pk]))
+        on_b = self.page(self.owner, self.ws_url("organization_dashboard", org=self.org_b))
+        links = nav_links(on_b)
+        self.assertTrue(all(href.startswith(f"/organizations/{self.org_b.pk}/") or key == "settings"
+                            for key, href, _ in links))
+        self.assertEqual([key for key, _, _ in links], PRIMARY)            # a viewer may read Radars
+        self.assertEqual(re.findall(r'data-workspace-switch="(\d+)"', on_b), [str(self.org.pk)])  # the other one
+
+    def test_staff_and_superusers_keep_admin_access_with_either_navigation(self):
+        root = User.objects.create_superuser("root-nav", "root-nav@example.com", "StrongPass123")
+        html = self.page(root, reverse("dashboard"))
+        self.assertEqual(nav_links(html), [])
+        self.assertIn(">Signals<", nav_html(html))
+        self.owner.is_staff = True
+        self.owner.save(update_fields=["is_staff"])
+        html = self.page(self.owner, self.ws_url("organization_dashboard"))
+        self.assertEqual([key for key, _, _ in nav_links(html)], PRIMARY)
+        self.assertIn("/superadmin/", html.split('class="product-account"', 1)[1].split("</div>", 1)[0])
+
+    def test_an_organization_without_entitlement_is_not_offered_and_keeps_the_legacy_navigation(self):
+        free_owner = User.objects.create_user("free-owner@example.com", "free-owner@example.com", "x")
+        free_org = create_organization(owner=free_owner, name="Free Org").organization
+        html = self.page(free_owner, reverse("dashboard"))
+        self.assertEqual(nav_links(html), [])
+        self.assertNotIn(f"/organizations/{free_org.pk}/", html)
 
 
 # --- dashboard ----------------------------------------------------------------------------------------------

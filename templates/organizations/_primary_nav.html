@@ -1,0 +1,17 @@
+{% comment %}
+  The product's primary navigation for a user whose navigation resolves one organization (workspace_nav.current):
+  one Dashboard, one Radars, and no separate legacy Signals/Leads entries. One partial for both the desktop rail
+  (mobile=False: eyebrow, label, descriptor) and the mobile bar (mobile=True: label only), so the two always offer
+  the same product areas. Every organization link carries its explicit organization id; the "selected" signature
+  marks a section only on that organization's own pages. Settings is the user's own plan and digest page.
+  Users without a resolved organization keep the legacy navigation in base.html.
+{% endcomment %}
+{% with ws=workspace_nav.current here=workspace_nav.current_is_route section=workspace_section %}
+<a href="{% url 'organization_dashboard' ws.organization_id %}" data-nav="dashboard" {% if here and section == 'dashboard' %}aria-current="page"{% endif %}>{% if mobile %}Dashboard{% else %}<span>TODAY</span><b>Dashboard</b><small>overview</small>{% endif %}</a>
+<a href="{% url 'organization_opportunities' ws.organization_id %}" data-nav="opportunities" {% if here and section == 'opportunities' %}aria-current="page"{% endif %}>{% if mobile %}Opportunities{% else %}<span>PIPELINE</span><b>Opportunities</b><small>matched companies</small>{% endif %}</a>
+<a href="{% url 'organization_opportunities' ws.organization_id %}?status=saved" data-nav="saved" {% if here and section == 'saved' %}aria-current="page"{% endif %}>{% if mobile %}Saved{% else %}<span>KEPT</span><b>Saved</b><small>kept for follow-up</small>{% endif %}</a>
+<a href="{% url 'organization_tasks' ws.organization_id %}" data-nav="tasks" {% if here and section == 'tasks' %}aria-current="page"{% endif %}>{% if mobile %}Tasks{% else %}<span>ACTIONS</span><b>Tasks</b><small>open follow-ups</small>{% endif %}</a>
+{% if ws.can_view_radars %}<a href="{% url 'organization_radars' ws.organization_id %}" data-nav="radars" {% if here and section == 'radars' %}aria-current="page"{% endif %}>{% if mobile %}Radars{% else %}<span>CRITERIA</span><b>Radars</b><small>matching definitions</small>{% endif %}</a>{% endif %}
+<a href="{% url 'organization_notifications' ws.organization_id %}" data-nav="notifications" {% if here and section == 'notifications' %}aria-current="page"{% endif %}>{% if mobile %}Notifications{% else %}<span>INBOX</span><b>Notifications</b><small>assignments &amp; due tasks</small>{% endif %}</a>
+<a href="{% url 'settings' %}" data-nav="settings" {% if request.resolver_match.url_name == 'settings' %}aria-current="page"{% endif %}>{% if mobile %}Settings{% else %}<span>SYSTEM</span><b>Settings</b><small>plan &amp; digest</small>{% endif %}</a>
+{% endwith %}

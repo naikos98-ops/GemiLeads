@@ -4092,7 +4092,10 @@ class CheckoutAuthenticationFlowTests(TestCase):
         self._user()
         response = self.client.post(reverse("login"),
                                     {"username": "buyer@example.com", "password": "StrongPass123"})
-        self.assertRedirects(response, reverse("dashboard"), fetch_redirect_response=False)
+        # The landing resolves the organization dashboard only for a user with one; this user has none.
+        self.assertRedirects(response, reverse("product_home"), fetch_redirect_response=False)
+        self.assertRedirects(self.client.get(reverse("product_home")), reverse("dashboard"),
+                             fetch_redirect_response=False)
 
     def test_resume_route_requires_authentication(self):
         response = self.client.get(reverse("resume_checkout"))
