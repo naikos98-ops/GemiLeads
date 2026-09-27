@@ -203,6 +203,24 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     (redirect στα Radars, μετά την εξουσιοδότηση), η λίστα γίνεται read-only· **κανένα reverse sync**. Στο admin το
     hard delete CustomerRadar απαγορεύεται κατά τη μετάβαση (θα έσβηνε το provenance). Με `=0` (μετά το LIVE):
     καμία αντιγραφή, το ίδιο «Radars» ανοίγει τα OrganizationRadars, τα legacy URLs μένουν για rollback.
+  - **Υπάρχουσα απόκλιση (πριν το deploy του mirror):** `python manage.py sync_legacy_radars_to_organizations
+    [--apply] [--user-id ID]` — **dry run εξ ορισμού**, γράφει μόνο με `--apply`. Για κάθε legacy Radar, read-only
+    σχέδιο (`plan_legacy_radar`) με τους κανόνες του mirror: σύγκριση του ορισμού που θα έγραφε το mirror με το
+    αποθηκευμένο OrganizationRadar (ακριβές όνομα, active, threshold, ΚΑΔ, περιοχές, μορφές, τύποι, εξαιρέσεις).
+    Με `--apply` εκτελούνται **μόνο** τα create/update/deactivate μέσω του ίδιου του mirror (ίδια locks, μία
+    συναλλαγή ανά Radar)· δεύτερο apply = μηδέν εγγραφές. Provenance μόνο· tombstones ποτέ ξανά· μη
+    αναπαραστάσιμο → το αντίγραφο απενεργοποιείται· άλλος tenant → `unsafe`, καμία εγγραφή· soft-deleted με
+    ενεργό αντίγραφο → απενεργοποίηση. Αρνείται με `GEMI_TRANSITION_LEGACY_ACCESS=0`. Έξοδος μόνο counters:
+    `examined, mapped, unmapped, unchanged, would_create, would_update, would_deactivate, tombstones, skipped_no_org,
+    skipped_ambiguous_org, unsupported, unsafe, soft_deleted, errors, applied_*`. **Σειρά:** deploy → dry run σε
+    production → έλεγχος → `--apply`.
+  - **Αργό provisioning / starter Radars:** και τα δύο provisioning paths (`provision_existing_user_organizations`,
+    `provision_organization_for_user`), **αφού** δημιουργηθεί έγκυρα ο οργανισμός και στην ίδια συναλλαγή,
+    αντιγράφουν μία φορά τα μη αντιγραμμένα, μη διαγραμμένα legacy Radars του χρήστη
+    (`copy_unmapped_legacy_radars`, κοινό `copy_legacy_radar`, provenance-guarded)· τα μη αναπαραστάσιμα δεν
+    αντιγράφονται (`legacy_radars_not_copied_unsupported`). Χρήστες χωρίς οργανισμό: τίποτα. Όρια/billing
+    αμετάβλητα (ίδια λογική με τη migration: τα Radars οργανισμού χωρίς entitlement δεν τα αξιολογεί το pipeline).
+  - **Τεκμηριωμένο, όχι αλλαγμένο:** διαγραφή λογαριασμού κάνει cascade στα legacy Radars και στο provenance τους.
   - **Προσοχή για preview:** το `preview_start` της εφαρμογής desktop τρέχει τον server από το **κύριο checkout**
     με το δικό του `.env` (σήμερα staging PostgreSQL), όχι από το worktree. Μην κάνεις login ή εγγραφές εκεί·
     οπτικός έλεγχος με static HTML (test client) + headless Chrome. (Σε αυτή την εργασία δύο αποτυχημένα login
@@ -2234,6 +2252,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-28 — G4: κλείσιμο των τελευταίων κενών συνέπειας Radars.** Νέα:
+  `manage.py sync_legacy_radars_to_organizations` (dry run εξ ορισμού, `--apply`), `plan_legacy_radar` /
+  `resync_legacy_radars` / `copy_unmapped_legacy_radars` στο `gemiapp/legacy_radar_sync.py`,
+  `gemiapp/test_legacy_radar_resync.py` (14 tests). Αλλαγές: `existing_user_provisioning.py` και
+  `provision_organization_for_user` (αντιγραφή legacy Radars μετά το provisioning), 3 provisioning tests που
+  περιέγραφαν «καμία αντιγραφή» ξαναγράφτηκαν. Έλεγχος mutation (dry run που γράφει, drift που δεν εντοπίζεται,
+  apply σε αμετάβλητα, ενεργό αντίγραφο σε μη αναπαραστάσιμο, tombstone ξανά, cross-tenant, provisioning χωρίς
+  αντιγραφή, αντιγραφή χωρίς έλεγχο mapping) → όλα πιάνονται. Καμία migration.
 
 - **2026-09-27 — G4: ένας Radar editor και mirror legacy → OrganizationRadar.** Νέα: `gemiapp/legacy_radar_sync.py`,
   `gemiapp/test_legacy_radar_sync.py` (23 tests· mutation check: χωρίς mirror σε edit/delete, αντίγραφο που μένει

@@ -3,10 +3,11 @@
     python manage.py provision_organization_for_user <user id | username | email> [--name "…"] [--dry-run]
 
 Creates, through ``gemiapp.organizations.create_organization`` (so every invariant of the domain service holds), one
-``Organization`` with its ``OrganizationProfile`` and the user's ``OrganizationMember`` with role owner. Nothing
-else: no subscription, Stripe, legacy Radar, lead, match, organization Radar or opportunity is created, copied or
-changed. Billing stays user-owned; the organization's entitlement is derived from this owner's existing
-subscription (``gemiapp.organization_entitlement``) and is reported, never granted.
+``Organization`` with its ``OrganizationProfile`` and the user's ``OrganizationMember`` with role owner, and then, in
+the same transaction, copies the user's never-copied legacy Radars into it exactly once (provenance-guarded, the
+migration command's rules; unsupported ones are not copied). Nothing else: no subscription, Stripe, legacy Radar
+change, lead, match or opportunity. Billing stays user-owned; the organization's entitlement is derived from this
+owner's existing subscription (``gemiapp.organization_entitlement``) and is reported, never granted.
 
 Idempotent: a user who already owns exactly one organization is reported and left as is. Refused, with nothing
 written: an unknown or ambiguous identifier, an inactive account, a user who already owns several organizations
@@ -19,6 +20,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.db.models import Q
 
+from gemiapp.legacy_radar_sync import copy_unmapped_legacy_radars
 from gemiapp.models import OrganizationMember
 from gemiapp.organization_entitlement import resolve_organization_entitlement
 from gemiapp.organizations import OrganizationError, create_organization, default_organization_name
@@ -77,7 +79,10 @@ class Command(BaseCommand):
                 organization = create_organization(owner=user, name=name).organization
             except OrganizationError as error:
                 raise CommandError(f"Refused by the organization service: {error}") from error
+            # The user's never-copied legacy Radars, exactly once each, in the same transaction.
+            copied = copy_unmapped_legacy_radars(user, organization)
         self._report("created", organization)
+        self.stdout.write(f"Legacy Radars copied: {copied['copied']} (not copied, unsupported: {copied['unsupported']}).")
 
     def _report(self, action, organization):
         entitlement = resolve_organization_entitlement(organization)
@@ -85,4 +90,5 @@ class Command(BaseCommand):
                   else f"NOT entitled ({entitlement.reason}): its pages show the paywall until the owner subscribes")
         self.stdout.write(self.style.SUCCESS(f"{action} organization #{organization.pk} {organization.name!r}") +
                           f" | owner user #{entitlement.owner_user_id} | 2.0 access: {access}")
-        self.stdout.write("Billing unchanged (user-owned). No Radar, lead, match or opportunity was copied or created.")
+        self.stdout.write("Billing unchanged (user-owned). No lead, match or opportunity was copied or created; "
+                          "legacy Radars are untouched.")

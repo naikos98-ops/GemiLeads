@@ -2,9 +2,12 @@
 
 Called only by ``provision_existing_user_organizations``. It exists because the legacy Radar migration refuses
 every Radar whose owner belongs to no Organization (``missing_organization``); this command gives those owners the
-one tenant the Radar migration needs, and nothing else. It never migrates a Radar, lead, digest, Signal or
-Opportunity, and never touches billing: the organization's entitlement stays derived from the owner's existing
-``UserSubscription`` (``gemiapp.organization_entitlement``), which is only read here.
+one tenant the Radar migration needs. Once that organization is validly provisioned, in the same transaction, the
+owner's never-copied legacy Radars are copied into it exactly once through the shared, provenance-guarded
+``legacy_radar_sync.copy_unmapped_legacy_radars`` (the migration command's own rules; unsupported Radars are not
+copied). It never migrates a lead, digest, Signal or Opportunity, and never touches billing: the organization's
+entitlement stays derived from the owner's existing ``UserSubscription`` (``gemiapp.organization_entitlement``),
+which is only read here.
 
 Population (narrowest default): users who own at least one live (not soft-deleted) ``CustomerRadar`` -- exactly
 the owners the Radar migration examines. Everyone else is only counted, never provisioned.
@@ -29,6 +32,7 @@ from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 
+from .legacy_radar_sync import copy_unmapped_legacy_radars
 from .models import CustomerRadar, OrganizationMember, UserCompanyLead
 from .organization_entitlement import resolve_organization_entitlement
 from .organizations import create_organization, default_organization_name
@@ -53,6 +57,7 @@ class ProvisioningReport:
         "eligible_entitled": 0, "eligible_not_entitled": 0, "eligible_with_legacy_leads": 0,
         "legacy_radars_owned": 0, "legacy_radars_unblocked": 0, "legacy_radars_still_blocked": 0,
         "out_of_scope_active_users_without_organization": 0,
+        "legacy_radars_copied": 0, "legacy_radars_not_copied_unsupported": 0,
     })
 
     def increment(self, name: str, amount: int = 1):
@@ -100,15 +105,16 @@ def _skip_reason(user, include_staff: bool):
     return None
 
 
-def _provision(user_id: int, include_staff: bool) -> bool:
-    """Create the user's Organization unless something changed since selection. True when created."""
+def _provision(user_id: int, include_staff: bool):
+    """Create the user's Organization unless something changed since selection, then copy the user's never-copied
+    legacy Radars into it (same transaction, provenance-guarded). The copy counts when created, else None."""
     with transaction.atomic():
         # Serializes with provision_organization_for_user and with a second run of this command. Lock the User row
         # alone: PostgreSQL rejects FOR UPDATE on the nullable side of an outer join, which select_related on the
         # optional subscription would add. The subscription is read afterwards by the entitlement checks.
         user = User.objects.select_for_update().get(pk=user_id)
         if OrganizationMember.objects.filter(user=user).exists() or _skip_reason(user, include_staff):
-            return False
+            return None
         entitled_before = _owner_entitled(user)
         created = create_organization(owner=user, name=default_organization_name(user))
         memberships = list(OrganizationMember.objects.filter(user=user))
@@ -118,7 +124,8 @@ def _provision(user_id: int, include_staff: bool) -> bool:
             raise ProvisioningInvariantError("the user does not have exactly one owner membership")
         if resolve_organization_entitlement(created.organization).entitled != entitled_before:
             raise ProvisioningInvariantError("the derived organization entitlement differs from the owner's")
-    return True
+        # Only now that the organization is validly provisioned: its owner's legacy Radars, exactly once each.
+        return copy_unmapped_legacy_radars(user, created.organization)
 
 
 def provision_existing_user_organizations(*, dry_run=False, limit=DEFAULT_LIMIT, user_id=None,
@@ -162,9 +169,11 @@ def provision_existing_user_organizations(*, dry_run=False, limit=DEFAULT_LIMIT,
             report.increment("errors")
             report.increment("legacy_radars_still_blocked", user.live_radars)
             continue
-        if created:
+        if created is not None:
             report.increment("provisioned")
             report.increment("legacy_radars_unblocked", user.live_radars)
+            report.increment("legacy_radars_copied", created["copied"])
+            report.increment("legacy_radars_not_copied_unsupported", created["unsupported"])
         else:
             # Another writer gave the user a membership (or the account changed) after selection; rerun to
             # classify them. Their Radars are counted neither as unblocked nor as still blocked.

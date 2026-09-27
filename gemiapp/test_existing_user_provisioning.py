@@ -174,9 +174,11 @@ class ScopeTests(ProvisioningTestCase):
         report = self.provision()
         self.assertEqual((report.counters["provisioned"], report.counters["legacy_radars_unblocked"]), (1, 3))
         self.assertEqual(Organization.objects.count(), 1)
+        # Provisioning copies the three live Radars once (the deleted one is not), so the migration finds them done.
+        self.assertEqual(report.counters["legacy_radars_copied"], 3)
         after = migrate_legacy_radars(dry_run=True, limit=100).counters
-        self.assertEqual((after["missing_organization"], after["eligible"]), (0, 3))
-        self.assertEqual(OrganizationRadar.objects.count(), 0)  # still only a dry-run of the Radar migration
+        self.assertEqual((after["missing_organization"], after["eligible"], after["already_migrated"]), (0, 0, 3))
+        self.assertEqual(OrganizationRadar.objects.count(), 3)
 
     def test_inactive_and_unverified_accounts_are_skipped(self):
         inactive = self.user("inactive@example.com", is_active=False)  # unverified signups are inactive too
@@ -365,16 +367,18 @@ class BillingAndBoundaryTests(ProvisioningTestCase):
         self.assertEqual(resolve_organization_entitlement(OrganizationMember.objects.get(user=paid).organization)
                          .effective_tier, "business")  # paid stays paid
 
-    def test_no_radar_signal_opportunity_or_legacy_data_is_created_or_changed(self):
+    def test_only_the_radar_copy_is_created_and_no_legacy_signal_or_opportunity_changes(self):
         owner = self.user("owner@example.com")
-        self.radar(owner)
+        radar = self.radar(owner)
         legacy = list(CustomerRadar.objects.order_by("pk").values())
         self.provision()
         self.assertEqual(list(CustomerRadar.objects.order_by("pk").values()), legacy)
-        self.assertEqual((OrganizationRadar.objects.count(), LegacyRadarMigrationMap.objects.count(),
-                          CompanySignal.objects.count(), Opportunity.objects.count()), (0, 0, 0, 0))
+        # the one provenance-guarded copy of the owner's live Radar, and nothing else
+        self.assertEqual(LegacyRadarMigrationMap.objects.get().legacy_radar_id, radar.pk)
+        self.assertEqual((OrganizationRadar.objects.count(), CompanySignal.objects.count(),
+                          Opportunity.objects.count()), (1, 0, 0))
 
-    def test_the_module_touches_no_billing_radar_migration_g4_or_hydration_code(self):
+    def test_the_module_touches_no_billing_g4_or_hydration_code_and_copies_radars_only_via_the_shared_primitive(self):
         tree = ast.parse(inspect.getsource(provisioning))
         imported = set()
         for node in ast.walk(tree):
@@ -388,6 +392,7 @@ class BillingAndBoundaryTests(ProvisioningTestCase):
             "django.db", "transaction", "django.db.models", "Count", "Exists", "OuterRef", "Q", "models",
             "CustomerRadar", "OrganizationMember", "UserCompanyLead", "organization_entitlement",
             "resolve_organization_entitlement", "organizations", "create_organization", "default_organization_name",
+            "legacy_radar_sync", "copy_unmapped_legacy_radars",     # the one shared, provenance-guarded Radar copy
         })
         self.assertFalse(settings.GEMI_DISCOVERY_PENDING_COMPANY_HYDRATION_ENABLED)
 
