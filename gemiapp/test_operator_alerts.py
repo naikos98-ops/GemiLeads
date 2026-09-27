@@ -150,8 +150,10 @@ class SenderTests(SimpleTestCase):
 
 
 class ConfigurationTests(SimpleTestCase):
-    def test_exactly_the_two_ingestion_loggers_carry_the_email_handler(self):
-        self.assertEqual(tuple(settings_module.OPERATOR_ALERT_LOGGERS), (CLIENT_LOGGER, SERVICES_LOGGER))
+    def test_exactly_the_ingestion_loggers_and_the_radar_mirror_carry_the_email_handler(self):
+        # The G4 legacy->organization Radar mirror alerts too: a Radar it cannot mirror must not diverge silently.
+        self.assertEqual(tuple(settings_module.OPERATOR_ALERT_LOGGERS),
+                         (CLIENT_LOGGER, SERVICES_LOGGER, "gemiapp.legacy_radar_sync"))
         for name in settings_module.OPERATOR_ALERT_LOGGERS:
             logger = logging.getLogger(name)
             self.assertEqual(sum(isinstance(h, OperatorEmailHandler) for h in logger.handlers), 1, name)

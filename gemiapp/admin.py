@@ -1,4 +1,5 @@
 from django.contrib import admin
+from .legacy_radar_sync import mirror_enabled, mirror_legacy_radar
 from .models import (
     ActivityCode,
     ActivityCodeKadLink,
@@ -119,6 +120,19 @@ class CustomerRadarAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "frequency", "only_active")
     search_fields = ("name", "user__email", "name_query")
     filter_horizontal = ("activity_codes",)
+
+    def save_related(self, request, form, formsets, change):
+        # G4: a staff edit is mirrored like a customer edit, after the codes are saved, inside the admin's
+        # transaction (a mirror failure rolls the edit back).
+        super().save_related(request, form, formsets, change)
+        mirror_legacy_radar(form.instance)
+
+    def has_delete_permission(self, request, obj=None):
+        # G4: a hard delete would cascade away the Radar's provenance mapping and leave its mirrored copy running.
+        # Customers soft-delete (deleted_at), which the mirror follows; staff can do the same by editing the field.
+        if mirror_enabled():
+            return False
+        return super().has_delete_permission(request, obj)
 
 
 @admin.register(UserCompanyLead)

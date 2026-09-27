@@ -187,8 +187,22 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     entitled οργανισμός → Dashboard του, αλλιώς `/dashboard/` όπως πριν. Ένα ρητό `?next=` υπερισχύει.
   - **Αμετάβλητα:** όλα τα legacy routes/views/models/δεδομένα, CustomerRadars, ο κανόνας LIVE-only (οι SHADOW
     ευκαιρίες μένουν αόρατες), matching/scoring/signals/G4/Discovery/hydration/billing/entitlement rules.
-  - **Γνωστό κατά το G4:** τα Leads προέρχονται από τα legacy CustomerRadars, ενώ το «Radars» της πλοήγησης
-    επεξεργάζεται τα OrganizationRadars· μια αλλαγή εκεί δεν αλλάζει τα Leads μέχρι το cutover.
+  - **Radars κατά το G4 — ένας editor, ένα mirror (`gemiapp/legacy_radar_sync.py`):** με
+    `GEMI_TRANSITION_LEGACY_ACCESS=1` το **μοναδικό** «Radars» της πλοήγησης (και ο σύνδεσμος του Dashboard) ανοίγει
+    τον legacy editor (`/radars/`), που παράγει τα Leads· **κάθε** μετάλλαξη πελάτη του CustomerRadar (create, edit
+    κριτηρίων/ονόματος/συχνότητας, pause/resume, soft delete) και staff edit στο admin καθρεφτίζεται στο
+    OrganizationRadar που αξιολογεί το SHADOW pipeline, **στην ίδια συναλλαγή**, μόνο μέσω του
+    `LegacyRadarMigrationMap` (ποτέ όνομα), με τους ίδιους κανόνες mapping με την εντολή migration (κοινό
+    `copy_legacy_radar`). Χωρίς mapping → ένα OrganizationRadar + ένα mapping στον μοναδικό οργανισμό του χρήστη
+    (κανένας/πολλοί → τίποτα, το πιάνουν provisioning + migration)· με mapping → αντικατάσταση ολόκληρου του ορισμού
+    στη θέση του· soft delete → απενεργοποίηση, row και provenance μένουν· tombstone → ποτέ ξανά. **Αποτυχίες:**
+    μη αναπαραστάσιμο (π.χ. `name_query`) → η legacy αλλαγή αποθηκεύεται (υπάρχον συμβόλαιο της migration), το
+    αντίγραφο **απενεργοποιείται**, ERROR σε operator-alert logger (`OPERATOR_ALERT_LOGGERS`)· mapping σε άλλον
+    tenant ή μη μοναδικός οργανισμός → καμία εγγραφή σε κανέναν tenant, ERROR· απρόσμενο σφάλμα → rollback και της
+    legacy αλλαγής, μήνυμα στον πελάτη. Οι σελίδες επεξεργασίας OrganizationRadar αρνούνται κατά τη μετάβαση
+    (redirect στα Radars, μετά την εξουσιοδότηση), η λίστα γίνεται read-only· **κανένα reverse sync**. Στο admin το
+    hard delete CustomerRadar απαγορεύεται κατά τη μετάβαση (θα έσβηνε το provenance). Με `=0` (μετά το LIVE):
+    καμία αντιγραφή, το ίδιο «Radars» ανοίγει τα OrganizationRadars, τα legacy URLs μένουν για rollback.
   - **Προσοχή για preview:** το `preview_start` της εφαρμογής desktop τρέχει τον server από το **κύριο checkout**
     με το δικό του `.env` (σήμερα staging PostgreSQL), όχι από το worktree. Μην κάνεις login ή εγγραφές εκεί·
     οπτικός έλεγχος με static HTML (test client) + headless Chrome. (Σε αυτή την εργασία δύο αποτυχημένα login
@@ -2220,6 +2234,16 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-27 — G4: ένας Radar editor και mirror legacy → OrganizationRadar.** Νέα: `gemiapp/legacy_radar_sync.py`,
+  `gemiapp/test_legacy_radar_sync.py` (23 tests· mutation check: χωρίς mirror σε edit/delete, αντίγραφο που μένει
+  ενεργό σε μη αναπαραστάσιμο, mirror μετά το cutover, tombstone ξανά, χωρίς tenant check, nav πάντα στα
+  OrganizationRadars → όλα πιάνονται). Αλλαγές: `gemiapp/legacy_radar_migration.py` (κοινό `copy_legacy_radar`),
+  `gemiapp/views.py` (οι τρεις legacy μεταλλάξεις σε μία συναλλαγή με το mirror), `gemiapp/admin.py`,
+  `gemiapp/organization_views.py` (editor OrganizationRadar αρνείται κατά τη μετάβαση), `_primary_nav.html`,
+  `organizations/dashboard.html`, `organizations/radars.html`, `config/settings.py` (`OPERATOR_ALERT_LOGGERS`),
+  guards/tests (`test_organizations.py`: η μοναδική γέφυρα views → organizations, `test_operator_alerts.py`,
+  `test_organization_radar_ui.py` τρέχει μετά το cutover, `test_customer_workspace.py`). Καμία migration.
 
 - **2026-09-27 — Ενιαία πλοήγηση πελάτη.** Νέο: `templates/organizations/_primary_nav.html`. Αλλαγές:
   `templates/base.html`, `organizations/_workspace_rail.html` (μόνο λίστα οργανισμών), `_workspace_bar.html`

@@ -265,7 +265,8 @@ ADMINS = operator_admins(SUPERADMIN_EMAILS)
 # The two loggers that carry an ingestion failure: gemiapp.ingestion.client logs the ERROR when a
 # response fails the A2 contract, gemiapp.services logs the ImportRun it stopped. Deliberately not
 # the whole application: an alert that fires for everything is one nobody reads.
-OPERATOR_ALERT_LOGGERS = ("gemiapp.ingestion.client", "gemiapp.services")
+# The ingestion loggers, and the G4 legacy->organization Radar mirror, whose refusals must not diverge silently.
+OPERATOR_ALERT_LOGGERS = ("gemiapp.ingestion.client", "gemiapp.services", "gemiapp.legacy_radar_sync")
 
 LOGGING = {
     "version": 1,

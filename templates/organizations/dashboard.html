@@ -30,7 +30,7 @@
   {% if dashboard.radars is not None %}
   <p class="product-workspace-note" data-radar-summary>
     {% if dashboard.radars %}
-    Radars οργανισμού: <b>{{ dashboard.radars }}</b> ({{ dashboard.active_radars }} ενεργά) · <a href="{% url 'organization_radars' organization_id %}">Προβολή →</a>
+    Radars οργανισμού: <b>{{ dashboard.radars }}</b> ({{ dashboard.active_radars }} ενεργά) · <a href="{% if transition_legacy_access %}{% url 'radar_list' %}{% else %}{% url 'organization_radars' organization_id %}{% endif %}">Προβολή →</a>
     {% else %}
     <span data-empty="radars">Ο οργανισμός δεν έχει ακόμη Radars· χωρίς Radar δεν εντοπίζονται ευκαιρίες.</span>
     {% endif %}

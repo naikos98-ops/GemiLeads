@@ -112,29 +112,40 @@ class NavigationTests(WorkspaceTestCase):
             for key, link, _ in links:
                 if key == "settings":
                     self.assertEqual(link, reverse("settings"))        # the user's own plan & digest page
+                elif key == "radars":
+                    self.assertEqual(link, reverse("radar_list"))      # G4: the canonical (legacy) Radar editor
                 else:
                     self.assertTrue(link.startswith(f"/organizations/{self.org.pk}/"), (role, link))
                     self.assertEqual(resolve(link.split("?")[0]).func.__module__, "gemiapp.organization_views")
                 self.assertEqual(self.client.get(link).status_code, 200, (role, link))
 
     def test_the_links_follow_the_role(self):
-        for role, user in self.members.items():
-            self.client.force_login(user)
-            keys = [key for key, _, _ in nav_links(self.client.get(reverse("dashboard")).content.decode())]
-            self.assertEqual("radars" in keys, role != "sales_user", role)
-            self.assertIn("notifications", keys, role)
+        for transition in (True, False):
+            with override_settings(GEMI_TRANSITION_LEGACY_ACCESS=transition):
+                for role, user in self.members.items():
+                    self.client.force_login(user)
+                    keys = [key for key, _, _ in nav_links(self.client.get(reverse("dashboard")).content.decode())]
+                    # during G4 everyone edits their own Radars; after it, only roles that may read the organization's
+                    self.assertEqual("radars" in keys, transition or role != "sales_user", (transition, role))
+                    self.assertIn("notifications", keys, role)
         # the hidden link is also a refused page, not merely a hidden one
         self.assertEqual(self.status_of(self.members["sales_user"], "organization_radars"), 404)
 
     def test_the_active_section_is_marked_on_the_organizations_own_pages_only(self):
         cases = {("organization_dashboard", ()): "dashboard", ("organization_opportunities", ()): "opportunities",
                  ("organization_opportunities", (("status", "saved"),)): "saved",
-                 ("organization_tasks", ()): "tasks", ("organization_radars", ()): "radars",
-                 ("organization_notifications", ()): "notifications"}
+                 ("organization_tasks", ()): "tasks", ("organization_notifications", ()): "notifications"}
         for (name, query), key in cases.items():
             html = self.html(self.owner, name, **dict(query))
             for nav in ("rail", "mobile"):
                 self.assertEqual([k for k, _, current in nav_links(html, nav) if current], [key], (name, nav))
+        # Radars: the legacy editor during G4, the organization's page after the cutover
+        self.client.force_login(self.owner)
+        self.assertEqual([k for k, _, current in nav_links(self.client.get(reverse("radar_list")).content.decode())
+                          if current], ["radars"])
+        with override_settings(GEMI_TRANSITION_LEGACY_ACCESS=False):
+            html = self.html(self.owner, "organization_radars")
+            self.assertEqual([k for k, _, current in nav_links(html) if current], ["radars"])
         self.client.force_login(self.owner)
         html = self.client.get(reverse("organization_company_opportunity",
                                        args=[self.org.pk, self.company.pk])).content.decode()
@@ -200,7 +211,9 @@ class UnifiedNavigationTests(WorkspaceTestCase):
         html = self.page(self.owner, self.ws_url("organization_dashboard"))
         for which in ("rail", "mobile"):
             nav = nav_html(html, which)
-            self.assertNotIn('href="/radars/"', nav, which)                  # one Radars: the organization's
+            # one Radars entry, and during G4 it is the canonical (legacy) Radar editor
+            self.assertEqual(re.findall(r'href="([^"]+)" data-nav="radars"', nav), ["/radars/"], which)
+            self.assertNotIn(f"/organizations/{self.org.pk}/radars/", nav, which)
             self.assertEqual(re.findall(r">Radars<", nav), [">Radars<"], which)
             self.assertEqual(re.findall(r">Dashboard<", nav), [">Dashboard<"], which)
             # Signals and Leads appear once each, only as the separate G4 "current service" entries
@@ -278,7 +291,7 @@ class UnifiedNavigationTests(WorkspaceTestCase):
                          sorted([self.org.pk, self.org_b.pk]))
         on_b = self.page(self.owner, self.ws_url("organization_dashboard", org=self.org_b))
         links = nav_links(on_b)
-        self.assertTrue(all(href.startswith(f"/organizations/{self.org_b.pk}/") or key == "settings"
+        self.assertTrue(all(href.startswith(f"/organizations/{self.org_b.pk}/") or key in ("settings", "radars")
                             for key, href, _ in links))
         self.assertEqual([key for key, _, _ in links], PRIMARY)            # a viewer may read Radars
         self.assertEqual(re.findall(r'data-workspace-switch="(\d+)"', on_b), [str(self.org.pk)])  # the other one

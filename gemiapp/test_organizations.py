@@ -4,6 +4,7 @@ Foundation only: no existing user-owned data changes owner, and nothing in the p
 """
 
 import inspect
+import re
 from unittest.mock import patch
 
 from django.contrib import admin
@@ -196,6 +197,12 @@ class G5SafetyTests(TestCase):
             except FileNotFoundError:
                 continue
             self.assertNotIn("organization", source.lower().replace("\"organization\"", ""), path)
+        # One deliberate G4 exception: the legacy Radar views call gemiapp.legacy_radar_sync, which mirrors a
+        # customer's CustomerRadar change into its OrganizationRadar (transition only, one direction). It is the
+        # only bridge from the legacy views to organization data.
+        views_source = open("gemiapp/views.py", encoding="utf-8").read()
+        self.assertEqual(re.findall(r"^from \.(legacy_radar_\w+) import (.+)$", views_source, re.M),
+                         [("legacy_radar_sync", "mirror_legacy_radar")])
         self.assertFalse([m for m in settings.MIDDLEWARE if "organization" in m.lower()])
         for key, entries in get_resolver().reverse_dict.lists():
             if callable(key) and "organization" in " ".join(str(entry) for entry in entries).lower():

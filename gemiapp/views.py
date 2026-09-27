@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.db.models import Count, Max, Prefetch, Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -25,6 +26,7 @@ from django_ratelimit.decorators import ratelimit
 from .forms import CustomerRadarForm, DigestPreferenceForm, LeadNotesForm, LeadStatusForm, SignupForm
 from .ingestion.kad_catalogue import kad_picker_queryset
 from .kad import normalize_kad_code, normalize_kad_search
+from .legacy_radar_sync import mirror_legacy_radar
 from .reference_search import KINDS, reference_options
 from .models import (
     ActivityCode,
@@ -58,6 +60,8 @@ SAMPLE_LEADS = [
 ]
 
 MAX_SELECTED_KADS = 25
+# A Radar change and its G4 mirror commit together; if the mirror fails, the change is not saved (and is logged).
+RADAR_SAVE_FAILED = "Η αλλαγή στο Radar δεν αποθηκεύτηκε λόγω τεχνικού προβλήματος. Δοκίμασε ξανά σε λίγο."
 # An unfiltered export would otherwise buffer every company in the database into one response.
 MAX_EXPORT_ROWS = 5000
 
@@ -540,12 +544,19 @@ def _save_radar(request, radar=None):
                 form.add_error(None, f"Έχεις φτάσει το όριο των {limit} Ραντάρ του πλάνου σου. Διέγραψε κάποιο για να προσθέσεις νέο.")
 
         if form.is_valid() and limit > 0:
-            saved_radar = form.save(commit=False)
-            saved_radar.user = request.user
-            if not saved_radar.pk:
-                saved_radar.monitor_from = timezone.now()
-            saved_radar.save()
-            saved_radar.activity_codes.set(selected_kads)
+            try:
+                # One transaction: the Radar, its codes and (during G4) its mirrored copy, or nothing.
+                with transaction.atomic():
+                    saved_radar = form.save(commit=False)
+                    saved_radar.user = request.user
+                    if not saved_radar.pk:
+                        saved_radar.monitor_from = timezone.now()
+                    saved_radar.save()
+                    saved_radar.activity_codes.set(selected_kads)
+                    mirror_legacy_radar(saved_radar)
+            except Exception:
+                messages.error(request, RADAR_SAVE_FAILED)
+                return redirect("radar_list")
             messages.success(request, "Το Radar αποθηκεύτηκε και θα παρακολουθεί τις επόμενες εισαγωγές.")
             return redirect("radar_detail", pk=saved_radar.pk)
     return render(request, "radars/form.html", {
@@ -825,7 +836,13 @@ def radar_toggle(request, pk):
             return redirect("radar_list")
         radar.monitor_from = timezone.now()
     radar.is_active = not radar.is_active
-    radar.save(update_fields=["is_active", "monitor_from", "updated_at"])
+    try:
+        with transaction.atomic():
+            radar.save(update_fields=["is_active", "monitor_from", "updated_at"])
+            mirror_legacy_radar(radar)
+    except Exception:
+        messages.error(request, RADAR_SAVE_FAILED)
+        return redirect("radar_list")
     messages.success(request, "Το Radar ενεργοποιήθηκε." if radar.is_active else "Το Radar τέθηκε σε παύση.")
     return redirect("radar_list")
 
@@ -836,7 +853,13 @@ def radar_delete(request, pk):
     radar = get_object_or_404(CustomerRadar, pk=pk, user=request.user, deleted_at__isnull=True)
     radar.is_active = False
     radar.deleted_at = timezone.now()
-    radar.save(update_fields=["is_active", "deleted_at", "updated_at"])
+    try:
+        with transaction.atomic():
+            radar.save(update_fields=["is_active", "deleted_at", "updated_at"])
+            mirror_legacy_radar(radar)
+    except Exception:
+        messages.error(request, RADAR_SAVE_FAILED)
+        return redirect("radar_list")
     messages.success(request, "Το Radar αφαιρέθηκε. Τα δεδομένα του διατηρούνται προσωρινά με ασφάλεια.")
     return redirect("radar_list")
 

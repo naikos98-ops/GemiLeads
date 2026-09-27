@@ -45,6 +45,18 @@ from .organization_access import (
 from .organization_radar_form import initial_radar_form, parse_radar_form, radar_error_message, radar_form_choices
 
 ENTITLEMENT_REQUIRED_MESSAGE = "Απαιτείται ενεργή συνδρομή του ιδιοκτήτη του οργανισμού."
+# G4 transition: the customer's Radars are edited in the Radars editor (legacy, mirrored into the organization's
+# Radars by gemiapp.legacy_radar_sync); editing an organization Radar directly would diverge, so it is refused.
+LEGACY_RADAR_URL_NAMES = ("radar_list", "radar_create", "radar_detail", "radar_edit")
+RADARS_EDITED_IN_TRANSITION_MESSAGE = "Κατά τη μετάβαση τα Radars επεξεργάζονται από τη σελίδα Radars."
+
+
+def _radars_edited_in_transition(request):
+    """During the G4 transition an organization Radar is a mirror; send the editor to the one canonical editor."""
+    if not getattr(settings, "GEMI_TRANSITION_LEGACY_ACCESS", True):
+        return None
+    messages.info(request, RADARS_EDITED_IN_TRANSITION_MESSAGE)
+    return redirect("radar_list")
 
 
 def _refuse(request, refused):
@@ -83,7 +95,8 @@ def workspace_navigation(request):
             "workspace_section": section,
             # G4 transition: the current service (Signals, Leads) stays reachable from the organization navigation
             # until opportunities go live. Off after the LIVE cutover; the legacy URLs keep resolving either way.
-            "transition_legacy_access": bool(getattr(settings, "GEMI_TRANSITION_LEGACY_ACCESS", True))}
+            "transition_legacy_access": bool(getattr(settings, "GEMI_TRANSITION_LEGACY_ACCESS", True)),
+            "legacy_radar_url_names": LEGACY_RADAR_URL_NAMES}
 
 
 @login_required
@@ -359,6 +372,9 @@ def _radar_form_page(request, organization_id, radar_id=None):
         editor = get_authorized_radar_editor(request.user, organization_id, radar_id)
     except OrganizationAccessDenied as refused:
         return _refuse(request, refused)
+    in_transition = _radars_edited_in_transition(request)     # after authorization: refusals stay the same 404
+    if in_transition is not None:
+        return in_transition
     if request.method != "POST":
         form = initial_radar_form(editor.definition)
     else:
@@ -397,6 +413,12 @@ def workspace_radar_edit(request, organization_id, radar_id):
 @require_POST
 def workspace_radar_active(request, organization_id, radar_id):
     """Activate (``active=1``) or deactivate one of this organization's Radars, then back to the Radars page."""
+    if getattr(settings, "GEMI_TRANSITION_LEGACY_ACCESS", True):
+        try:
+            get_authorized_radar_editor(request.user, organization_id, radar_id)
+        except OrganizationAccessDenied as refused:
+            return _refuse(request, refused)
+        return _radars_edited_in_transition(request)
     try:
         result = set_authorized_organization_radar_active(request.user, organization_id, radar_id,
                                                           request.POST.get("active") == "1")

@@ -1,8 +1,10 @@
 """Explicit, create-only migration of legacy CustomerRadar definitions to OrganizationRadar.
 
-This module is called only by ``migrate_legacy_radars_to_organizations``.  It never creates organizations,
-signals, opportunities or historical matches, and it never mutates a legacy Radar.  Rule version 1 preserves
-only semantics that the current OrganizationRadar matcher can represent exactly.
+This module is called by ``migrate_legacy_radars_to_organizations``; its mapping rules (``_destination``,
+``_definition``, ``copy_legacy_radar``) are also used by the G4 mirror, ``legacy_radar_sync``, so a Radar copied
+by either path has identical criteria.  It never creates organizations, signals, opportunities or historical
+matches, and it never mutates a legacy Radar.  Rule version 1 preserves only semantics that the current
+OrganizationRadar matcher can represent exactly.
 """
 
 from __future__ import annotations
@@ -134,6 +136,27 @@ def _provenance_state(radar, destination):
     return "already_migrated" if mapping.organization_radar_id is not None else "already_migrated_deleted"
 
 
+def _keep_exact_name(organization_radar, legacy_name):
+    """The domain service trims labels. The copy is archival configuration, so it keeps the exact legacy label
+    (including harmless surrounding whitespace)."""
+    if organization_radar.name != legacy_name:
+        organization_radar.name = legacy_name
+        organization_radar.save(update_fields=["name", "updated_at"])
+    return organization_radar
+
+
+def copy_legacy_radar(locked, destination, definition):
+    """Create the OrganizationRadar of one legacy Radar and its provenance row. The caller holds the legacy Radar's
+    row lock inside a transaction and has checked that no mapping exists; the unique mapping makes a second copy
+    fail rather than duplicate. Shared by the migration command and the G4 mirror (``legacy_radar_sync``)."""
+    organization_radar = _keep_exact_name(create_organization_radar(destination, definition), locked.name)
+    LegacyRadarMigrationMap.objects.create(
+        legacy_radar=locked, organization=destination, organization_radar=organization_radar,
+        mapping_version=MAPPING_VERSION,
+    )
+    return organization_radar
+
+
 def _query(*, user_id=None, organization_id=None, legacy_radar_id=None):
     queryset = CustomerRadar.objects.all().prefetch_related("activity_codes").order_by("pk")
     if user_id is not None:
@@ -181,16 +204,7 @@ def migrate_legacy_radars(*, dry_run=False, limit=DEFAULT_LIMIT, user_id=None, o
                     report.increment(state)
                     continue
                 prepared = _definition(locked, destination)
-                organization_radar = create_organization_radar(destination, prepared.definition)
-                if organization_radar.name != locked.name:
-                    # The domain service normally trims labels. Migration is archival configuration copying, so
-                    # retain the exact legacy label (including harmless surrounding whitespace) as requested.
-                    organization_radar.name = locked.name
-                    organization_radar.save(update_fields=["name", "updated_at"])
-                LegacyRadarMigrationMap.objects.create(
-                    legacy_radar=locked, organization=destination, organization_radar=organization_radar,
-                    mapping_version=MAPPING_VERSION,
-                )
+                copy_legacy_radar(locked, destination, prepared.definition)
             report.increment("migrated")
             report.increment("kads", prepared.kads)
             report.increment("prefectures", prepared.prefectures)

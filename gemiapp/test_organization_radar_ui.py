@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 from django.contrib.messages import get_messages
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from django_q.models import Schedule
 from django.urls import reverse
 
@@ -27,7 +27,11 @@ from .test_gemi_company_activities import entitled_user, radar_for
 from .test_organization_icp import ref
 
 
+@override_settings(GEMI_TRANSITION_LEGACY_ACCESS=False)
 class RadarUiTestCase(WorkspaceTestCase):
+    """The Organization Radar editor as customers use it after the LIVE cutover. During the G4 transition
+    (GEMI_TRANSITION_LEGACY_ACCESS on) it refuses edits: see test_legacy_radar_sync.TransitionEditorTests."""
+
     def setUp(self):
         super().setUp()
         r = self.r

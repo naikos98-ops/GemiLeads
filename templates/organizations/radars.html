@@ -18,8 +18,9 @@
       <h1>Radars</h1>
     </div>
     <div></div>
-    <div>{% if listing.can_manage %}<a href="{% url 'organization_radar_create' organization_id %}" class="product-ink-button" data-new-radar>Νέο Radar</a>{% endif %}</div>
+    <div>{% if listing.can_manage and not transition_legacy_access %}<a href="{% url 'organization_radar_create' organization_id %}" class="product-ink-button" data-new-radar>Νέο Radar</a>{% endif %}</div>
   </div>
+  {% if transition_legacy_access %}<p class="product-workspace-note" data-transition-radars>Κατά τη μετάβαση τα Radars επεξεργάζονται από τη <a href="{% url 'radar_list' %}">σελίδα Radars</a>.</p>{% endif %}
   <section class="product-workspace-section" id="radars">
     <h2><span>RADARS ΤΟΥ ΟΡΓΑΝΙΣΜΟΥ</span></h2>
     {% for radar in listing.radars %}
@@ -39,7 +40,7 @@
       <div style="text-align: right; font-family: ui-monospace, monospace; font-size: var(--type-label); color: var(--product-muted);">
         <span style="display: block; font-weight: 700; text-transform: uppercase;" data-radar-state="{% if radar.active %}active{% else %}inactive{% endif %}">{% if radar.active %}Ενεργό{% else %}Ανενεργό{% endif %}</span>
         <a href="{% url 'organization_opportunities' organization_id %}?status=all&amp;radar={{ radar.radar_id }}">{{ radar.opportunities }} εταιρείες →</a>
-        {% if listing.can_manage %}
+        {% if listing.can_manage and not transition_legacy_access %}
         <a href="{% url 'organization_radar_edit' organization_id radar.radar_id %}" style="display: block; margin-top: 6px;" data-edit-radar>Επεξεργασία</a>
         <form method="post" action="{% url 'organization_radar_active' organization_id radar.radar_id %}" style="margin-top: 6px;" data-toggle-radar>
           {% csrf_token %}
@@ -50,7 +51,7 @@
       </div>
     </div>
     {% empty %}
-    <p class="product-workspace-empty" data-empty="radars">Ο οργανισμός δεν έχει ακόμη Radars. Χωρίς Radar δεν εντοπίζονται ευκαιρίες.{% if listing.can_manage %} Ξεκίνα με «Νέο Radar».{% endif %}</p>
+    <p class="product-workspace-empty" data-empty="radars">Ο οργανισμός δεν έχει ακόμη Radars. Χωρίς Radar δεν εντοπίζονται ευκαιρίες.{% if listing.can_manage and not transition_legacy_access %} Ξεκίνα με «Νέο Radar».{% endif %}</p>
     {% endfor %}
   </section>
 </div>
