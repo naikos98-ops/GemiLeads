@@ -309,14 +309,34 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     legacy προϊόν το βλέπει όπως κάθε import (dashboard, CSV και — όταν το `incorporation_date` ισούται με την
     ημερομηνία ενός import run — legacy matching/digest). Το `company_defaults` (αμετάβλητο) αποθηκεύει
     missing/invalid/future ημερομηνία ως **σήμερα**: ένα `invalid_date` θα έμπαινε στο **σημερινό** legacy digest
-    σαν να συστάθηκε σήμερα. Η αναφορά μετρά σε κάθε εκτέλεση (και dry run) `stored_as_today` και `date_clamped`.
+    σαν να συστάθηκε σήμερα. **Από 2026-09-27 αυτό απαγορεύεται (βλ. «Date safety» αμέσως παρακάτω).**
+  - **Date safety (2026-09-27) — σκληρός κανόνας, όχι μόνο αναφορά.** Hydration-specific πολιτική· Discovery,
+    `ELIGIBLE_CLASSIFICATIONS` του B2, `company_defaults`, materialiser, signals, pipeline, matching αμετάβλητα.
+    (1) **Επιλέγεται** μόνο αριθμός ΓΕΜΗ με τουλάχιστον μία pending παρατήρηση στο `HYDRATABLE_CLASSIFICATIONS`
+    (`new_incorporation`, `late_publication` — έγκυρη ημερομηνία κατά Discovery), παλαιότερο έγκυρο τεκμήριο
+    πρώτο, μία φορά ανά αριθμό. Αριθμός με **μόνο** `invalid_date` δεν ζητείται ποτέ από το ΓΕΜΗ (καμία κατανάλωση
+    budget), μένει pending, μετριέται `skipped_invalid_date`· μία παλιά `invalid_date` δεν «δηλητηριάζει» μια
+    μεταγενέστερη έγκυρη παρατήρηση. (2) **Το payload είναι η τελευταία αρχή:** αν το `company_defaults` θα
+    αποθήκευε ημερομηνία διαφορετική από την πηγή (`_legacy_exposure` → `clamped=True`: λείπει, δεν διαβάζεται,
+    πριν το 1900 ή μετά από σήμερα — ένα έγκυρο `new_incorporation` μπορεί να είναι αύριο), **καμία** εγγραφή,
+    κανένα sync δραστηριοτήτων, μένει pending, μετριέται `skipped_date_clamped` (+ λίστα αριθμών). (3) Γνήσια
+    ημερομηνία πηγής = σήμερα (`stored_as_today=True`, `clamped=False`) **επιτρέπεται**. Τα safety skips **δεν**
+    είναι αποτυχίες (`failed`/`write_failures` αμετάβλητα, exit 0)· τα ασφαλή late publications δουλεύουν όπως πριν
+    (πραγματική ιστορική ημερομηνία). Έξοδος: `selectable`, `skipped_invalid_date` (never fetched),
+    `skipped_date_clamped` (fetched, refused), `created`/`would create`, `pending after`. Το `date_clamped` μετρά
+    πλέον clamped ημερομηνίες **μεταξύ των δημιουργημένων**, δηλαδή είναι πάντα 0. Τα μη ασφαλή μένουν ορατά ως
+    pending evidence (τίποτα δεν διαγράφεται/αναταξινομείται)· μετά την εξάντληση του ασφαλούς backlog είναι
+    **αναμενόμενο** να μείνουν pending. Production πριν τον κανόνα: 578 pending (575 late_publication, 3
+    invalid_date)· χειροκίνητη hydration 5 ασφαλών (`stored_as_today=0`, `date_clamped=0`) → 573 pending, 5 SHADOW
+    signals, πέρασαν από το SHADOW pipeline. Flag default OFF, κανένα schedule, καμία migration.
   - **Signal timing αμετάβλητο:** evidence = η αρχική (παλαιότερη) παρατήρηση· `detected_at` = ο κανόνας B2
     `max(discovery, baseline observed_at)`, δηλαδή η στιγμή της hydration (τότε υπάρχει πρώτη φορά state).
   - **G4 ανεξάρτητο:** κανένα άγγιγμα σε `run_g4_shadow_cycle`, cursor, παρατηρήσεις, schedules, flags. **LIVE
     παραμένει απαγορευμένη** — η εντολή δεν έχει επιλογή mode/live και δεν δημιουργεί σήματα.
   - **Χρήση (μόνο μετά από ρητή απόφαση):**
     `GEMI_DISCOVERY_PENDING_COMPANY_HYDRATION_ENABLED=1 python manage.py hydrate_pending_discovery_companies
-    --dry-run --limit 20` → έλεγχος `stored_as_today`/`date_clamped` → χωρίς `--dry-run` → `python manage.py
+    --dry-run --limit 20` → έλεγχος `selectable`/`skipped_invalid_date`/`skipped_date_clamped` → χωρίς
+    `--dry-run` → `python manage.py
     materialize_new_company_signals`. Επιλογές: `--limit N` (1–200, προεπιλογή 20), `--pace-seconds S`
     (προεπιλογή 20).
   - **Καμία migration.** 26 νέα tests (`gemiapp/test_pending_company_hydration.py`)· έλεγχος mutation: overwrite,
@@ -1991,10 +2011,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   **δεν** παίρνουν σήμα NEW_COMPANY μέχρι το cutover του Discovery v2. Δεν λύθηκε σκόπιμα: μετριέται στο G4 ως
   `unmaterialised (no Company yet)` και ως `v2_only → late_publication`. Η λύση σημαίνει δημιουργία `Company`
   εκτός του legacy importer, δηλαδή την πύλη του cutover. **Η διαδρομή υπάρχει πλέον** (pending-company
-  hydration, 2026-09-26) αλλά είναι **κλειστή**. Πριν ανοίξει χρειάζεται απόφαση για την έκθεση στο legacy
-  προϊόν: (α) αν οι hydrated εταιρείες πρέπει να φαίνονται στο legacy dashboard/CSV· (β) τι γίνεται με τα
-  `invalid_date`, που το `company_defaults` αποθηκεύει ως «σήμερα» και άρα μπαίνουν στο σημερινό legacy
-  digest/matching· (γ) μία δοκιμαστική εκτέλεση `--dry-run` σε production για τα πραγματικά `stored_as_today`.
+  hydration, 2026-09-26), flag default OFF, και έχει ήδη τρέξει χειροκίνητα σε production για 5 ασφαλείς εταιρείες.
+  Ανοιχτό: (α) αν οι hydrated εταιρείες πρέπει να φαίνονται στο legacy dashboard/CSV (ιστορική ημερομηνία: στο
+  archive, όχι στο σημερινό digest)· (β) **λύθηκε 2026-09-27**: `invalid_date`-only και clamped ημερομηνίες δεν
+  γράφονται ποτέ και μένουν pending· (γ) μετά το deploy του κανόνα: `--dry-run` σε production και έλεγχος των
+  `skipped_invalid_date`/`skipped_date_clamped` πριν από μεγαλύτερα batches. Τι γίνεται τελικά με τα μόνιμα μη
+  ασφαλή pending (π.χ. χειροκίνητος έλεγχος) είναι ξεχωριστή απόφαση.
 - **G4 blocker B — χρονοπρογραμματισμός: ΛΥΘΗΚΕ (2026-09-20).** Η κατάταξη του Discovery v2 κρίνεται πλέον από το
   σύνορο στην αρχή του run, όχι από το αν ο legacy importer είχε προλάβει να γράψει τη γραμμή· η σειρά των runs δεν
   επηρεάζει πια ποια σήματα NEW_COMPANY παράγονται. Η σταθερή ακολουθία discovery → materialization →
@@ -2159,6 +2181,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-27 — Pending hydration: σκληρός κανόνας ασφάλειας ημερομηνίας.** `gemiapp/pending_company_hydration.py`
+  (`HYDRATABLE_CLASSIFICATIONS`, `hydratable_numbers_queryset`, `invalid_date_only_numbers_queryset`, refusal σε
+  `clamped`, νέα counters), `gemiapp/test_pending_company_hydration.py` (8 νέα tests, 2 που περιέγραφαν τη hydration
+  των `invalid_date` ξαναγράφτηκαν, 2 μετέφεραν το patch στο νέο selection seam). Έλεγχος mutation: χωρίς refusal,
+  refusal σε `stored_as_today`, επιλογή `invalid_date`, επιλογή όλου του pending set, safety skip ως failure → όλα
+  πιάνονται. Καμία migration, καμία αλλαγή στην εντολή, στο flag ή σε schedules.
 
 - **2026-09-27 — Hotfix: row lock του provisioning χωρίς nullable join.** `gemiapp/existing_user_provisioning.py`
   (`select_for_update()` μόνο στον User), 3 νέα tests (`PostgresRowLockTests`). Αιτία: `errors=10` στην πρώτη

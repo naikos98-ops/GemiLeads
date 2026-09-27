@@ -28,13 +28,28 @@ because a dry run still spends GEMI requests. It is a dedicated flag: ``GEMI_DIS
 Discovery's ingest mode and belongs to the cutover decision, so it is not reused. Nothing in ``apps.SCHEDULES``
 or any task calls this module; only ``manage.py hydrate_pending_discovery_companies`` does.
 
-Selection
----------
-Exactly the materialiser's own pending set: GEMI numbers with at least one eligible observation (B2's
+Selection -- the date-safety policy (hydration-specific)
+--------------------------------------------------------
+The *pending* set is the materialiser's own: GEMI numbers with at least one eligible observation (B2's
 ``ELIGIBLE_CLASSIFICATIONS``: ``new_incorporation``, ``late_publication``, ``invalid_date``) and no local
-``Company``. One entry per GEMI number however many observations it has, oldest evidence first (the earliest
-run that saw it, then observation id), so a bounded run always works through the backlog in discovery order.
-The incorporation date is never a selection criterion: a late or undated record is as real a company.
+``Company``. It is reported unchanged, and neither Discovery's classification nor B2's constant is touched.
+
+Only a *selectable* number is fetched: one with at least one pending observation in
+``HYDRATABLE_CLASSIFICATIONS`` (``new_incorporation``, ``late_publication``), i.e. evidence whose source
+incorporation date Discovery judged valid. A number whose only evidence is ``invalid_date`` (missing, unreadable
+or out of range) is never selected, so no GEMI request is spent on it; it is counted as ``skipped_invalid_date``
+and stays pending. One ``invalid_date`` observation does not poison a number: any valid observation of the same
+number makes it selectable. One entry per GEMI number however many observations it has, oldest *valid* evidence
+first (the earliest run that saw it with a valid date, then observation id), so a bounded run is deterministic
+and works through the backlog in discovery order. A late date is not a reason to skip: a late publication is as
+real a company.
+
+The fetched record is the last authority. Classification is a snapshot of an earlier run, so the payload is
+judged again after ``company_defaults``: if it would store any date other than the source date (missing,
+unreadable, before 1900, or later than today -- a valid ``new_incorporation`` can be tomorrow), nothing is
+written, no activity is synced, the evidence stays pending and the number is counted as
+``skipped_date_clamped``. A genuine source date of today is not clamped and is hydrated. Safety skips are not
+failures: they never make the command exit non-zero.
 
 Source data: one validated search per company
 ---------------------------------------------
@@ -77,15 +92,15 @@ What a created Company means for the legacy product
 A ``Company`` row is canonical data, so the legacy customer product sees it like any imported company
 (dashboard archive, CSV export and, when its stored ``incorporation_date`` equals an import run's target date,
 legacy Radar matching and digests). ``company_defaults`` is reused unchanged, and it stores a missing, invalid
-or future source date as ``date.today()``. So:
+or future source date as ``date.today()`` -- which would put the company into today's legacy digest and
+matching as if incorporated today. That is exactly what the policy above refuses. So:
 
 * ``late_publication`` -> stored with its real, past date: visible in the archive, not in today's digest;
-* ``new_incorporation`` -> the date the legacy importer would store itself when it imports the company;
-* ``invalid_date`` (or a clamped future date) -> stored as **today**, so it enters today's legacy digest and
-  matching as if incorporated today.
+* ``new_incorporation`` -> its real date (today at the latest); a date that would be clamped is refused;
+* ``invalid_date`` only -> never fetched, never written; a clamped date from any payload -> never written.
 
-The report counts ``stored_as_today`` and ``date_clamped`` for every run (dry runs included), so an operator
-sees this before and after enabling. That is the decision the flag protects; it is not hidden here.
+``stored_as_today`` still counts genuine source dates of today; ``date_clamped`` counts clamped dates among
+created rows and is therefore always 0 -- the refusals are ``skipped_date_clamped``.
 
 Failures
 --------
@@ -116,7 +131,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Exists, Min, OuterRef
 
 from .ingestion.client import get_gemi_client
-from .ingestion.discovery import normalize_gemi_number
+from .ingestion.discovery import LATE_PUBLICATION, NEW_INCORPORATION, normalize_gemi_number
 from .ingestion.errors import GemiApiError, GemiResponseValidationError
 from .ingestion.rate_budget import GemiLane
 from .new_company_signals import ELIGIBLE_CLASSIFICATIONS
@@ -131,6 +146,10 @@ DEFAULT_PACE_SECONDS = 20.0
 CREATED = "created"
 WOULD_CREATE = "would_create"
 RACE_SKIPPED = "race_skipped"
+SKIPPED_DATE_CLAMPED = "skipped_date_clamped"
+# Hydration-specific, explicit (not derived from B2's ELIGIBLE_CLASSIFICATIONS, so a future classification is
+# never hydratable by accident): evidence whose source incorporation date Discovery judged valid.
+HYDRATABLE_CLASSIFICATIONS = (NEW_INCORPORATION, LATE_PUBLICATION)
 NOT_FOUND = "not_found"
 AMBIGUOUS = "ambiguous"
 
@@ -152,13 +171,28 @@ def _pending_observations():
     )
 
 
-def pending_numbers_queryset():
-    """One row per pending GEMI number, oldest discovery evidence first. Read-only."""
+def _one_row_per_number(observations):
     return (
-        _pending_observations().values("gemi_number")
+        observations.values("gemi_number")
         .annotate(first_seen=Min("run__started_at"), first_id=Min("id"))
         .order_by("first_seen", "first_id")
     )
+
+
+def pending_numbers_queryset():
+    """One row per pending GEMI number (the materialiser's pending set), oldest discovery evidence first."""
+    return _one_row_per_number(_pending_observations())
+
+
+def hydratable_numbers_queryset():
+    """One row per pending number with valid-date evidence, oldest valid evidence first. Read-only."""
+    return _one_row_per_number(_pending_observations().filter(classification__in=HYDRATABLE_CLASSIFICATIONS))
+
+
+def invalid_date_only_numbers_queryset():
+    """One row per pending number whose every pending observation is ``invalid_date``: never fetched. Read-only."""
+    safe = _pending_observations().filter(classification__in=HYDRATABLE_CLASSIFICATIONS).values("gemi_number")
+    return _one_row_per_number(_pending_observations().exclude(gemi_number__in=safe))
 
 
 @dataclass
@@ -168,6 +202,8 @@ class HydrationReport:
     pace_seconds: float
     pending_observations: int = 0
     pending_before: int = 0
+    selectable: int = 0              # pending numbers with valid-date evidence: the only ones ever fetched
+    skipped_invalid_date: int = 0    # pending numbers whose only evidence is invalid_date: never fetched
     selected: int = 0
     gemi_requests: int = 0           # logical requests this run issued (client retries are extra; see G6)
     fetched: int = 0                 # requests that returned a validated page
@@ -179,13 +215,15 @@ class HydrationReport:
     ambiguous: int = 0
     validation_failures: int = 0
     write_failures: int = 0
-    stored_as_today: int = 0         # created (or would be) with incorporation_date == today: legacy-visible today
-    date_clamped: int = 0            # company_defaults replaced a missing/invalid/future source date with today
+    skipped_date_clamped: int = 0    # fetched, refused: company_defaults would store a date other than the source
+    stored_as_today: int = 0         # created (or would be) with a genuine source date of today
+    date_clamped: int = 0            # clamped dates among created rows: 0 by construction (see skipped_date_clamped)
     activities_created: int = 0
     aborted: bool = False
     abort_reason: str = ""
     pending_after: int = 0
     failed_gemi_numbers: list = field(default_factory=list)
+    date_clamped_gemi_numbers: list = field(default_factory=list)
 
     @property
     def failed(self) -> int:
@@ -202,11 +240,16 @@ class HydrationReport:
             f"activities_created={self.activities_created}",
             f"{prefix}failed={self.failed} (not_found={self.not_found} ambiguous={self.ambiguous} "
             f"validation={self.validation_failures} write={self.write_failures} aborted={self.aborted})",
+            f"{prefix}safety (not failures): selectable={self.selectable} "
+            f"skipped_invalid_date={self.skipped_invalid_date} (never fetched) "
+            f"skipped_date_clamped={self.skipped_date_clamped} (fetched, date would be stored as today: refused)",
             f"{prefix}legacy exposure: stored_as_today={self.stored_as_today} date_clamped={self.date_clamped}",
             f"{prefix}pending after={self.pending_after} · signals are not produced here: run "
             f"materialize_new_company_signals (always SHADOW)",
             *([f"{prefix}abort reason: {self.abort_reason}"] if self.aborted else []),
             *([f"{prefix}failed gemi numbers: {self.failed_gemi_numbers[:20]}"] if self.failed_gemi_numbers else []),
+            *([f"{prefix}date-clamped gemi numbers (left pending): {self.date_clamped_gemi_numbers[:20]}"]
+              if self.date_clamped_gemi_numbers else []),
         ]
 
 
@@ -270,10 +313,12 @@ def hydrate_pending_companies(
 
     Company = apps.get_model("gemiapp", "Company")
     report = HydrationReport(dry_run=dry_run, limit=limit, pace_seconds=pace_seconds)
-    queryset = pending_numbers_queryset()
-    report.pending_before = queryset.count()
+    report.pending_before = pending_numbers_queryset().count()
     report.pending_observations = _pending_observations().count()
-    numbers = [row["gemi_number"] for row in queryset[:limit]]
+    selectable = hydratable_numbers_queryset()
+    report.selectable = selectable.count()
+    report.skipped_invalid_date = invalid_date_only_numbers_queryset().count()
+    numbers = [row["gemi_number"] for row in selectable[:limit]]
     report.selected = len(numbers)
     fetched_before = False
 
@@ -308,7 +353,10 @@ def hydrate_pending_companies(
         try:
             defaults = company_defaults(item)
             as_today, clamped = _legacy_exposure(defaults)
-            if dry_run:
+            if clamped:
+                # The payload is the last authority: a date company_defaults would clamp is never written.
+                status, activities = SKIPPED_DATE_CLAMPED, 0
+            elif dry_run:
                 exists = Company.objects.filter(gemi_number=number).exists()
                 status, activities = (RACE_SKIPPED if exists else WOULD_CREATE), 0
             else:
@@ -317,6 +365,11 @@ def hydrate_pending_companies(
             report.write_failures += 1
             report.failed_gemi_numbers.append(number)
             logger.error("Pending hydration: writing GEMI %s failed: %s.", number, type(exc).__name__)
+            continue
+        if status == SKIPPED_DATE_CLAMPED:
+            report.skipped_date_clamped += 1
+            report.date_clamped_gemi_numbers.append(number)
+            logger.warning("Pending hydration: GEMI %s left pending: its incorporation date would be clamped.", number)
             continue
         if status == RACE_SKIPPED:
             report.race_skipped += 1
@@ -329,9 +382,10 @@ def hydrate_pending_companies(
 
     report.pending_after = pending_numbers_queryset().count()
     logger.info(
-        "Pending hydration%s: selected=%s requests=%s created=%s would_create=%s already_local=%s race=%s "
-        "failed=%s aborted=%s pending_after=%s.",
-        " (dry run)" if dry_run else "", report.selected, report.gemi_requests, report.created, report.would_create,
+        "Pending hydration%s: selectable=%s skipped_invalid_date=%s selected=%s requests=%s created=%s "
+        "would_create=%s skipped_date_clamped=%s already_local=%s race=%s failed=%s aborted=%s pending_after=%s.",
+        " (dry run)" if dry_run else "", report.selectable, report.skipped_invalid_date, report.selected,
+        report.gemi_requests, report.created, report.would_create, report.skipped_date_clamped,
         report.already_local, report.race_skipped, report.failed, report.aborted, report.pending_after,
     )
     return report

@@ -22,9 +22,10 @@ from .models import (
     ActivityCode, Company, CompanyActivity, CompanySignal, CompanySignalDiscoveryEvidence, CompanySnapshot,
     GemiDiscoveryCursor, GemiDiscoveryObservation, GemiDiscoveryRun, Opportunity, RadarMatch, UserCompanyLead,
 )
-from .new_company_signals import materialize_new_company_signals
+from .new_company_signals import ELIGIBLE_CLASSIFICATIONS, materialize_new_company_signals
 from .pending_company_hydration import (
-    HYDRATION_LANE, MAX_LIMIT, HydrationDisabled, hydrate_pending_companies, pending_numbers_queryset,
+    HYDRATABLE_CLASSIFICATIONS, HYDRATION_LANE, MAX_LIMIT, HydrationDisabled, hydratable_numbers_queryset,
+    hydrate_pending_companies,
 )
 from .services import company_defaults, sync_company_activities
 from .test_gemi_client import NoNetworkMixin, make_client, response
@@ -148,17 +149,16 @@ class CreateTests(HydrationTestCase):
         self.assertTrue(rows(A))
         self.assertEqual(rows(A), rows(B))
 
-    def test_late_publications_and_invalid_dates_are_hydrated_and_their_legacy_exposure_is_reported(self):
+    def test_a_late_publication_is_hydrated_with_its_historical_date_and_invalid_dates_are_not(self):
         self.pend(A, LATE_PUBLICATION, incorporation=date(2025, 12, 15))
         self.pend(B, INVALID_DATE, incorporation=None, quality="missing")
-        client, _, _, _ = search_client({A: full_item(A, day="2025-12-15"),
-                                         B: full_item(B, incorporationDate=None)})
+        client, requests, _, _ = search_client({A: full_item(A, day="2025-12-15"),
+                                                B: full_item(B, incorporationDate=None)})
         report = self.hydrate(client)
-        self.assertEqual(report.created, 2)
+        self.assertEqual((report.created, requests), (1, [A]))
         self.assertEqual(Company.objects.get(gemi_number=A).incorporation_date, date(2025, 12, 15))
-        # company_defaults, reused unchanged, stores a missing source date as today: reported, not hidden.
-        self.assertEqual(Company.objects.get(gemi_number=B).incorporation_date, date.today())
-        self.assertEqual((report.stored_as_today, report.date_clamped), (1, 1))
+        self.assertFalse(Company.objects.filter(gemi_number=B).exists())
+        self.assertEqual((report.stored_as_today, report.date_clamped, report.skipped_invalid_date), (0, 0, 1))
 
     def test_no_personal_data_or_payload_is_printed(self):
         self.pend(A)
@@ -185,11 +185,11 @@ class CreateOnlyTests(HydrationTestCase):
 
     def test_a_company_that_appears_after_selection_is_skipped_without_a_request(self):
         self.pend(A)
-        stale = list(pending_numbers_queryset())                    # selected while still pending
+        stale = list(hydratable_numbers_queryset())                 # selected while still pending
         Company.objects.create(gemi_number=A, name="LEGACY ΑΕ", incorporation_date=date(2026, 9, 1))
         client, requests, _, _ = search_client({A: full_item(A)})
-        with patch("gemiapp.pending_company_hydration.pending_numbers_queryset",
-                   side_effect=[_Rows(stale), _Rows([])]):
+        with patch("gemiapp.pending_company_hydration.hydratable_numbers_queryset",
+                   side_effect=[_Rows(stale)]):
             report = self.hydrate(client)
         self.assertEqual((report.already_local, report.gemi_requests, requests), (1, 0, []))
         self.assertEqual(Company.objects.get(gemi_number=A).name, "LEGACY ΑΕ")
@@ -332,14 +332,18 @@ class FailureTests(HydrationTestCase):
 
 class DryRunTests(HydrationTestCase):
     def test_a_dry_run_fetches_but_mutates_nothing(self):
+        tomorrow = date.today() + timedelta(days=1)
         self.pend(A)
         self.pend(B, INVALID_DATE, incorporation=None, quality="missing")
-        client, requests, _, _ = search_client({A: full_item(A), B: full_item(B, incorporationDate=None)})
+        self.pend(C, NEW_INCORPORATION, incorporation=tomorrow)
+        client, requests, _, _ = search_client({A: full_item(A), B: full_item(B, incorporationDate=None),
+                                                C: full_item(C, day=tomorrow.isoformat())})
         before = world()
         report = self.hydrate(client, dry_run=True)
         self.assertEqual(world(), before)
-        self.assertEqual((report.would_create, report.created, requests), (2, 0, [A, B]))
-        self.assertEqual((report.stored_as_today, report.date_clamped, report.pending_after), (1, 1, 2))
+        self.assertEqual((report.would_create, report.created, requests), (1, 0, [A, C]))  # B never fetched
+        self.assertEqual((report.skipped_invalid_date, report.skipped_date_clamped, report.failed), (1, 1, 0))
+        self.assertEqual((report.stored_as_today, report.date_clamped, report.pending_after), (0, 0, 3))
         self.assertTrue(all(line.startswith("[dry-run]") for line in report.lines()))
 
     @ENABLED
@@ -353,6 +357,106 @@ class DryRunTests(HydrationTestCase):
         self.assertFalse(Company.objects.exists())
 
 
+class DateSafetyTests(HydrationTestCase):
+    """Hydration never creates a legacy-visible Company whose unsafe source date company_defaults would clamp to
+    today (it would enter today's legacy digest and matching as if incorporated today)."""
+
+    def test_the_policy_is_hydration_specific_and_leaves_b2_untouched(self):
+        self.assertEqual(ELIGIBLE_CLASSIFICATIONS, (NEW_INCORPORATION, LATE_PUBLICATION, INVALID_DATE))
+        self.assertEqual(HYDRATABLE_CLASSIFICATIONS, (NEW_INCORPORATION, LATE_PUBLICATION))
+        self.assertNotIn(INVALID_DATE, HYDRATABLE_CLASSIFICATIONS)
+
+    def test_invalid_date_only_evidence_is_never_fetched_or_written_and_stays_pending(self):
+        self.pend(A, INVALID_DATE, incorporation=None, quality="missing")
+        self.pend(A, INVALID_DATE, incorporation=None, quality="invalid", run=discovery_run(LATER_RUN_AT))
+        client, requests, _, _ = search_client({A: full_item(A, incorporationDate=None)})
+        before = world()
+        report = self.hydrate(client)
+        self.assertEqual(world(), before)
+        self.assertEqual(requests, [])                              # no GEMI budget spent on known-unsafe data
+        self.assertEqual((report.pending_before, report.selectable, report.skipped_invalid_date, report.selected),
+                         (1, 0, 1, 0))
+        self.assertEqual((report.failed, report.pending_after), (0, 1))
+        self.assertEqual(materialize_new_company_signals().unmaterialised_no_company, 1)  # still visible as pending
+
+    def test_a_genuine_source_date_of_today_is_hydrated(self):
+        today = date.today()
+        self.pend(A, NEW_INCORPORATION, incorporation=today)
+        client, _, _, _ = search_client({A: full_item(A, day=today.isoformat())})
+        report = self.hydrate(client)
+        self.assertEqual((report.created, report.stored_as_today, report.date_clamped, report.skipped_date_clamped),
+                         (1, 1, 0, 0))
+        self.assertEqual(Company.objects.get(gemi_number=A).incorporation_date, today)
+
+    def test_a_future_source_date_is_fetched_but_never_written(self):
+        tomorrow = date.today() + timedelta(days=1)
+        self.pend(A, NEW_INCORPORATION, incorporation=tomorrow)
+        client, requests, _, _ = search_client({A: full_item(A, day=tomorrow.isoformat())})
+        with self.assertLogs("gemiapp.pending_company_hydration", level="WARNING"):
+            report = self.hydrate(client)
+        self.assertEqual((requests, report.fetched, report.created), ([A], 1, 0))
+        self.assertEqual((report.skipped_date_clamped, report.date_clamped_gemi_numbers), (1, [A]))
+        self.assertEqual((report.failed, report.write_failures, report.stored_as_today), (0, 0, 0))
+        self.assertFalse(Company.objects.filter(gemi_number=A).exists())
+        self.assertFalse(CompanyActivity.objects.exists())
+        self.assertEqual(report.pending_after, 1)
+
+    def test_the_fetched_payload_is_the_last_authority(self):
+        # Discovery saw a valid late date, but the payload fetched now has none: company_defaults would store
+        # today, so the write is refused whatever the observation said.
+        self.pend(A, LATE_PUBLICATION, incorporation=date(2025, 12, 15))
+        self.pend(B, LATE_PUBLICATION, incorporation=date(2025, 12, 15))
+        client, _, _, _ = search_client({A: full_item(A, incorporationDate=None),
+                                         B: full_item(B, day="1899-12-31")})
+        report = self.hydrate(client)
+        self.assertEqual((report.created, report.skipped_date_clamped), (0, 2))
+        self.assertFalse(Company.objects.exists())
+
+    def test_old_invalid_evidence_does_not_block_later_valid_evidence_and_order_is_deterministic(self):
+        self.pend(A, INVALID_DATE, incorporation=None, quality="missing",
+                  run=discovery_run(FIRST_RUN_AT - timedelta(days=5)))   # A's oldest evidence overall...
+        self.pend(A, LATE_PUBLICATION, incorporation=date(2025, 12, 15), run=discovery_run(LATER_RUN_AT))
+        self.pend(B, LATE_PUBLICATION, incorporation=date(2025, 11, 1))  # ...but B's valid evidence is older
+        client, requests, _, _ = search_client({A: full_item(A, day="2025-12-15"),
+                                                B: full_item(B, day="2025-11-01")})
+        report = self.hydrate(client, limit=1)
+        self.assertEqual((requests, report.selected, report.skipped_invalid_date), ([B], 1, 0))
+        report = self.hydrate(client, limit=5)
+        self.assertEqual((requests, report.created), ([B, A], 1))       # A selected once, then hydrated
+        self.assertEqual(Company.objects.get(gemi_number=A).incorporation_date, date(2025, 12, 15))
+
+    def test_a_mixed_backlog_hydrates_only_safe_companies_and_signals_follow(self):
+        tomorrow = date.today() + timedelta(days=1)
+        self.pend(A, LATE_PUBLICATION, incorporation=date(2025, 12, 15))
+        self.pend(B, INVALID_DATE, incorporation=None, quality="missing")
+        self.pend(C, NEW_INCORPORATION, incorporation=tomorrow)
+        client, _, _, _ = search_client({A: full_item(A, day="2025-12-15"),
+                                         C: full_item(C, day=tomorrow.isoformat())})
+        report = self.hydrate(client)
+        self.assertEqual((report.created, report.skipped_invalid_date, report.skipped_date_clamped), (1, 1, 1))
+        self.assertFalse(Company.objects.filter(incorporation_date=date.today()).exists())  # nothing fake-today
+        with self.captureOnCommitCallbacks(execute=True):
+            materialised = materialize_new_company_signals()
+        self.assertEqual((materialised.signals_created, materialised.unmaterialised_no_company), (1, 2))
+        self.assertEqual(CompanySignal.objects.get().mode, SHADOW)
+
+    @ENABLED
+    def test_safety_skips_do_not_make_the_command_fail(self):
+        tomorrow = date.today() + timedelta(days=1)
+        self.pend(A, INVALID_DATE, incorporation=None, quality="missing")
+        self.pend(B, NEW_INCORPORATION, incorporation=tomorrow)
+        client, _, _, _ = search_client({B: full_item(B, day=tomorrow.isoformat())})
+        out = StringIO()
+        with patch("gemiapp.pending_company_hydration.get_gemi_client", return_value=client):
+            call_command("hydrate_pending_discovery_companies", "--pace-seconds", "0", stdout=out)  # no CommandError
+        text = out.getvalue()
+        self.assertIn("skipped_invalid_date=1", text)
+        self.assertIn("skipped_date_clamped=1", text)
+        self.assertIn("failed=0", text)
+        self.assertIn(f"date-clamped gemi numbers (left pending): ['{B}']", text)
+        self.assertFalse(Company.objects.exists())
+
+
 class BudgetTests(HydrationTestCase):
     def test_each_fetch_takes_one_slot_in_the_refresh_lane_and_runs_are_paced(self):
         self.assertEqual(HYDRATION_LANE, GemiLane.MONITORED_REFRESH)
@@ -362,8 +466,8 @@ class BudgetTests(HydrationTestCase):
         Company.objects.create(gemi_number=B, name="LEGACY", incorporation_date=date(2026, 9, 1))
         client, requests, budget, _ = search_client({A: full_item(A), C: full_item(C)})
         sleeps = []
-        with patch("gemiapp.pending_company_hydration.pending_numbers_queryset",
-                   side_effect=[_Rows([{"gemi_number": n} for n in (A, B, C)]), _Rows([])]):
+        with patch("gemiapp.pending_company_hydration.hydratable_numbers_queryset",
+                   side_effect=[_Rows([{"gemi_number": n} for n in (A, B, C)])]):
             report = self.hydrate(client, pace_seconds=20, sleep=sleeps.append)
         self.assertEqual(requests, [A, C])                         # no request for the already-local company
         self.assertEqual(budget.lanes, [GemiLane.MONITORED_REFRESH] * 2)
