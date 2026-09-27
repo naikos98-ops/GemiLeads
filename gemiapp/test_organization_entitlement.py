@@ -210,14 +210,20 @@ class AccessRuleTests(WorkspaceTestCase):
         add_organization_member(self.org, root, "viewer")
         self.assertEqual(self.status_of(root, "organization_dashboard"), 302)   # member of an unpaid organization
 
-    def test_the_navigation_offers_only_entitled_organizations(self):
-        self.assertEqual([w.organization_id for w in get_workspace_navigation(self.owner).workspaces], [self.org.pk])
+    def test_the_navigation_follows_tenancy_and_the_pages_keep_the_entitlement_gate(self):
+        [entitled] = get_workspace_navigation(self.owner).workspaces
+        self.assertEqual((entitled.organization_id, entitled.entitled), (self.org.pk, True))
         self.lapse()
-        self.assertEqual(get_workspace_navigation(self.owner).workspaces, ())
+        # Billing does not decide the navigation: the organization is still the owner's, marked not entitled ...
+        [lapsed] = get_workspace_navigation(self.owner).workspaces
+        self.assertEqual((lapsed.organization_id, lapsed.entitled), (self.org.pk, False))
         self.client.force_login(self.owner)
-        html = self.client.get(reverse("dashboard")).content.decode()
-        self.assertNotIn("data-rail-workspace", html)
-        self.assertNotIn("data-mobile-workspace", html)
+        self.assertIn('data-nav="dashboard"', self.client.get(reverse("dashboard")).content.decode())
+        # ... but its pages still refuse with the legacy paywall, and the landing does not send the owner there.
+        self.assertRedirects(self.client.get(reverse("organization_dashboard", args=[self.org.pk])),
+                             reverse("pricing"), fetch_redirect_response=False)
+        self.assertRedirects(self.client.get(reverse("product_home")), reverse("dashboard"),
+                             fetch_redirect_response=False)
 
     def test_cross_tenant_protection_is_unchanged(self):
         self.assertEqual(self.status_of(self.owner, "organization_dashboard", self.org_b), 404)

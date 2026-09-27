@@ -80,7 +80,7 @@
   {% endif %}
   {% if user.is_authenticated %}
   <header class="product-topbar">
-    <a class="product-brand" href="{% if workspace_nav.current %}{% url 'organization_dashboard' workspace_nav.current.organization_id %}{% else %}{% url 'dashboard' %}{% endif %}" aria-label="Gemi Leads{% if not workspace_nav.current %} · Signals{% endif %}">
+    <a class="product-brand" href="{% if workspace_nav.current.entitled %}{% url 'organization_dashboard' workspace_nav.current.organization_id %}{% else %}{% url 'dashboard' %}{% endif %}" aria-label="Gemi Leads{% if not workspace_nav.current.entitled %} · Signals{% endif %}">
       <img class="brand-logo" src="{% static 'images/gemi-leads-logo-horizontal.png' %}" alt="Gemi Leads" width="100" height="25">
       {% if beta_mode %}<small>BETA</small>{% endif %}
     </a>
@@ -101,6 +101,7 @@
   <nav class="product-rail{% if workspace_nav.current %} product-rail--workspace{% endif %}" aria-label="Κύρια πλοήγηση">
     {% if workspace_nav.current %}
     {% include "organizations/_primary_nav.html" with mobile=False %}
+    {% include "organizations/_transition_nav.html" with mobile=False %}
     {% else %}
     <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><span>MARKET</span><b>Signals</b><small>new registrations</small></a>
     <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name and 'organization' not in request.resolver_match.url_name %}aria-current="page"{% endif %}><span>CRITERIA</span><b>Radars</b><small>matching definitions</small></a>
@@ -167,6 +168,7 @@
   <nav class="product-mobile-nav{% if workspace_nav.current %} product-mobile-nav--workspace{% endif %}" aria-label="Κύρια πλοήγηση κινητού" data-mobile-nav>
     {% if workspace_nav.current %}
     {% include "organizations/_primary_nav.html" with mobile=True %}
+    {% include "organizations/_transition_nav.html" with mobile=True %}
     {% else %}
     <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}>Signals</a>
     <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name and 'organization' not in request.resolver_match.url_name %}aria-current="page"{% endif %}>Radars</a>

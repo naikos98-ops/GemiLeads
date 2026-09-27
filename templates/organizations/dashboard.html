@@ -42,7 +42,7 @@
     {% for row in dashboard.top_opportunities %}
     {% include "organizations/_opportunity_row.html" %}
     {% empty %}
-    <p class="product-workspace-empty" data-empty="opportunities">Δεν υπάρχουν ενεργές ευκαιρίες. Οι ευκαιρίες εμφανίζονται όταν ένα ενεργό Radar του οργανισμού εντοπίσει εταιρεία που ταιριάζει.</p>
+    <p class="product-workspace-empty" data-empty="opportunities">Δεν υπάρχουν ενεργές ευκαιρίες. Οι ευκαιρίες εμφανίζονται όταν ένα ενεργό Radar του οργανισμού εντοπίσει εταιρεία που ταιριάζει.{% if transition_legacy_access %} <span data-transition-pointer>Μέχρι να ενεργοποιηθούν οι ευκαιρίες, οι αντιστοιχίσεις των Radars σου βρίσκονται στα <a href="{% url 'lead_list' %}">Leads</a>.</span>{% endif %}</p>
     {% endfor %}
   </section>
 

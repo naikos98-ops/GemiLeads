@@ -160,23 +160,35 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 ## Τρέχουσα κατάσταση
 
 - **Ενιαία πλοήγηση πελάτη (2026-09-27). Μόνο παρουσίαση/πλοήγηση· καμία αλλαγή σε δεδομένα, modes ή G4.**
-  - **Χρήστης που η πλοήγησή του επιλύει έναν οργανισμό** (`workspace_nav.current`: ακριβώς ένα entitled membership,
-    ή η σελίδα ενός από τους οργανισμούς του): **μία** πλοήγηση σε rail και mobile bar —
+  - **Χρήστης που η πλοήγησή του επιλύει έναν οργανισμό** (`workspace_nav.current`: ακριβώς ένα membership
+    **ανεξαρτήτως πλάνου**, ή η σελίδα ενός από τους οργανισμούς του): **μία** πλοήγηση σε rail και mobile bar —
     Dashboard, Opportunities, Saved, Tasks, Radars (μόνο με `view_radars`), Notifications, Settings
-    (`templates/organizations/_primary_nav.html`, ένα partial για desktop και mobile). Κανένα legacy Signals/Leads,
-    κανένα δεύτερο Radars/Dashboard, το workspace bar κρατά μόνο όνομα + ρόλο (όχι δεύτερα tabs), το logo οδηγεί
-    στο Dashboard του οργανισμού. Settings = η υπάρχουσα σελίδα χρήστη (συνδρομή/digest). Rail σε «stacked»
-    παραλλαγή (`.product-rail--workspace`) γιατί τα Opportunities/Notifications δεν χωρούν στη στήλη 90px· το
-    mobile bar κυλά οριζόντια (`.product-mobile-nav--workspace`, το `app.js` φέρνει το τρέχον στο κέντρο).
+    (`templates/organizations/_primary_nav.html`, ένα partial για desktop και mobile). Κανένα δεύτερο
+    Radars/Dashboard, το workspace bar κρατά μόνο όνομα + ρόλο (όχι δεύτερα tabs). Settings = η υπάρχουσα σελίδα
+    χρήστη (συνδρομή/digest). Rail σε «stacked» παραλλαγή (`.product-rail--workspace`)· το mobile bar κυλά οριζόντια
+    (`.product-mobile-nav--workspace`, το `app.js` φέρνει το τρέχον στο κέντρο).
+  - **Μετάβαση G4 (προσωρινό):** όσο οι ευκαιρίες είναι μόνο SHADOW (κενό Opportunities), κάτω από την πλοήγηση
+    υπάρχει **ξεχωριστή** ομάδα «CURRENT SERVICE · until opportunities go live» με τις **υπάρχουσες** σελίδες με το
+    δικό τους όνομα: «Signals · new registrations» (`/dashboard/`) και «Leads · your Radar matches» (`/leads/`)·
+    στο κινητό μετά από διαχωριστικό. Τα κενά states του Dashboard/Opportunities (όχι του Saved) δείχνουν «Μέχρι να
+    ενεργοποιηθούν οι ευκαιρίες, οι αντιστοιχίσεις των Radars σου βρίσκονται στα Leads». Τίποτα legacy δεν
+    ονομάζεται ευκαιρία, τίποτα δεν αντιγράφεται. Διακόπτης `GEMI_TRANSITION_LEGACY_ACCESS` (προεπιλογή 1)·
+    **μετά το LIVE cutover → 0**: φεύγουν ομάδα και pointer, τα legacy URLs μένουν για rollback· αργότερα σβήνεται
+    το `organizations/_transition_nav.html` και τα δύο includes.
+  - **Πλοήγηση = tenancy, όχι billing:** οι Free owners παίρνουν το ίδιο shell (`Workspace.entitled=False`). Οι
+    σελίδες του οργανισμού κρατούν το **υπάρχον** entitlement gate (legacy paywall: μήνυμα + pricing)· Free = 0
+    Radars, χωρίς CSV, κανένα πληρωμένο δικαίωμα δεν δίνεται. Landing και logo για μη entitled οργανισμό →
+    Signals (`/dashboard/`), η αξία του Free πλάνου. Ανοιχτή απόφαση προϊόντος: αν οι Free owners θα βλέπουν τις
+    (κενές) σελίδες του οργανισμού τους — αλλαγή κανόνα πρόσβασης, όχι πλοήγησης.
   - **Fallback (αμετάβλητο):** χωρίς οργανισμό, ή με πολλούς και κανέναν στο route → η legacy πλοήγηση ακριβώς
     όπως πριν (+ λίστα οργανισμών και το «Οργανισμός» στο κινητό για πολλούς)· πολλοί οργανισμοί σε σελίδα ενός →
     ενιαία πλοήγηση εκείνου + «ΑΛΛΟΙ ΟΡΓΑΝΙΣΜΟΙ». Staff/superuser: ίδιοι κανόνες, το SUPERADMIN link μένει.
-    Οργανισμός χωρίς entitlement δεν προσφέρεται (ίδιος κανόνας με πριν) → legacy πλοήγηση.
-  - **Login landing:** `LOGIN_REDIRECT_URL = "product_home"` → `organization_views.product_home` (`/start/`):
-    ένας οργανισμός → Dashboard του, αλλιώς `/dashboard/` όπως πριν. Ένα ρητό `?next=` υπερισχύει.
-  - **Αμετάβλητα:** όλα τα legacy routes/views/models/δεδομένα (`/dashboard/`, `/radars/`, `/leads/`, company
-    dossier προσβάσιμα με URL για rollback), CustomerRadars, ο κανόνας LIVE-only (οι SHADOW ευκαιρίες μένουν
-    αόρατες· κενό state όταν δεν υπάρχουν LIVE), matching/scoring/signals/G4/Discovery/hydration/billing.
+  - **Login landing:** `LOGIN_REDIRECT_URL = "product_home"` → `organization_views.product_home` (`/start/`): ένας
+    entitled οργανισμός → Dashboard του, αλλιώς `/dashboard/` όπως πριν. Ένα ρητό `?next=` υπερισχύει.
+  - **Αμετάβλητα:** όλα τα legacy routes/views/models/δεδομένα, CustomerRadars, ο κανόνας LIVE-only (οι SHADOW
+    ευκαιρίες μένουν αόρατες), matching/scoring/signals/G4/Discovery/hydration/billing/entitlement rules.
+  - **Γνωστό κατά το G4:** τα Leads προέρχονται από τα legacy CustomerRadars, ενώ το «Radars» της πλοήγησης
+    επεξεργάζεται τα OrganizationRadars· μια αλλαγή εκεί δεν αλλάζει τα Leads μέχρι το cutover.
   - **Προσοχή για preview:** το `preview_start` της εφαρμογής desktop τρέχει τον server από το **κύριο checkout**
     με το δικό του `.env` (σήμερα staging PostgreSQL), όχι από το worktree. Μην κάνεις login ή εγγραφές εκεί·
     οπτικός έλεγχος με static HTML (test client) + headless Chrome. (Σε αυτή την εργασία δύο αποτυχημένα login
@@ -2049,12 +2061,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   μεταφορά συνδρομής/Stripe customer σε Organization (και θέσεις/seats) είναι ξεχωριστό, ελεγμένο μελλοντικό πακέτο.
 - **Customer workspace — ανοιχτά:** δεν υπάρχει ακόμη customer UI για δημιουργία οργανισμού, πρόσκληση/διαχείριση
   μελών, ρυθμίσεις/προφίλ/ICP οργανισμού, audit log (D36) και σήμανση «viewed». Η πλοήγηση ενοποιήθηκε
-  (2026-09-27)· το `/dashboard/` **δεν** ανακατευθύνει (rollback), μόνο το login landing και το logo οδηγούν στον
-  οργανισμό. Ανοιχτά: (α) κατά το G4 οι Opportunities είναι κενές (μόνο LIVE), οπότε οι οργανισμοί χάνουν από την
-  πλοήγηση την πρόσβαση στα legacy Signals/Leads, που είναι ακόμη η πραγματική αξία (digest, leads)· τα email
-  digest και το CSV οδηγούν ακόμη σε legacy σελίδες· (β) οργανισμοί χωρίς entitlement (Free owners) κρατούν τη
-  legacy πλοήγηση, γιατί η πλοήγηση προσφέρει μόνο entitled οργανισμούς· (γ) τα κείμενα της πλοήγησης είναι αγγλικά
-  (όπως το legacy rail), οι σελίδες ελληνικά.
+  (2026-09-27)· το `/dashboard/` **δεν** ανακατευθύνει (rollback). Ανοιχτά: (α) μετά το LIVE cutover:
+  `GEMI_TRANSITION_LEGACY_ACCESS=0` και αργότερα αφαίρεση του `_transition_nav.html`· τα email digest και το
+  CSV οδηγούν ακόμη σε legacy σελίδες· (β) αν οι Free owners θα βλέπουν τις (κενές) σελίδες του οργανισμού
+  τους (κανόνας πρόσβασης)· (γ) τα κείμενα της πλοήγησης είναι αγγλικά (όπως το legacy rail), οι σελίδες
+  ελληνικά.
 - **Gemi Leads 2.0 — επόμενη δουλειά: RELEASE READINESS** (όχι feature πακέτο). Η Phase D ολοκληρώθηκε· πρώτα οι
   πύλες G0/G1 που μπλοκάρουν τις production migrations 0032–0054 και την ενεργοποίηση του D37 schedule σε
   production, έπειτα το G4. **Επόμενο βήμα G0:** απομονωμένο staging (δες `docs/RELEASE_READINESS.md`). Ανοιχτές αποφάσεις προϊόντος: emitters/παραλήπτες για NEW_OPPORTUNITY, PRIORITY_SIGNAL,
@@ -2216,6 +2227,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   `static/js/app.js`, `gemiapp/organization_views.py` (`product_home`), `gemiapp/urls.py` (`start/`),
   `config/settings.py` (`LOGIN_REDIRECT_URL`), tests (`test_customer_workspace.py`: 4 nav tests ξαναγράφτηκαν + 10
   νέα· `test_notifications.py`, `tests.py`: guards στη νέα δομή). Καμία migration.
+  Συμπλήρωμα ίδιας ημέρας: μετάβαση G4 (`organizations/_transition_nav.html`, `GEMI_TRANSITION_LEGACY_ACCESS`,
+  pointer στα κενά states) και πλοήγηση ανά tenancy για Free owners (`Workspace.entitled`, landing μόνο για
+  entitled)· tests ενημερώθηκαν (+4 νέα).
 
 - **2026-09-27 — Pending hydration: σκληρός κανόνας ασφάλειας ημερομηνίας.** `gemiapp/pending_company_hydration.py`
   (`HYDRATABLE_CLASSIFICATIONS`, `hydratable_numbers_queryset`, `invalid_date_only_numbers_queryset`, refusal σε

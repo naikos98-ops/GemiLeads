@@ -191,6 +191,11 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # The landing resolves the user's organization dashboard when they have exactly one usable organization, and the
 # legacy dashboard otherwise (gemiapp.organization_views.product_home). An explicit ?next= still wins.
 LOGIN_REDIRECT_URL = "product_home"
+
+# G4 transition: while customer opportunities are SHADOW-only (so the Opportunities page is empty), the organization
+# navigation keeps a separate "current service" group with the existing Signals and Leads pages, and the empty
+# states point to Leads. Turn off after the LIVE cutover; the legacy URLs keep resolving for rollback either way.
+GEMI_TRANSITION_LEGACY_ACCESS = os.environ.get("GEMI_TRANSITION_LEGACY_ACCESS", "1") == "1"
 LOGOUT_REDIRECT_URL = "home"
 LOGIN_URL = "login"
 

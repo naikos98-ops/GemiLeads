@@ -1490,6 +1490,9 @@ class Workspace:
     name: str
     role_label: str
     can_view_radars: bool
+    # Whether the organization's owner holds an entitlement. Navigation does not depend on it (tenancy and billing
+    # are separate); the pages still refuse a non-entitled organization with the legacy paywall.
+    entitled: bool = True
 
 
 @dataclass(frozen=True)
@@ -1595,24 +1598,27 @@ class WorkspaceRadarList:
 
 
 def get_workspace_navigation(user, current_organization_id=None) -> WorkspaceNavigation:
-    """The organizations this user is a member of and may use, for the navigation. One query over the user's own
-    memberships, keeping only entitled organizations (an organization whose owner has no entitlement offers no
-    link); a signed-out or inactive user has none. ``current`` is the route's organization when the user is its
+    """The organizations this user is a member of, for the navigation. One query over the user's own memberships;
+    a signed-out or inactive user has none. Tenancy decides the navigation, billing does not: an organization whose
+    owner has no entitlement is still the user's organization (``entitled=False``), and its pages still refuse with
+    the legacy paywall -- nothing paid is granted here. ``current`` is the route's organization when the user is its
     member, otherwise the user's only organization; with several and none named by the route there is no current
     one."""
     User = apps.get_model("auth", "User")
     if not isinstance(user, User) or user.pk is None or not user.is_active:
         return WorkspaceNavigation()
     workspaces = []
-    for membership_id, organization_id, name, role in (
+    entitled = entitled_organizations().filter(pk=OuterRef("organization_id"))
+    for membership_id, organization_id, name, role, is_entitled in (
             _model("OrganizationMember").objects.filter(user_id=user.pk, role__in=tuple(ROLE_CAPABILITIES))
-            .filter(organization__in=entitled_organizations())
+            .annotate(is_entitled=Exists(entitled))
             .order_by("organization__name", "organization_id")
-            .values_list("pk", "organization_id", "organization__name", "role")):
+            .values_list("pk", "organization_id", "organization__name", "role", "is_entitled")):
         context = OrganizationAccessContext(organization_id=organization_id, user_id=user.pk,
                                             membership_id=membership_id, role=role, _issuer=_ISSUER)
         workspaces.append(Workspace(organization_id=organization_id, name=name, role_label=ROLE_LABELS[role],
-                                    can_view_radars=can(context, Capability.VIEW_RADARS)))
+                                    can_view_radars=can(context, Capability.VIEW_RADARS),
+                                    entitled=bool(is_entitled)))
     current = next((entry for entry in workspaces if entry.organization_id == current_organization_id), None)
     on_route = current is not None
     if current is None and len(workspaces) == 1:

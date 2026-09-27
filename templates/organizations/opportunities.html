@@ -55,6 +55,7 @@
       {% else %}
       Δεν υπάρχουν ενεργές ευκαιρίες. Οι ευκαιρίες εμφανίζονται όταν ένα ενεργό Radar του οργανισμού εντοπίσει εταιρεία που ταιριάζει.
       {% endif %}
+      {% if transition_legacy_access and listing.view != 'saved' %}<span data-transition-pointer>Μέχρι να ενεργοποιηθούν οι ευκαιρίες, οι αντιστοιχίσεις των Radars σου βρίσκονται στα <a href="{% url 'lead_list' %}">Leads</a>.</span>{% endif %}
     </p>
     {% endfor %}
     {% if listing.next_cursor %}

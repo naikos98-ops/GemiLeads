@@ -23,6 +23,7 @@ Membership is necessary but not sufficient: the organization must be entitled th
 and the pricing page -- instead of the page; everyone else still gets the same 404.
 """
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponseNotAllowed
@@ -79,18 +80,21 @@ def workspace_navigation(request):
         section = "saved"
     user = getattr(request, "user", None)
     return {"workspace_nav": SimpleLazyObject(lambda: get_workspace_navigation(user, route_organization_id)),
-            "workspace_section": section}
+            "workspace_section": section,
+            # G4 transition: the current service (Signals, Leads) stays reachable from the organization navigation
+            # until opportunities go live. Off after the LIVE cutover; the legacy URLs keep resolving either way.
+            "transition_legacy_access": bool(getattr(settings, "GEMI_TRANSITION_LEGACY_ACCESS", True))}
 
 
 @login_required
 @require_GET
 def product_home(request):
-    """Where a signed-in user lands (``LOGIN_REDIRECT_URL``). A user whose navigation resolves one organization --
-    exactly one usable membership -- lands on that organization's dashboard; everyone else (no organization, or
-    several with none chosen) lands on the legacy dashboard exactly as before. The legacy dashboard itself stays
-    directly reachable. Read-only: one membership query, no tenant data."""
+    """Where a signed-in user lands (``LOGIN_REDIRECT_URL``). A user whose navigation resolves one organization whose
+    owner is entitled lands on that organization's dashboard. Everyone else lands on the Signals page (the legacy
+    dashboard) exactly as before: no organization, several with none chosen, or an organization without entitlement
+    (whose pages would only show the paywall; Signals is what a Free plan offers). Read-only: one membership query."""
     current = get_workspace_navigation(request.user).current
-    if current is not None:
+    if current is not None and current.entitled:
         return redirect("organization_dashboard", current.organization_id)
     return redirect("dashboard")
 

@@ -242,6 +242,16 @@ body.product-body {
   align-self: start;
 }
 
+/* G4 transition: the "current service" group (Signals, Leads) below the organization navigation. Same grammar as
+   the workspace group; temporary, removed with organizations/_transition_nav.html after the LIVE cutover. */
+.product-rail-transition p small {
+  display: block;
+  margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  color: var(--product-muted);
+}
+
 .product-flow {
   margin: 18px 15px 0;
   padding-top: 12px;
@@ -1955,6 +1965,14 @@ body.product-body {
   .product-mobile-nav--workspace a {
     padding: 0 10px;
     font-size: var(--type-label);
+  }
+
+  /* G4 transition: separates the current service (Signals, Leads) from the organization's sections. */
+  .product-mobile-nav-divider {
+    align-self: center;
+    width: 1px;
+    height: 24px;
+    background: #4a5754;
   }
 }
 

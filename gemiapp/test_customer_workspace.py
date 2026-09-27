@@ -11,10 +11,11 @@ from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.db import connection
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
 
-from .models import Opportunity, OpportunityTask, OrganizationRadar
+from .models import Opportunity, OpportunityTask, OrganizationRadar, UserSubscription
 from .opportunity_feed import FeedFilters, get_opportunity_feed
 from .organization_access import (
     OrganizationAccessDenied, get_authorized_workspace_dashboard, get_authorized_workspace_opportunities,
@@ -195,14 +196,17 @@ class UnifiedNavigationTests(WorkspaceTestCase):
             for which in ("rail", "mobile"):
                 self.assertEqual([key for key, _, _ in nav_links(html, which)], PRIMARY, (url, which))
 
-    def test_no_second_dashboard_radars_or_legacy_signals_and_leads_entries(self):
+    def test_no_second_dashboard_radars_or_duplicated_signals_and_leads_entries(self):
         html = self.page(self.owner, self.ws_url("organization_dashboard"))
         for which in ("rail", "mobile"):
             nav = nav_html(html, which)
-            for legacy in ('href="/dashboard/"', 'href="/radars/"', 'href="/leads/"', ">Signals<", ">Leads<"):
-                self.assertNotIn(legacy, nav, which)
+            self.assertNotIn('href="/radars/"', nav, which)                  # one Radars: the organization's
             self.assertEqual(re.findall(r">Radars<", nav), [">Radars<"], which)
             self.assertEqual(re.findall(r">Dashboard<", nav), [">Dashboard<"], which)
+            # Signals and Leads appear once each, only as the separate G4 "current service" entries
+            self.assertEqual(re.findall(r'href="(/dashboard/|/leads/)" data-transition="(\w+)"', nav),
+                             [("/dashboard/", "signals"), ("/leads/", "leads")], which)
+            self.assertEqual(nav.count('href="/dashboard/"') + nav.count('href="/leads/"'), 2, which)
         self.assertNotIn("product-workspace-tabs", html)            # no second set of section links in the bar
         brand = html.split('class="product-brand"', 1)[1].split(">", 1)[0]
         self.assertIn(f'href="{self.ws_url("organization_dashboard")}"', brand)
@@ -290,12 +294,74 @@ class UnifiedNavigationTests(WorkspaceTestCase):
         self.assertEqual([key for key, _, _ in nav_links(html)], PRIMARY)
         self.assertIn("/superadmin/", html.split('class="product-account"', 1)[1].split("</div>", 1)[0])
 
-    def test_an_organization_without_entitlement_is_not_offered_and_keeps_the_legacy_navigation(self):
+    def test_a_free_organization_owner_gets_the_same_shell_and_no_paid_capability(self):
         free_owner = User.objects.create_user("free-owner@example.com", "free-owner@example.com", "x")
         free_org = create_organization(owner=free_owner, name="Free Org").organization
-        html = self.page(free_owner, reverse("dashboard"))
-        self.assertEqual(nav_links(html), [])
-        self.assertNotIn(f"/organizations/{free_org.pk}/", html)
+        subscription = list(UserSubscription.objects.filter(user=free_owner).values())
+        self.assertFalse(UserSubscription.objects.get(user=free_owner).has_entitlement)
+        for url in (reverse("dashboard"), reverse("settings"), reverse("lead_list")):
+            html = self.page(free_owner, url)
+            for which in ("rail", "mobile"):
+                self.assertEqual([key for key, _, _ in nav_links(html, which)], PRIMARY, (url, which))
+            self.assertIn("data-transition-nav", html)                          # Signals stay the Free value
+        self.client.force_login(free_owner)
+        # The organization's pages keep the existing entitlement gate: the legacy paywall, no tenant data.
+        for name in ("organization_dashboard", "organization_opportunities", "organization_tasks",
+                     "organization_radars", "organization_notifications", "organization_radar_create"):
+            self.assertRedirects(self.client.get(reverse(name, args=[free_org.pk])), reverse("pricing"),
+                                 fetch_redirect_response=False)
+        radars = OrganizationRadar.objects.count()
+        self.client.post(reverse("organization_radar_create", args=[free_org.pk]), {"name": "Δωρεάν", "active": "1"})
+        self.assertEqual(OrganizationRadar.objects.count(), radars)             # Free stays at 0 Radars
+        self.assertRedirects(self.client.get(reverse("lead_export_csv")), reverse("pricing"),
+                             fetch_redirect_response=False)                     # and without CSV
+        self.assertRedirects(self.client.get(reverse("product_home")), reverse("dashboard"),
+                             fetch_redirect_response=False)                     # lands on Signals, not a paywall
+        brand = self.client.get(reverse("dashboard")).content.decode().split('class="product-brand"', 1)[1]
+        self.assertIn('href="/dashboard/"', brand.split(">", 1)[0])
+        self.assertEqual(list(UserSubscription.objects.filter(user=free_owner).values()), subscription)
+
+    def test_the_current_service_group_is_separate_honest_and_marks_its_page(self):
+        for name, key in (("dashboard", "signals"), ("lead_list", "leads")):
+            html = self.page(self.owner, reverse(name))
+            group = html.split("data-transition-nav>", 1)[1].split("</div>", 1)[0]
+            self.assertIn("CURRENT SERVICE", group)
+            self.assertNotIn("pportunit", group.replace("until opportunities go live", ""))  # never called that
+            self.assertEqual(re.findall(r'data-transition="(\w+)" aria-current="page"', group), [key])
+            mobile = nav_html(html, "mobile")
+            self.assertIn("product-mobile-nav-divider", mobile)
+            self.assertEqual(re.findall(r'data-transition="(\w+)" aria-current="page"', mobile), [key])
+            self.assertEqual([k for k, _, current in nav_links(html) if current], [])  # no 2.0 section "current"
+        for link in re.findall(r'href="([^"]+)" data-transition=', html):
+            self.assertEqual(resolve(link).func.__module__, "gemiapp.views")   # the unchanged legacy pages
+
+    def test_the_empty_states_point_to_leads_during_the_transition(self):
+        owner = entitle(User.objects.create_user("empty-org@example.com", "empty-org@example.com", "x"))
+        org = create_organization(owner=owner, name="Κενός").organization
+        for view in ({}, {"status": "all"}):
+            html = self.page(owner, self.ws_url("organization_opportunities", org=org, **view))
+            self.assertIn("data-transition-pointer", html)
+            self.assertIn('href="/leads/"', html.split("data-transition-pointer", 1)[1][:300])
+        self.assertIn("data-transition-pointer", self.page(owner, self.ws_url("organization_dashboard", org=org)))
+        self.assertNotIn("data-transition-pointer",
+                         self.page(owner, self.ws_url("organization_opportunities", org=org, status="saved")))
+
+    def test_after_the_live_cutover_the_transition_switches_off_without_breaking_rollback(self):
+        owner = entitle(User.objects.create_user("after-live@example.com", "after-live@example.com", "x"))
+        org = create_organization(owner=owner, name="Μετά").organization
+        with override_settings(GEMI_TRANSITION_LEGACY_ACCESS=False):
+            for url in (reverse("dashboard"), self.ws_url("organization_dashboard", org=org),
+                        self.ws_url("organization_opportunities", org=org)):
+                html = self.page(owner, url)
+                self.assertNotIn("data-transition", html)
+                self.assertNotIn("product-mobile-nav-divider", html)
+                self.assertEqual([key for key, _, _ in nav_links(html)], PRIMARY)
+            for name in ("dashboard", "lead_list", "radar_list"):              # still reachable for rollback
+                self.assertEqual(self.client.get(reverse(name)).status_code, 200, name)
+
+    def test_users_without_an_organization_get_no_transition_group(self):
+        html = self.page(entitled_user("no-org-transition@example.com"), reverse("dashboard"))
+        self.assertNotIn("data-transition", html)          # their legacy navigation already has Signals and Leads
 
 
 # --- dashboard ----------------------------------------------------------------------------------------------
