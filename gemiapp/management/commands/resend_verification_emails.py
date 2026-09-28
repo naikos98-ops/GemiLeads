@@ -43,9 +43,13 @@ class Command(BaseCommand):
             # Sent inline, not queued: this command is run by hand to unblock specific
             # accounts, so a failure has to surface here rather than in a worker log.
             try:
-                send_verification_email_now(user.pk)
+                delivered = send_verification_email_now(user.pk)
             except Exception as exc:
                 self.stdout.write(self.style.ERROR(f"Απέτυχε για {user.email}: {exc}"))
+                continue
+            if not delivered:
+                # e.g. the address is delivery-suppressed after a hard bounce/blocked event
+                self.stdout.write(self.style.WARNING(f"Δεν στάλθηκε σε #{user.id} {user.email} (παραλείφθηκε)"))
                 continue
 
             sent += 1

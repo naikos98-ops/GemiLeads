@@ -159,6 +159,41 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Email deliverability suppression (2026-09-28). ΔΕΝ έχει γίνει deploy· το backfill ΔΕΝ έχει τρέξει σε production.**
+  - **Το bug:** λογαριασμός με verification email που έκανε bounce ενεργοποιήθηκε χειροκίνητα και έπαιρνε κάθε
+    daily/intraday digest· το Brevo τα έκανε `blocked`, αλλά το `DigestDelivery` έγραφε `sent` (το SMTP είχε δεχτεί
+    το μήνυμα). Το webhook έγραφε ήδη τα hardBounce/blocked στο `OutreachSuppression`, που **κανείς** δεν διάβαζε
+    για digests.
+  - **Νέο layer, χωριστό από το outreach:** `EmailDeliverySuppression` (migration `0057`, ένα `CreateModel`,
+    κενός πίνακας): normalised email (unique), `reason` (`hard_bounce`/`blocked`), `first_seen_at`, `last_seen_at`,
+    `active`, `cleared_at`. Κλειδί = η **διεύθυνση**, όχι ο User. Το `OutreachSuppression` μένει ακριβώς όπως ήταν
+    (και το webhook συνεχίζει να το γράφει)· ένα outreach opt-out **δεν** μπλοκάρει ποτέ account email.
+  - **Ένας helper:** `gemiapp/email_deliverability.is_email_delivery_suppressed(email)`. Τον ρωτούν: digests μέσω
+    `digest_skip_reason` (νέο gate DELIVERABILITY μετά το ACCOUNT → daily, intraday, manual «χθες», και τα
+    `digest_recipients`/`diagnose_intraday`), `send_verification_email_now` (signup/resend/εντολή), password reset
+    (`DeliverablePasswordResetForm` στο `RateLimitedPasswordResetView` — ίδια σελίδα/απάντηση, χωρίς enumeration)
+    και `NoLocalSignupAdapter.send_mail` (allauth reset στο `/accounts/password/reset/`).
+  - **Digest:** suppressed → καμία SMTP απόπειρα, μετράει `skipped`, `DigestDelivery` `skipped` με
+    `error_message = "Email delivery suppressed after hard bounce/blocked event"` — με `get_or_create`, **ποτέ**
+    overwrite υπάρχουσας γραμμής της ημέρας (η μία intraday γραμμή καλύπτει όλα τα slots). Το intraday marker δεν
+    προχωρά. Το manual «χθες» σηκώνει `ValueError` με τον ίδιο λόγο. Λογαριασμός, `DigestPreference`, συνδρομή,
+    οργανισμός **ανέγγιχτα**.
+  - **Webhook:** hardBounce/hard_bounce/blocked → `record_email_delivery_suppression` + για tag
+    `digest:<user_id>:<date>:<frequency>` η αντίστοιχη `DigestDelivery` από `sent` → `failed` («Brevo reported
+    <reason> after SMTP acceptance»), μόνο αν το tag είναι έγκυρο (ακέραιο id, ISO ημερομηνία, γνωστή συχνότητα) και
+    η διεύθυνση του event = τρέχον email του χρήστη. Κάθε εγγραφή απομονωμένη· αποτυχία → log, το
+    `EmailEngagementEvent` μένει και το webhook απαντά 200. Soft bounce: τίποτα. Token auth αμετάβλητο.
+  - **Ανάκτηση:** αλλαγή email σε άλλη διεύθυνση → ξανά παραδόσιμος. Operator:
+    `python manage.py clear_email_delivery_suppression --email X [--dry-run]` (κρατά ιστορικό: `active=False`,
+    `cleared_at`· **δεν** αφαιρεί από το blocklist του Brevo). Νέο bounce μετά → επανενεργοποίηση. Login δεν αίρει.
+  - **Backfill:** `python manage.py backfill_email_delivery_suppressions [--apply]` — **dry run εξ ορισμού** (ίδια
+    διαδρομή μέσα σε transaction που γίνεται rollback), ιστορικά events με σειρά `received_at`, μόνο counters,
+    idempotent, δεν αναιρεί clear του operator (events πριν το `cleared_at` = `stale`). Δεν αγγίζει outreach,
+    `DigestDelivery`, χρήστες.
+  - Read-only admin. 36 tests (`gemiapp/test_email_deliverability.py`)· mutation check (χωρίς gate στα digests,
+    χωρίς έλεγχο διεύθυνσης στο reconcile, χωρίς φίλτρο στο reset form, χωρίς stale-guard, χωρίς gate στο
+    verification) → όλα πιάνονται. Migration pins 0056 → 0057 σε έξι test modules.
+
 - **Ενιαία πλοήγηση πελάτη (2026-09-27). Μόνο παρουσίαση/πλοήγηση· καμία αλλαγή σε δεδομένα, modes ή G4.**
   - **Χρήστης που η πλοήγησή του επιλύει έναν οργανισμό** (`workspace_nav.current`: ακριβώς ένα membership
     **ανεξαρτήτως πλάνου**, ή η σελίδα ενός από τους οργανισμούς του): **μία** πλοήγηση σε rail και mobile bar —
@@ -2052,6 +2087,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Email deliverability rollout (χειροκίνητο):** deploy (η `0057` εφαρμόζεται από το `preDeployCommand`) →
+  `python manage.py backfill_email_delivery_suppressions` (dry run) → έλεγχος counters →
+  `... --apply` → `digest_recipients --frequency daily` για επιβεβαίωση ότι ο γνωστός λογαριασμός δείχνει τον λόγο
+  suppression. Ανοιχτά: (α) οι **ιστορικές** `DigestDelivery` «sent» πριν το deploy δεν διορθώνονται (το backfill
+  γράφει μόνο suppressions)· (β) bounce που φτάνει αφού ο χρήστης άλλαξε email δεν διορθώνει τη γραμμή (έλεγχος
+  διεύθυνσης)· (γ) ένα καθυστερημένο bounce ενός πρωινού intraday slot γυρίζει σε `failed` τη **μία** γραμμή της
+  ημέρας· (δ) το clear στην εφαρμογή δεν αφαιρεί τη διεύθυνση από το blocklist του Brevo.
+
 - **Legacy Radar migration σε production — χειροκίνητο, σε τέσσερα ξεχωριστά βήματα.** Το production dry-run
   έχει τρέξει (baseline: `missing_organization=14` από 16)· η πραγματική μεταφορά **όχι**. Σειρά:
   (A) deploy και `python manage.py provision_existing_user_organizations --dry-run --limit 10000` → έλεγχος
@@ -2252,6 +2295,16 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-09-28 — Email deliverability suppression.** Νέα: `gemiapp/email_deliverability.py`,
+  `EmailDeliverySuppression` + migration `0057_email_delivery_suppression`, εντολές
+  `backfill_email_delivery_suppressions` και `clear_email_delivery_suppression`, `gemiapp/test_email_deliverability.py`.
+  Αλλαγές: `email_tracking.py` (suppression + reconcile digest), `services.py` (gate DELIVERABILITY, verification),
+  `views.py` (`DeliverablePasswordResetForm`), `adapters.py` (allauth `send_mail`), `admin.py`,
+  `resend_verification_emails` (δεν μετρά suppressed ως sent), migration pins σε έξι test modules. Επαλήθευση:
+  36 focused tests, mutation check, `check`, `makemigrations --check`, **2.282 tests OK** (`--parallel 4`), κύκλος
+  0056 → 0057 → 0056 → 0057 σε αντίγραφο της dev βάσης (83 πίνακες ίδιοι, `migrate --check` καθαρό). Κανένα
+  deploy, κανένα production backfill.
 
 - **2026-09-28 — G4: κλείσιμο των τελευταίων κενών συνέπειας Radars.** Νέα:
   `manage.py sync_legacy_radars_to_organizations` (dry run εξ ορισμού, `--apply`), `plan_legacy_radar` /

@@ -11,6 +11,10 @@ straight back out of the ΓΕΜΗ feed on the next batch and bounced again, and 
 rate above ~1% is precisely what makes Gmail/Microsoft treat the rest of our mail as spam.
 Soft bounces are excluded on purpose -- a full mailbox or a greylisting MX is temporary, and
 suppressing on one would throw away recipients who are perfectly reachable tomorrow.
+
+The same hard-bounce/blocked events also feed EmailDeliverySuppression (gemiapp.email_deliverability),
+the separate deliverability list every product send path consults, and -- for a digest tag --
+turn the DigestDelivery that SMTP had accepted from "sent" into "failed".
 """
 
 import hashlib
@@ -23,6 +27,7 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from .email_deliverability import record_email_delivery_suppression, reconcile_digest_delivery
 from .models import EmailEngagementEvent, OutreachSuppression
 
 logger = logging.getLogger(__name__)
@@ -84,6 +89,22 @@ def _record_event(item):
 
     if event_type in _SUPPRESSING_EVENTS and email:
         _suppress_bounced(email, event_type)
+        _record_undeliverable(email, event_type, tag)
+
+
+def _record_undeliverable(email, event_type, tag):
+    """Deliverability side of a hard bounce/blocked event: suppress the address for every product
+    email and reconcile the digest it was about. Like _suppress_bounced, a failure here is logged
+    and never costs the audit row or makes Brevo retry the batch; the two writes are isolated so
+    one failing does not skip the other."""
+    try:
+        record_email_delivery_suppression(email, event_type)
+    except Exception:
+        logger.exception("Could not record delivery suppression after %s", event_type)
+    try:
+        reconcile_digest_delivery(tag, email, event_type)
+    except Exception:
+        logger.exception("Could not reconcile digest delivery for tag %r", tag)
 
 
 def _suppress_bounced(email, event_type):

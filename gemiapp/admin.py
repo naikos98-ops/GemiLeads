@@ -15,6 +15,7 @@ from .models import (
     CustomerRadar,
     DigestDelivery,
     DigestPreference,
+    EmailDeliverySuppression,
     EmailEngagementEvent,
     GemiCompanyStatus,
     GemiDecisionSubject,
@@ -90,6 +91,26 @@ class OutreachSuppressionAdmin(admin.ModelAdmin):
     list_display = ("email", "created_at")
     search_fields = ("email",)
     readonly_fields = ("created_at",)
+
+
+@admin.register(EmailDeliverySuppression)
+class EmailDeliverySuppressionAdmin(admin.ModelAdmin):
+    """Inspection only: rows come from the Brevo webhook / backfill, and clearing one is the
+    clear_email_delivery_suppression command, so the audit trail stays in one writer."""
+
+    list_display = ("email", "reason", "active", "first_seen_at", "last_seen_at", "cleared_at")
+    list_filter = ("reason", "active")
+    search_fields = ("email",)
+    readonly_fields = ("email", "reason", "active", "first_seen_at", "last_seen_at", "cleared_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 admin.site.register(DigestPreference)

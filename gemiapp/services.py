@@ -17,6 +17,7 @@ from .ingestion.activities import (
     resolve_current_activities_only,
     sync_company_activities as sync_canonical_company_activities,
 )
+from .email_deliverability import DELIVERY_SUPPRESSED_REASON, is_email_delivery_suppressed
 from .kad import normalize_kad_search
 from .models import (
     Company,
@@ -331,6 +332,8 @@ def digest_skip_reason(user, frequency):
 
       PREFERENCE  -- the user wants the email: a DigestPreference exists and is not "off".
       ACCOUNT     -- the account is active (verified) and has an address.
+      DELIVERABILITY -- the address has no active EmailDeliverySuppression (Brevo reported a hard
+                     bounce or block). Not a preference: DigestPreference is left as the user set it.
       ENTITLEMENT -- for every frequency except DAILY: UserSubscription.has_entitlement, i.e. an
                      active paid subscription OR unexpired complimentary access (the existing
                      beta/comp mechanism). BETA_MODE is only a label and grants nothing.
@@ -353,6 +356,8 @@ def digest_skip_reason(user, frequency):
         return "Ανενεργός λογαριασμός (μη επιβεβαιωμένο email)"
     if not user.email:
         return "Ο λογαριασμός δεν έχει email"
+    if is_email_delivery_suppressed(user.email):
+        return DELIVERY_SUPPRESSED_REASON
 
     if frequency == FREE_DIGEST_FREQUENCY:
         return None  # included in the Free plan: no paid entitlement required
@@ -412,6 +417,11 @@ def send_verification_email_now(user_id: int) -> bool:
     if user is None or user.is_active or not user.email:
         logger.info("Skipping verification email for user %s: nothing to send.", user_id)
         return False
+    if is_email_delivery_suppressed(user.email):
+        # The address already hard-bounced or was blocked: another attempt only bounces again.
+        # Recovery is an operator clearing the suppression (clear_email_delivery_suppression).
+        logger.info("Skipping verification email for user %s: %s.", user_id, DELIVERY_SUPPRESSED_REASON)
+        return False
 
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
@@ -444,7 +454,17 @@ def send_digests(target_date: date, frequency: str = "daily") -> tuple[int, int]
 
         reason = digest_skip_reason(user, frequency)
         if reason:
-            # Only the entitlement case is recorded, to keep the delivery log meaningful.
+            if reason == DELIVERY_SUPPRESSED_REASON:
+                # Truthful record of a send that was never attempted. get_or_create, never an
+                # overwrite: a row for the day may already record a real send (the one intraday row
+                # covers every slot) or a bounce reconciled by the webhook, and both must survive.
+                DigestDelivery.objects.get_or_create(
+                    user=user, digest_date=target_date, frequency=frequency,
+                    defaults={"status": "skipped", "company_count": 0, "error_message": DELIVERY_SUPPRESSED_REASON},
+                )
+                skipped += 1
+                continue
+            # Otherwise only the entitlement case is recorded, to keep the delivery log meaningful.
             if frequency != "intraday" and reason == NO_ENTITLEMENT:
                 DigestDelivery.objects.update_or_create(
                     user=user, digest_date=target_date, frequency=frequency,

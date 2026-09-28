@@ -644,6 +644,40 @@ class OutreachSuppression(models.Model):
         return cls.objects.filter(email=cls.normalize(email)).exists()
 
 
+class EmailDeliverySuppression(models.Model):
+    """An email address Brevo reported as undeliverable (hard bounce or blocked).
+
+    Deliverability, not consent: this is the platform-wide "do not attempt SMTP delivery to this
+    address" list for every product email -- digests, verification, password reset. It is kept
+    separate from OutreachSuppression on purpose: that list also holds people who merely opted
+    out of prospecting mail, and an outreach opt-out must never stop an account email.
+
+    Attached to the address, not to a User: a user who corrects their address is deliverable
+    again unless the new address bounces too. Only an operator clears a row
+    (``clear_email_delivery_suppression``); ``active=False`` plus ``cleared_at`` keeps the
+    history instead of deleting it. Written by gemiapp.email_deliverability only.
+    """
+
+    class Reason(models.TextChoices):
+        HARD_BOUNCE = "hard_bounce", "Hard bounce"
+        BLOCKED = "blocked", "Blocked"
+
+    email = models.EmailField(unique=True)
+    reason = models.CharField(max_length=20, choices=Reason.choices)
+    first_seen_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField()
+    active = models.BooleanField(default=True)
+    cleared_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-last_seen_at"]
+        verbose_name = "Μη παραδόσιμο email"
+        verbose_name_plural = "Μη παραδόσιμα email"
+
+    def __str__(self):
+        return f"{self.email} ({self.reason}{'' if self.active else ', cleared'})"
+
+
 class AdminAuditLog(models.Model):
     admin_user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="admin_audit_logs")
     action = models.CharField(max_length=100, db_index=True)

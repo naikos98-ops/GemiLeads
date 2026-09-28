@@ -296,9 +296,11 @@ class BoundaryTests(StatusTestCase):
         from django.apps import apps
 
         names = {model.__name__ for model in apps.get_app_config("gemiapp").get_models()}
-        # the two legacy platform suppressions, plus D35's organization-scoped one (never written by D32)
+        # the two legacy platform suppressions, D35's organization-scoped one (never written by D32) and the
+        # platform email-deliverability list (hard bounce/blocked, never an opportunity status)
         self.assertEqual({n for n in names if "Suppression" in n},
-                         {"OutreachSuppression", "PersonSuppression", "OrganizationContactSuppression"})
+                         {"OutreachSuppression", "PersonSuppression", "OrganizationContactSuppression",
+                          "EmailDeliverySuppression"})
         self.assertFalse([n for n in names if "History" in n or "StatusChange" in n])
         self.assertEqual({n for n in names if "Notification" in n}, {"OrganizationNotification"})  # D37
         # only the pre-existing KAD catalogue / company-activity models: no activity log (item 36)
@@ -306,7 +308,7 @@ class BoundaryTests(StatusTestCase):
         self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0056_legacy_radar_migration_map")
+                         "0057_email_delivery_suppression")
 
     def test_the_frozen_capture_signals_snapshots_timeline_and_ranking_are_untouched(self):
         self.put_assigned(self.maria)

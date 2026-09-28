@@ -26,6 +26,17 @@ class NoLocalSignupAdapter(DefaultAccountAdapter):
     def is_open_for_signup(self, request):
         return False
 
+    def send_mail(self, template_prefix, email, context):
+        """allauth's own mail (its password reset is still reachable at /accounts/password/reset/)
+        obeys the same deliverability rule as the project's views: nothing to an address Brevo
+        already hard-bounced or blocked. Silent, like every other suppressed send."""
+        from .email_deliverability import is_email_delivery_suppressed
+
+        if is_email_delivery_suppressed(email):
+            logger.info("Skipping allauth %s email: address is delivery-suppressed.", template_prefix)
+            return
+        super().send_mail(template_prefix, email, context)
+
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
     """Creates and links accounts for Google/Apple sign-ins."""

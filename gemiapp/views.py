@@ -2,7 +2,8 @@ import csv
 import logging
 from datetime import date, timedelta
 from django.contrib import messages
-from django.contrib.auth import login
+from django.contrib.auth import get_user_model, login
+from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count, Max, Prefetch, Q
@@ -23,6 +24,7 @@ from django.utils.encoding import DjangoUnicodeDecodeError, force_bytes, force_s
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.decorators import method_decorator
 from django_ratelimit.decorators import ratelimit
+from .email_deliverability import is_email_delivery_suppressed
 from .forms import CustomerRadarForm, DigestPreferenceForm, LeadNotesForm, LeadStatusForm, SignupForm
 from .ingestion.kad_catalogue import kad_picker_queryset
 from .kad import normalize_kad_code, normalize_kad_search
@@ -123,6 +125,20 @@ class RateLimitedLoginView(LoginView):
     pass
 
 
+class DeliverablePasswordResetForm(PasswordResetForm):
+    """Django's reset form, minus accounts whose address is known undeliverable.
+
+    Same page and same "check your inbox" answer either way (no account enumeration); only the
+    SMTP attempt to an address Brevo already hard-bounced or blocked is skipped.
+    """
+
+    def get_users(self, email):
+        email_field = get_user_model().get_email_field_name()
+        for user in super().get_users(email):
+            if not is_email_delivery_suppressed(getattr(user, email_field)):
+                yield user
+
+
 # Password reset sends an email to any address supplied, with no login and no CAPTCHA in
 # front of it. Left open it is a way to burn the Brevo sending quota or to use this domain
 # to bother a third party, so it is limited like the other credential endpoints. The hourly
@@ -130,7 +146,7 @@ class RateLimitedLoginView(LoginView):
 @method_decorator(ratelimit(key="ip", rate="5/m", block=True), name="dispatch")
 @method_decorator(ratelimit(key="ip", rate="15/h", block=True), name="dispatch")
 class RateLimitedPasswordResetView(PasswordResetView):
-    pass
+    form_class = DeliverablePasswordResetForm
 
 
 @ratelimit(key="ip", rate="5/m", block=True)
