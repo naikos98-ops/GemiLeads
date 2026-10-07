@@ -182,9 +182,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     γράφει με τον κοινό writer από το payload της σελίδας, **χωρίς κανένα αίτημα ανά εταιρεία**. Ανά νέο εύρημα,
     νέο πεδίο `GemiDiscoveryObservation.ingest_outcome` (migration **`0058`**, ένα `AddField`, κενό για
     shadow/bootstrap/known): `created` · `already_local` (ποτέ overwrite) · `quarantined_date` (κατάταξη
-    `invalid_date`, ή άρνηση του writer· καμία Company, το τεκμήριο μένει pending) · `write_failed` (σφάλμα μίας
-    εταιρείας, rollback, η σελίδα συνεχίζει). Κατάταξη, σύνορο και guardrails **αμετάβλητα**· ένα quarantined
-    εύρημα προχωρά τον cursor όπως σε shadow και ξανακρίνεται από το payload σε κάθε run που το ξαναβλέπει.
+    `invalid_date`, ή άρνηση του writer· καμία Company, το τεκμήριο μένει pending) · `write_failed`
+    (**απρόσμενο** σφάλμα εγγραφής Company/activities). Κατάταξη, σύνορο και guardrails **αμετάβλητα**· τα τρία
+    πρώτα είναι αναμενόμενα και **δεν μπλοκάρουν**: ένα quarantined εύρημα προχωρά τον cursor όπως σε shadow και
+    ξανακρίνεται από το payload σε κάθε run που το ξαναβλέπει· το race στο insert γίνεται `already_local`.
+    **`write_failed` = αποτυχία του run, όχι ιδιότητα της εγγραφής:** η υπόλοιπη σελίδα γράφεται (ένα savepoint
+    ανά εταιρεία), το run **σταματά τη σελιδοποίηση** (`stop_reason=ingest_write_failed`), κλείνει `failed` και
+    **ο cursor ΔΕΝ προχωρά**. Όσες εταιρείες γράφτηκαν μένουν και τα σήματά τους υλοποιούνται κανονικά· η
+    εγγραφή που απέτυχε είναι ακόμη πάνω από το αμετάβλητο σύνορο, άρα **το επόμενο run την ξαναδοκιμάζει μόνο
+    του**, από το payload που θα φέρει τότε — χωρίς hydration, χωρίς αίτημα ανά εταιρεία.
     **Persistence:** run + observations + cursor σε **μία συναλλαγή** με κλειδωμένη τη γραμμή του cursor.
   - **Φάση 3 — οικονομία observations:** `run_discovery(compact_observations=True)` αποθηκεύει observation μόνο
     όταν λέει κάτι νέο: δεν υπάρχει observation του αριθμού σήμερα (τοπική ημέρα), ή η τελευταία σημερινή
@@ -209,8 +215,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   - **Χειροκίνητη δοκιμή (αργότερα, μόνο με έγκριση):**
     `GEMI_DISCOVERY_V2_ENABLED=1 python manage.py run_gemi_ingestion_cycle --dry-run` — καμία εγγραφή, **κάνει** τα
     αιτήματα αναζήτησης.
-  - 56 νέα tests (`gemiapp/test_ingestion_cycle.py`)· mutation check 14 μεταλλάξεων (ένα κενό βρέθηκε και
-    καλύφθηκε)· migration pins 0057 → 0058· **2.338 tests OK**· `check`, `makemigrations --check` καθαρά·
+  - 64 tests (`gemiapp/test_ingestion_cycle.py`)· mutation check 14 + 5 μεταλλάξεων (ένα κενό βρέθηκε και
+    καλύφθηκε)· migration pins 0057 → 0058· **2.346 tests OK**· `check`, `makemigrations --check` καθαρά·
     κύκλος 0057 → 0058 → 0057 → 0058 σε αντίγραφο της dev βάσης (86 πίνακες, ίδια πλήθη).
 
 - **Email deliverability suppression (2026-09-28). ΔΕΝ έχει γίνει deploy· το backfill ΔΕΝ έχει τρέξει σε production.**
@@ -2149,7 +2155,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   φύγει ο legacy fetch (η σελίδα 1 τις περιέχει ήδη: μηδέν αιτήματα, αλλά σημαίνει overwrite)· (β) αν οι
   late publications θα φαίνονται στο legacy dashboard/CSV σε όγκο· (γ) overlap 100 + ημερήσιο «βαθύ» sweep·
   (δ) το `compare_with_legacy` χάνει νόημα όταν το ingest γράφει Company — η σύγκριση πρέπει να διαβάζει το
-  `ingest_outcome`· (ε) ο κύκλος υλοποιεί σήματα και από run που απέτυχε σε επόμενη σελίδα (κανόνας B2)·
+  `ingest_outcome`· (ε) εγγραφή που αποτυγχάνει **μόνιμα** με απρόσμενο σφάλμα κρατά το σύνορο ακίνητο
+  (σκόπιμα): φαίνεται ως `consecutive_failures` στον cursor και `failed` runs, αλλά δεν υπάρχει ακόμη ενεργή
+  ειδοποίηση operator γι' αυτό·
   (στ) `save_limit: 50` του django-q: 144 επιτυχή tasks/ημέρα θα σπρώχνουν έξω το ιστορικό των άλλων.
 
 - **Email deliverability rollout (χειροκίνητο):** deploy (η `0057` εφαρμόζεται από το `preDeployCommand`) →
@@ -2360,6 +2368,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-10-07 — Ενιαία ingestion: το `write_failed` δεν προχωρά πια τον cursor.** Αλλαγές:
+  `ingestion/discovery.py` (`STOP_INGEST_WRITE_FAILED`, το run κλείνει `failed`, καμία επόμενη σελίδα), κείμενο
+  choice σε `models.py`/`0058` (η migration δεν έχει εφαρμοστεί πουθενά), `test_ingestion_cycle.py` (+9 tests A–F,
+  −1 που περιέγραφε την παλιά συμπεριφορά). Υλοποίηση σημάτων μετά από αποτυχία επόμενης σελίδας, catch-up 24 ωρών,
+  quarantine και race skips αμετάβλητα και μη-μπλοκαριστικά. Mutation check 5/5. **2.346 tests OK**, `check`,
+  `makemigrations --check` καθαρά. Ο κώδικας παραμένει αδρανής: κανένα schedule, flag 0, κανένα deploy.
 
 - **2026-10-07 — Ενιαία ingestion ΓΕΜΗ, φάσεις 1–4 (αδρανής).** Νέα: `gemiapp/ingestion/company_writer.py`,
   `gemiapp/ingestion_cycle.py`, `manage.py run_gemi_ingestion_cycle`, migration
