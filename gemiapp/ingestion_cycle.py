@@ -6,10 +6,11 @@
           -> the after-commit SHADOW opportunity pipeline (observed, never repeated)
           -> counters -> mutex released
 
-This is the unit a future schedule will run every few minutes. **It is dormant**: nothing in ``apps.SCHEDULES``
-calls it, ``GEMI_DISCOVERY_V2_ENABLED`` is off by default and the cycle refuses without it -- dry runs included,
-because a dry run still spends GEMI requests. The legacy importer (``services.import_for_date``) remains the
-canonical production fetch and is not touched from here.
+This is the unit the schedule runs (first cadence: every 30 minutes, ``apps.SCHEDULES``). **It is dormant**:
+that schedule entry is registered only while ``GEMI_DISCOVERY_V2_ENABLED`` is on, the flag is off by default, and
+the cycle refuses without it -- dry runs included, because a dry run still spends GEMI requests. The legacy
+importer (``services.import_for_date``) remains the canonical production fetch and is not touched from here.
+The scheduled task evaluates the operator-alert policy after each real cycle (``gemiapp.ingestion_alerts``).
 
 One fetch path, no second importer
 ----------------------------------

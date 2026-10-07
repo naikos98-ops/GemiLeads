@@ -374,3 +374,27 @@ reaches the branch checked out in the main working copy, the dumps in that copy 
 
 G0, G1 and the A2 alerting requirement are closed (2026-09-20). Nothing in this repository now blocks the dark
 deployment; item 1 is a confirmation to make against production, not a gate to build.
+
+## G4 certification window for the scheduled unified ingestion (rule, 2026-10-07)
+
+The unified ingestion (`gemiapp/ingestion_cycle.py`) changes the path that would feed LIVE: companies are created
+from the discovery page itself, on a schedule, instead of by the legacy importer and operator-run hydration.
+
+**The fresh 14-day G4 certification window starts only when the scheduled unified ingestion is actually enabled
+in production** -- `GEMI_DISCOVERY_V2_ENABLED=1` and the `13,43 * * * *` schedule row running. Merging or
+deploying the dormant code does not start it. Discovery evidence gathered before that (operator-run shadow
+cycles, hydration, the manual dry-run trial) remains useful history and does **not** count toward certifying the
+new scheduled path. LIVE stays prohibited throughout; signals and opportunities are SHADOW only.
+
+Evidence to collect during the window, all read-only:
+
+| Question | Source |
+|---|---|
+| Did legacy find a valid company the unified ingestion missed or failed to store? | `manage.py report_gemi_ingestion_parity --date D` -- verdict `OK`, `legacy_only=0`, `unified_failed_to_store=0` |
+| Any ordering anomaly, persistent failure or stall? | operator alert emails (`gemiapp/ingestion_alerts.py`); the health block of the same report |
+| Request budget | `manage.py report_gemi_request_budget --hours 24` |
+| Clamped dates | none can be written: the shared writer refuses them (`quarantined_date`) |
+
+The parity report attributes every company from recorded provenance (`ingest_outcome`, `ImportRun` windows,
+`Company.imported_at`), never from the row merely existing. The older `compare_with_legacy` counts the unified
+ingestion's own rows as legacy finds and is kept only for the shadow-only history.

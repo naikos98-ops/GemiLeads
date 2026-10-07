@@ -266,13 +266,21 @@ ADMINS = operator_admins(SUPERADMIN_EMAILS)
 # response fails the A2 contract, gemiapp.services logs the ImportRun it stopped. Deliberately not
 # the whole application: an alert that fires for everything is one nobody reads.
 # The ingestion loggers, and the G4 legacy->organization Radar mirror, whose refusals must not diverge silently.
-OPERATOR_ALERT_LOGGERS = ("gemiapp.ingestion.client", "gemiapp.services", "gemiapp.legacy_radar_sync")
+# gemiapp.ingestion_alerts is the scheduled ingestion cycle's alert policy: it logs an ERROR only when an
+# operator must act (persistent failure, frozen cursor, no progress), never for one transient failure.
+OPERATOR_ALERT_LOGGERS = (
+    "gemiapp.ingestion.client", "gemiapp.services", "gemiapp.legacy_radar_sync", "gemiapp.ingestion_alerts",
+)
 
 LOGGING = {
     "version": 1,
     # Django applies its own DEFAULT_LOGGING first; this adds to it and must not disable it.
     "disable_existing_loggers": False,
-    "filters": {"require_debug_false": {"()": "django.utils.log.RequireDebugFalse"}},
+    "filters": {
+        "require_debug_false": {"()": "django.utils.log.RequireDebugFalse"},
+        # Inside the scheduled ingestion cycle only its alert policy emails (config.operator_alerts).
+        "managed_alerts": {"()": "config.operator_alerts.ManagedAlertFilter"},
+    },
     "formatters": {"operator": {"format": "%(levelname)s %(asctime)s %(name)s %(message)s"}},
     "handlers": {
         # Named apart from Django's own "console" handler so neither definition shadows the other.
@@ -281,7 +289,7 @@ LOGGING = {
             "level": "ERROR",
             "class": "config.operator_alerts.OperatorEmailHandler",
             # DEBUG on -> the record is dropped here, so a development run never notifies anyone.
-            "filters": ["require_debug_false"],
+            "filters": ["require_debug_false", "managed_alerts"],
         },
     },
     "loggers": {
@@ -448,6 +456,14 @@ GEMI_DISCOVERY_PENDING_COMPANY_HYDRATION_ENABLED = (
 # wait for a slot in the shared GEMI rate budget. Short on purpose -- a starved run fails fast and the next one
 # repeats the window, instead of outliving the interval it is meant to run in. The budget itself is unchanged.
 GEMI_INGESTION_MAX_WAIT_SECONDS = float(os.environ.get("GEMI_INGESTION_MAX_WAIT_SECONDS", "120"))
+# Operator alerts for the scheduled ingestion cycle (gemiapp.ingestion_alerts). One isolated failure is only
+# recorded. An alert is emailed when a write failure repeats on the retry, when this many consecutive runs end
+# without success, when a blocking ordering anomaly freezes the cursor, or when no run has succeeded for the
+# stale interval. Each kind is alerted once and reminded at the reminder interval while it lasts.
+GEMI_INGESTION_ALERT_WRITE_FAILURE_THRESHOLD = int(os.environ.get("GEMI_INGESTION_ALERT_WRITE_FAILURE_THRESHOLD", "2"))
+GEMI_INGESTION_ALERT_FAILURE_THRESHOLD = int(os.environ.get("GEMI_INGESTION_ALERT_FAILURE_THRESHOLD", "3"))
+GEMI_INGESTION_ALERT_STALE_SECONDS = int(os.environ.get("GEMI_INGESTION_ALERT_STALE_SECONDS", "7200"))
+GEMI_INGESTION_ALERT_REMINDER_SECONDS = int(os.environ.get("GEMI_INGESTION_ALERT_REMINDER_SECONDS", "86400"))
 # Paging and safety limits. The overlap is how many already-known records must be seen beyond the frontier
 # before a run may stop: stopping at the first known record would miss irregular ordering and late arrivals.
 GEMI_DISCOVERY_PAGE_SIZE = int(os.environ.get("GEMI_DISCOVERY_PAGE_SIZE", "200"))

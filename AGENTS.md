@@ -159,8 +159,58 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
-- **Ενιαία ingestion ΓΕΜΗ, φάσεις 1–4 (2026-10-07). ΑΔΡΑΝΗΣ κώδικας: ΔΕΝ είναι προγραμματισμένη, ΔΕΝ είναι
-  ενεργή σε production, δεν έχει γίνει deploy/merge. Ο legacy importer (`import_for_date`) παραμένει η canonical
+- **Ενιαία ingestion — επιχειρησιακό επίπεδο ασφάλειας (2026-10-07). Branch `feature/gemi-ingestion-ops-safety`,
+  ΟΧΙ στο `main`, κανένα deploy. Το schedule είναι έτοιμο αλλά ΟΧΙ ενεργό: `GEMI_DISCOVERY_V2_ENABLED` μένει 0.**
+  - **Κανόνας G4 (ισχύει από τώρα):** το **νέο 14ήμερο παράθυρο πιστοποίησης G4 ξεκινά μόνο τη στιγμή που η
+    προγραμματισμένη ενιαία ingestion ενεργοποιηθεί πραγματικά σε production** (`GEMI_DISCOVERY_V2_ENABLED=1` και
+    η γραμμή του schedule να τρέχει). Τα προηγούμενα τεκμήρια Discovery (operator-run shadow cycles, hydration)
+    μένουν χρήσιμα ιστορικά αλλά **δεν μετρούν** στην πιστοποίηση της νέας, προγραμματισμένης διαδρομής. Merge ή
+    deploy αδρανούς κώδικα δεν ξεκινά το παράθυρο. Η LIVE παραμένει απαγορευμένη.
+  - **Χειροκίνητη δοκιμή production (πέρασε, αναφορά χρήστη):** `--dry-run` σε σταθερή κατάσταση → `success`,
+    `overlap_satisfied`, 1 σελίδα, 200 examined / 200 known / 0 new, 1 αίτημα ΓΕΜΗ, 0 αιτήματα ανά εταιρεία,
+    0 `write_failed`, 0 anomalies, ~2 s.
+  - **Schedule (έτοιμο, κλειστό):** νέα εγγραφή στο `apps.SCHEDULES` —
+    `gemiapp.tasks.run_gemi_ingestion_cycle_task`, cron **`13,43 * * * *`** (ανά 30′, εκτός `:00`· δεν συμπίπτει
+    με κανένα άλλο job), με `"requires": "gemiapp.ingestion.discovery.ingest_enabled"`. Με το flag 0 (προεπιλογή)
+    **δεν υπάρχει καν γραμμή** στο `django_q_schedule`· με 1, ένα redeploy (το `migrate` τρέχει την εγγραφή) φτιάχνει
+    **ακριβώς μία**· με 0 ξανά, αφαιρείται. Το task αρνείται και μόνο του χωρίς το flag. Daily (`0 9 * * *`),
+    intraday (`0 8,11,14,17,20,23 * * *`), legacy importer, hydration (χωρίς schedule), SHADOW-only: αμετάβλητα.
+    **Όχι ακόμη 10′.**
+  - **Ειδοποίηση operator (`gemiapp/ingestion_alerts.py`)** μέσω του υπάρχοντος μηχανισμού (ERROR σε logger του
+    `OPERATOR_ALERT_LOGGERS` → email στους `ADMINS`, ίδιο SMTP· όχι Sentry, καμία νέα υπηρεσία). Αξιολογείται από
+    το **task** μετά από κάθε πραγματικό κύκλο (όχι σε χειροκίνητα/dry runs, ποτέ με flag 0):
+    `write_failed` (2 συνεχόμενα runs με `ingest_write_failed`: απέτυχε και στο retry) · `ordering_anomaly`
+    (αμέσως: ο cursor πάγωσε) · `repeated_failures` (3 συνεχόμενα runs χωρίς επιτυχία) · `no_progress` (καμία
+    επιτυχία για 2 ώρες — πιάνει και ό,τι δεν αφήνει run row: κλείδωμα που δεν ελευθερώνεται, άρνηση) · `refused`
+    (flag ανοιχτό αλλά το preflight αρνείται) · `phase_failed` (υλοποίηση/pipeline). **Χωρίς spam:** μία
+    μεμονωμένη αποτυχία μόνο καταγράφεται (run row, `consecutive_failures`, WARNING)· κάθε είδος ειδοποιεί μία
+    φορά και υπενθυμίζει ανά 24 ώρες όσο διαρκεί. **Ανάκαμψη:** ο πρώτος πλήρως επιτυχής κύκλος στέλνει ένα
+    email «recovered» και κλείνει τα ανοιχτά είδη. Η ιστορία διαβάζεται από `GemiDiscoveryRun`/cursor· στο shared
+    cache μένουν μόνο τα «ήδη ειδοποιήθηκε» (αν το cache πέσει, στέλνει — το διπλό email είναι η ασφαλής αστοχία).
+    Ρυθμίσεις: `GEMI_INGESTION_ALERT_WRITE_FAILURE_THRESHOLD=2`, `..._FAILURE_THRESHOLD=3`,
+    `..._STALE_SECONDS=7200`, `..._REMINDER_SECONDS=86400`.
+  - **Μία φωνή:** ο client του ΓΕΜΗ γράφει ERROR («giving up after N attempts») σε operator logger, άρα **κάθε**
+    αποτυχημένο run θα έστελνε δικό του email σε όλη τη διάρκεια μιας διακοπής. Το task τρέχει τον κύκλο μέσα σε
+    `config.operator_alerts.managed_alerting()`: εκεί μέσα τα records πάνε κανονικά στο server log, αλλά email
+    στέλνει μόνο η πολιτική. Ο legacy importer είναι εκτός και ειδοποιεί ακριβώς όπως πριν.
+  - **Σύγκριση με τον legacy χωρίς μόλυνση (`gemiapp/ingestion_parity.py`,
+    `manage.py report_gemi_ingestion_parity [--date]`, μόνο ανάγνωση):** το `compare_with_legacy` θεωρεί «legacy»
+    κάθε `Company` της ημέρας, άρα μετρά ως εύρημα του legacy και όσα έφτιαξε η ίδια η ingestion (μένει για το
+    shadow-only ιστορικό). Το νέο αποδίδει κάθε εταιρεία από **καταγεγραμμένη προέλευση**, ποτέ από το ότι υπάρχει
+    η γραμμή: `unified_first` (observation με `ingest_outcome=created`· + πόσες ξαναείδε μετά ο legacy) ·
+    `legacy_first_confirmed` (ο legacy πρώτος, το unified τη βρήκε μόνο του μετά: race, όχι απώλεια) ·
+    `legacy_first_seen_known` · `awaiting_unified_run` (δεν έχει τρέξει επιτυχές run από τότε: δεν κρίνεται) ·
+    **`legacy_only`** (η απώλεια: ο legacy την αποθήκευσε, κανένα μεταγενέστερο επιτυχές unified run δεν την
+    κατέγραψε) · **`unified_failed_to_store`** (το unified τη βρήκε πρώτο αλλά quarantine/write failure, και την
+    αποθήκευσε ο legacy) · `other_writer` (hydration/admin: ποτέ «legacy»). «Legacy» = `imported_at` μέσα στο
+    παράθυρο ενός `ImportRun` της ημέρας. Χωριστά: late publications (unified-only εκ κατασκευής), quarantined,
+    write_failed, duplicates, failed/incomplete/anomaly runs. Verdict: `OK` / `PENDING` / `MISS` / `NOT_MEASURED`
+    (ημέρα χωρίς unified run δεν είναι ποτέ «OK»)· σε `MISS` η εντολή βγαίνει non-zero.
+  - 41 νέα tests (`gemiapp/test_ingestion_ops.py`)· mutation check 17/17· **2.387 tests OK**· `check`,
+    `makemigrations --check` καθαρά· **καμία migration**.
+
+- **Ενιαία ingestion ΓΕΜΗ, φάσεις 1–4 (2026-10-07). Στο `main` (`d12d845`), ΑΔΡΑΝΗΣ: ΔΕΝ είναι ενεργή σε
+  production (`GEMI_DISCOVERY_V2_ENABLED=0`). Ο legacy importer (`import_for_date`) παραμένει η canonical
   production λήψη. Το νέο 14ήμερο παράθυρο πιστοποίησης G4 ΔΕΝ έχει ξεκινήσει — ξεκινά μόνο όταν η
   προγραμματισμένη ingestion ενεργοποιηθεί πραγματικά σε production· το merge/deploy αδρανούς κώδικα δεν το ξεκινά.**
   - **Το πρόβλημα:** το Discovery v2 κατέβαζε σελίδες `/companies` με πλήρεις εγγραφές (έως 200), κρατούσε μόνο
@@ -2147,18 +2197,20 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Ενιαία ingestion — επόμενα βήματα (κανένα δεν έχει γίνει):** (1) merge/deploy του αδρανούς κώδικα (η `0058`
-  εφαρμόζεται από το `preDeployCommand`)· (2) χειροκίνητο `--dry-run` σε production και σύγκριση με την έξοδο του
-  G4 cycle· (3) πρώτο πραγματικό χειροκίνητο run· (4) **μόνο τότε** εγγραφή στο `apps.SCHEDULES` (πρώτα ανά 30′,
-  μετά 10′, σε λεπτό εκτός `:00`) — εκεί ξεκινά το νέο 14ήμερο G4· (5) απόσυρση του legacy fetch μόνο με τεκμήριο
-  `ImportRun.created_count == 0`. **Ανοιχτές αποφάσεις:** (α) ενδοημερήσια ανανέωση υπαρχουσών εταιρειών όταν
+- **Ενιαία ingestion — επόμενα βήματα:** (1) merge του `feature/gemi-ingestion-ops-safety` στο `main` και deploy
+  (καμία migration· με flag 0 δεν δημιουργείται γραμμή schedule)· (2) `manage.py sendtestemail --admins` σε
+  production, ώστε να είναι βέβαιο ότι τα alerts φτάνουν· (3) **ενεργοποίηση:** `GEMI_DISCOVERY_V2_ENABLED=1` στο
+  Render → redeploy → μία γραμμή `13,43 * * * *`· **εκεί ξεκινά το νέο 14ήμερο G4**· (4) καθημερινά
+  `report_gemi_ingestion_parity` (verdict `OK`, `legacy_only=0`, `unified_failed_to_store=0`) και
+  `report_gemi_request_budget`· (5) μετά από σταθερή λειτουργία, 10′ (ξεχωριστή απόφαση)· (6) απόσυρση του legacy
+  fetch μόνο με τεκμήριο parity. **Ανοιχτές αποφάσεις:** (α) ενδοημερήσια ανανέωση υπαρχουσών εταιρειών όταν
   φύγει ο legacy fetch (η σελίδα 1 τις περιέχει ήδη: μηδέν αιτήματα, αλλά σημαίνει overwrite)· (β) αν οι
   late publications θα φαίνονται στο legacy dashboard/CSV σε όγκο· (γ) overlap 100 + ημερήσιο «βαθύ» sweep·
-  (δ) το `compare_with_legacy` χάνει νόημα όταν το ingest γράφει Company — η σύγκριση πρέπει να διαβάζει το
-  `ingest_outcome`· (ε) εγγραφή που αποτυγχάνει **μόνιμα** με απρόσμενο σφάλμα κρατά το σύνορο ακίνητο
-  (σκόπιμα): φαίνεται ως `consecutive_failures` στον cursor και `failed` runs, αλλά δεν υπάρχει ακόμη ενεργή
-  ειδοποίηση operator γι' αυτό·
-  (στ) `save_limit: 50` του django-q: 144 επιτυχή tasks/ημέρα θα σπρώχνουν έξω το ιστορικό των άλλων.
+  (δ) `save_limit: 50` του django-q: 48 (αργότερα 144) επιτυχή tasks/ημέρα θα σπρώχνουν έξω το ιστορικό των
+  άλλων· (ε) τα alerts της ingestion εξαρτώνται από το ότι **τρέχει** το task: νεκρός worker/cluster δεν
+  ειδοποιεί (το ίδιο κενό με τα digests — το heartbeat follow-up παραμένει ανοιχτό)· (στ) μέσα στον
+  προγραμματισμένο κύκλο ένα σφάλμα επικύρωσης σχήματος ΓΕΜΗ ειδοποιεί μετά από 3 συνεχόμενα runs (~1,5 ώρα
+  στα 30′), όχι αμέσως· ο legacy importer συνεχίζει να ειδοποιεί αμέσως για το δικό του run.
 
 - **Email deliverability rollout (χειροκίνητο):** deploy (η `0057` εφαρμόζεται από το `preDeployCommand`) →
   `python manage.py backfill_email_delivery_suppressions` (dry run) → έλεγχος counters →
@@ -2368,6 +2420,17 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-10-07 — Ενιαία ingestion: alerts, parity, έτοιμο (κλειστό) schedule.** Νέα: `gemiapp/ingestion_alerts.py`,
+  `gemiapp/ingestion_parity.py`, `manage.py report_gemi_ingestion_parity`, `gemiapp/test_ingestion_ops.py`.
+  Αλλαγές: `gemiapp/apps.py` (εγγραφή `13,43 * * * *` με `requires`· γενίκευση του gate), `gemiapp/tasks.py`
+  (alerts μετά τον κύκλο, `managed_alerting`), `config/operator_alerts.py` (`managed_alerting`,
+  `ManagedAlertFilter`), `config/settings.py` (logger, filter, 4 ρυθμίσεις), `.env.example`,
+  `ingestion/discovery.py` και `ingestion_cycle.py` (μόνο docstrings), pins σε `test_operator_alerts.py`,
+  `tests.py`, `test_ingestion_cycle.py`. Προηγήθηκαν: fast-forward merge των φάσεων 1–4 στο `main` (`d12d845`)
+  και επιτυχές χειροκίνητο production `--dry-run` (από τον χρήστη). Επαλήθευση: 41 focused tests, mutation check
+  17/17, σχετικά suites (296), `check`, `makemigrations --check`, **2.387 tests OK**. Καμία migration, κανένα
+  deploy, καμία εντολή σε production, flag 0.
 
 - **2026-10-07 — Ενιαία ingestion: το `write_failed` δεν προχωρά πια τον cursor.** Αλλαγές:
   `ingestion/discovery.py` (`STOP_INGEST_WRITE_FAILED`, το run κλείνει `failed`, καμία επόμενη σελίδα), κείμενο

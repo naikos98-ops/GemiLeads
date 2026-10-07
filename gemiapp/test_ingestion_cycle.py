@@ -596,16 +596,14 @@ class IngestionCycleTestCase(CycleTestCase):
 
 
 class DormantTests(IngestionCycleTestCase):
-    def test_nothing_schedules_the_cycle_and_ingest_is_off_by_default(self):
+    def test_ingest_is_off_by_default_and_the_schedule_entry_is_gated_on_it(self):
         self.assertFalse(settings.GEMI_DISCOVERY_V2_ENABLED)
-        scheduled = [entry["func"] for entry in gemi_apps.SCHEDULES]
-        self.assertNotIn("gemiapp.tasks.run_gemi_ingestion_cycle_task", scheduled)
-        self.assertFalse([func for func in scheduled if "ingestion" in func or "discovery" in func])
-        self.assertEqual(sorted(scheduled), sorted([
-            "gemiapp.tasks.run_daily_pipeline_task", "gemiapp.tasks.run_intraday_pipeline_task",
-            "gemiapp.tasks.drain_pending_outreach_task", "gemiapp.tasks.generate_task_due_notifications_task",
-        ]))
-        self.assertEqual({entry["func"]: entry["cron"] for entry in gemi_apps.SCHEDULES}[
+        entry = {item["func"]: item for item in gemi_apps.SCHEDULES}["gemiapp.tasks.run_gemi_ingestion_cycle_task"]
+        self.assertEqual(entry["requires"], "gemiapp.ingestion.discovery.ingest_enabled")
+        from django_q.models import Schedule
+
+        self.assertFalse(Schedule.objects.filter(func=entry["func"]).exists())   # no row while the flag is off
+        self.assertEqual({item["func"]: item["cron"] for item in gemi_apps.SCHEDULES}[
             "gemiapp.tasks.run_intraday_pipeline_task"], "0 8,11,14,17,20,23 * * *")
 
     def test_the_cycle_refuses_before_any_lock_request_or_write_while_the_flag_is_off(self):

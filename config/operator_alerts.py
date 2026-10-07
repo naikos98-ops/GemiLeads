@@ -15,8 +15,38 @@ Lives in ``config`` rather than ``gemiapp`` on purpose: Django configures loggin
 """
 
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from django.utils.log import AdminEmailHandler
+
+# The one logger that still emails while a managed section is running (see ``managed_alerting``).
+MANAGED_ALERT_LOGGER = "gemiapp.ingestion_alerts"
+_managed = ContextVar("operator_alerts_managed", default=False)
+
+
+@contextmanager
+def managed_alerting():
+    """Run a block whose failures are reported by an alert policy instead of one email per ERROR.
+
+    Every ERROR on an operator logger normally emails the operators. That is right for the legacy import, which
+    runs seven times a day. The scheduled ingestion cycle runs every few minutes: during a GEMI outage each run
+    would log its own client ERROR and send its own email. Inside this block those records still reach the
+    console handler -- the server log is unchanged -- but only ``MANAGED_ALERT_LOGGER``, the cycle's alert
+    policy, may email. Outside the block nothing changes.
+    """
+    token = _managed.set(True)
+    try:
+        yield
+    finally:
+        _managed.reset(token)
+
+
+class ManagedAlertFilter(logging.Filter):
+    """Drops, from the email handler only, records a managed section's alert policy answers for."""
+
+    def filter(self, record):
+        return not _managed.get() or record.name == MANAGED_ALERT_LOGGER
 
 
 class OperatorEmailHandler(AdminEmailHandler):

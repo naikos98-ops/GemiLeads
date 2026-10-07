@@ -1358,7 +1358,7 @@ class ScheduleRegistrationTests(TestCase):
         # Re-registering updates in place; it must never add a row.
         from gemiapp.apps import SCHEDULES
 
-        self.assertEqual(Schedule.objects.count(), len(SCHEDULES))
+        self.assertEqual(Schedule.objects.count(), len([e for e in SCHEDULES if "requires" not in e]))
         # An existing row keeps its next_run; only creation seeds it.
         self.assertEqual(stale.next_run, kept_next_run)
 
@@ -1406,7 +1406,7 @@ class DuplicateScheduleRepairTests(TestCase):
 
         setup_daily_pipeline_schedule(None)
         setup_daily_pipeline_schedule(None)
-        self.assertEqual(Schedule.objects.count(), len(SCHEDULES))
+        self.assertEqual(Schedule.objects.count(), len([e for e in SCHEDULES if "requires" not in e]))
 
 
 class PipelineOverlapGuardTests(TestCase):

@@ -790,7 +790,13 @@ class ComparisonReport:
 
 
 def compare_with_legacy(target_date: date, *, stream: str = STREAM_COMPANIES) -> ComparisonReport:
-    """What the legacy pipeline would call new that day, beside what Discovery v2 observed. Read-only."""
+    """What the legacy pipeline would call new that day, beside what Discovery v2 observed. Read-only.
+
+    Valid for the shadow-only period, when only the legacy importer created ``Company`` rows. "Legacy" here is
+    every row dated that day, so once Discovery's ingest creates companies too this counts its own rows as
+    legacy finds. For the parallel period use ``gemiapp.ingestion_parity.compare_unified_with_legacy``, which
+    attributes each company from recorded provenance instead.
+    """
     Company = apps.get_model("gemiapp", "Company")
     GemiDiscoveryRun = apps.get_model("gemiapp", "GemiDiscoveryRun")
     GemiDiscoveryObservation = apps.get_model("gemiapp", "GemiDiscoveryObservation")

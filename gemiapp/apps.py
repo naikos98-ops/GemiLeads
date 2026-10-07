@@ -43,6 +43,18 @@ SCHEDULES = [
         "cron": "0 8 * * *",
         "requires_schema": "gemiapp.notifications.notification_schema_ready",
     },
+    # The lean GEMI ingestion cycle (gemiapp.ingestion_cycle), first rollout cadence: every 30 minutes, on
+    # minutes 13 and 43 so it never fires together with the :00 daily/intraday imports (or 07:37 / 08:00).
+    # "requires": registered only while GEMI_DISCOVERY_V2_ENABLED is on. It is off by default, so no row exists
+    # and nothing runs; turning the flag on (a redeploy runs migrate, which runs this registration) creates
+    # exactly one row, and turning it off removes it. The task refuses without the flag as well. Signals and
+    # opportunities stay SHADOW either way; the legacy importer and both schedules above are untouched.
+    {
+        "func": "gemiapp.tasks.run_gemi_ingestion_cycle_task",
+        "name": "GEMI Unified Ingestion (SHADOW)",
+        "cron": "13,43 * * * *",
+        "requires": "gemiapp.ingestion.discovery.ingest_enabled",
+    },
 ]
 
 
@@ -57,18 +69,20 @@ def setup_daily_pipeline_schedule(sender, **kwargs):
 
     An entry with "requires_schema" is schema-aware: exactly one row while that check (database
     introspection, never a query on the model) passes, none otherwise, so this holds at any migration
-    state. Entries without it are registered exactly as before.
+    state. An entry with "requires" is gated the same way by any other condition (a feature flag): one row
+    while it holds, none otherwise. Entries without either are registered exactly as before.
     """
     try:
         from django.utils.module_loading import import_string
         from django_q.models import Schedule
 
         for entry in SCHEDULES:
-            if "requires_schema" in entry:
-                if not import_string(entry["requires_schema"])():
+            gate = entry.get("requires_schema") or entry.get("requires")
+            if gate:
+                if not import_string(gate)():
                     removed = Schedule.objects.filter(func=entry["func"]).delete()[0]
                     if removed:
-                        logger.info("Removed the %s schedule: its table does not exist", entry["func"])
+                        logger.info("Removed the %s schedule: its condition (%s) does not hold", entry["func"], gate)
                     continue
 
             duplicates = list(

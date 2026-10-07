@@ -153,7 +153,8 @@ class ConfigurationTests(SimpleTestCase):
     def test_exactly_the_ingestion_loggers_and_the_radar_mirror_carry_the_email_handler(self):
         # The G4 legacy->organization Radar mirror alerts too: a Radar it cannot mirror must not diverge silently.
         self.assertEqual(tuple(settings_module.OPERATOR_ALERT_LOGGERS),
-                         (CLIENT_LOGGER, SERVICES_LOGGER, "gemiapp.legacy_radar_sync"))
+                         (CLIENT_LOGGER, SERVICES_LOGGER, "gemiapp.legacy_radar_sync",
+                          "gemiapp.ingestion_alerts"))
         for name in settings_module.OPERATOR_ALERT_LOGGERS:
             logger = logging.getLogger(name)
             self.assertEqual(sum(isinstance(h, OperatorEmailHandler) for h in logger.handlers), 1, name)
@@ -173,7 +174,8 @@ class ConfigurationTests(SimpleTestCase):
     def test_the_email_handler_only_fires_outside_debug(self):
         handler = next(h for h in logging.getLogger(CLIENT_LOGGER).handlers if isinstance(h, OperatorEmailHandler))
         self.assertEqual(handler.level, logging.ERROR)
-        self.assertEqual([type(f).__name__ for f in handler.filters], ["RequireDebugFalse"])
+        # ManagedAlertFilter only acts inside the scheduled ingestion cycle; everywhere else it passes everything.
+        self.assertEqual([type(f).__name__ for f in handler.filters], ["RequireDebugFalse", "ManagedAlertFilter"])
 
     def test_the_test_runner_silences_operator_alerts(self):
         self.assertTrue(hasattr(fast_test_runner, "silence_operator_alerts"))

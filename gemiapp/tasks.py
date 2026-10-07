@@ -269,21 +269,50 @@ def run_gemi_ingestion_cycle_task():
     date-safe -- then NEW_COMPANY materialisation scoped to that run and the SHADOW opportunity pipeline. It
     holds its own non-hour-bucketed lock, so overlapping invocations do nothing.
 
-    Dormant, and deliberately not in apps.SCHEDULES: the legacy importer stays the canonical production fetch,
-    and scheduling this is a separate, explicit decision that also starts the new G4 certification window.
-    While GEMI_DISCOVERY_V2_ENABLED is off (the default) it refuses before any request or write, and reports
-    that instead of failing.
+    Its schedule entry in apps.SCHEDULES (every 30 minutes) is registered only while GEMI_DISCOVERY_V2_ENABLED
+    is on. That flag is off by default, so no schedule row exists and this task is dormant; if it is called
+    anyway it refuses before any request or write and reports that instead of failing. The legacy importer
+    stays the canonical production fetch. Enabling the flag in production is the explicit decision that starts
+    the new G4 certification window.
+
+    After a real cycle the operator-alert policy is evaluated (gemiapp.ingestion_alerts): an isolated failure
+    is only recorded, a persistent one emails the operators, a recovery says so. Alerting can never change or
+    fail the cycle.
     """
+    from gemiapp.ingestion.discovery import ingest_enabled
     from gemiapp.ingestion_cycle import IngestionCycleRefused, run_ingestion_cycle
 
+    from config.operator_alerts import managed_alerting
+
+    enabled = ingest_enabled()
     try:
-        report = run_ingestion_cycle()
+        # One voice: inside the cycle the per-request client ERRORs go to the server log only, and the alert
+        # policy below decides whether an operator is emailed. Otherwise every run of an outage would email.
+        with managed_alerting():
+            report = run_ingestion_cycle()
     except IngestionCycleRefused as refused:
         logger.warning("GEMI ingestion cycle refused: %s", refused)
+        if enabled:     # disabled is dormant, not a failure: nobody is alerted
+            _ingestion_alerts(lambda alerts: alerts.evaluate_refusal(str(refused)))
         return {"status": "refused", "reason": str(refused)}
     if report.failed_phases:
         logger.warning("GEMI ingestion cycle finished with failed phases: %s", report.failed_phases)
-    return report.summary()
+    summary = report.summary()
+    outcome = _ingestion_alerts(lambda alerts: alerts.evaluate_cycle(report))
+    if outcome is not None:
+        summary["alerts"] = outcome.summary()
+    return summary
+
+
+def _ingestion_alerts(evaluate):
+    """Run one alert evaluation. Alerting is best effort: whatever goes wrong here is logged and dropped."""
+    try:
+        from gemiapp import ingestion_alerts
+
+        return evaluate(ingestion_alerts)
+    except Exception:
+        logger.exception("GEMI ingestion alert evaluation failed; the cycle itself is unaffected")
+        return None
 
 
 def run_gemi_company_refresh_task():
