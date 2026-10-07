@@ -308,7 +308,7 @@ class BoundaryTests(StatusTestCase):
         self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0057_email_delivery_suppression")
+                         "0058_discovery_observation_ingest_outcome")
 
     def test_the_frozen_capture_signals_snapshots_timeline_and_ranking_are_untouched(self):
         self.put_assigned(self.maria)

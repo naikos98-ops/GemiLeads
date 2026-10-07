@@ -288,8 +288,14 @@ class PrecheckTests(CycleTestCase):
         self.assertEqual(Opportunity.objects.count(), 0)
 
     @override_settings(GEMI_DISCOVERY_V2_ENABLED=True)
-    def test_the_cutover_flag_refuses_the_cycle(self):
-        self.assertRefused("discovery ingest is off")
+    def test_company_ingest_being_enabled_is_reported_not_refused_and_this_cycle_still_ingests_nothing(self):
+        # The flag lets the separate ingestion cycle create Company rows; it says nothing about signal mode.
+        report, _ = self.cycle(item(LATE, OLD))
+        self.assertEqual(report.precheck.refusals, [])
+        self.assertIn("company ingest is enabled", [name for name, _, _ in report.precheck.checks])
+        self.assertEqual(report.discovery.mode, "shadow")
+        self.assertFalse(Company.objects.filter(gemi_number=str(LATE)).exists())
+        self.assertFalse(CompanySignal.objects.exclude(mode="shadow").exists())
 
     @override_settings(GEMI_DISCOVERY_V2_SHADOW=False)
     def test_the_shadow_flag_being_off_refuses_the_cycle(self):

@@ -17,13 +17,29 @@ Shadow first
 A10 changes nothing customer-visible. The legacy importer remains the only source of companies, digests and
 matching. ``mode="shadow"`` (the default) fetches, validates, classifies and records **only** into the
 discovery tables: no Company or CompanyActivity row is created or changed, no monitoring row is touched, no
-Signal exists, no digest changes. ``mode="ingest"`` persists newly discovered companies through the existing
-importer path (``company_defaults`` + ``update_or_create`` + ``sync_company_activities``), and is refused
-unless GEMI_DISCOVERY_V2_ENABLED is on; it is off, and nothing schedules it. Ingest **never writes over a
-company that already exists locally**: a record can now be newly discovered while its row is already stored
-(see "What counts as newly discovered"), and rewriting that row would let the future cutover path overwrite
-legacy-imported data with a discovery payload. Such a record is skipped by the writer and keeps its
-observation.
+Signal exists, no digest changes. ``mode="ingest"`` is refused unless GEMI_DISCOVERY_V2_ENABLED is on; it is
+off, and nothing schedules it.
+
+Ingest: the page that was fetched is the company
+------------------------------------------------
+A ``/companies`` search item is the full company record, so ingest creates the ``Company`` **from the page it
+just received** -- one request can create up to a page of companies, and no ``GET /companies?arGemi=<n>``
+follows. The write is the shared ``company_writer.create_company_from_search_item``: create-only, one savepoint
+per company (company and activities, or nothing), and date-safe. Per newly discovered record the outcome is
+stored on its observation (``ingest_outcome``):
+
+* ``created``          -- a valid record with no local row: created from the search payload;
+* ``already_local``    -- the row is already stored (see "What counts as newly discovered"): **never written
+  over**, so the legacy importer's data is never replaced by a discovery payload;
+* ``quarantined_date`` -- classified ``invalid_date``, or the writer refused the payload's own date (missing,
+  unreadable, before 1900 or in the future). No Company row: ``company_defaults`` would store such a date as
+  *today* and put the company into today's legacy digest. The observation stays as pending evidence;
+* ``write_failed``     -- an unexpected error for that one company; its savepoint rolled back, the batch
+  continues, and the evidence stays pending (pending-company hydration can recover it).
+
+None of these changes the classification, the frontier rule or the cursor: a quarantined or failed record
+advances the cursor exactly as a shadow run would, and is re-judged from its payload on every later run that
+still pages past it. ``update_or_create`` and ``company_defaults``' clamping are never reached from here.
 
 Data model
 ----------
@@ -119,7 +135,24 @@ and no date is ever clamped.
 Duplicates and reruns
 ---------------------
 Identifiers seen earlier in the same run are counted once. Overlapping pages, retries and reruns therefore
-produce no duplicate observations, and ingest mode upserts on ``gemi_number``, so no duplicate Company rows.
+produce no duplicate observations, and ingest mode is create-only on the unique ``gemi_number``, so no
+duplicate Company rows.
+
+Persistence
+-----------
+The run row, its observations and the cursor are written in **one transaction**, with the cursor row locked,
+so a frontier never advances without the evidence it was advanced on. Companies created by ingest commit per
+record, before that: a crash in between leaves companies without observations and a cursor that did not move,
+and the next run finds them above the unchanged frontier, already local, and records them then.
+
+Compact observations (frequent runs)
+------------------------------------
+By default every examined record is stored, every run. A run every few minutes would store the same few
+hundred ``known`` rows each time, so ``compact_observations=True`` stores an observation only when it says
+something new: no observation of that GEMI number exists yet today (local day), or its latest one today
+differs in classification, ingest outcome, source date, date quality or local existence. So the first
+sighting, every change and one row per number per day are always kept; an unchanged repeat is counted
+(``observations_suppressed``) and not stored. Counters, anomalies, the run row and the cursor are unaffected.
 
 Bootstrap
 ---------
@@ -177,6 +210,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from . import company_writer
 from .client import get_gemi_client, gemi_lane
 from .normalizer import normalize_event_date
 from .rate_budget import GemiLane
@@ -210,6 +244,14 @@ PAGE_BOUNDARY_VIOLATION = "page_boundary_violation"
 INVALID_IDENTIFIER = "invalid_identifier"
 DUPLICATE_RECORD = "duplicate_record"
 BLOCKING_ANOMALIES = frozenset({ORDERING_VIOLATION, PAGE_BOUNDARY_VIOLATION})
+
+# What ingest did with a newly discovered record (GemiDiscoveryObservation.ingest_outcome). "" = not ingested:
+# a shadow or bootstrap run, or a ``known`` record.
+INGEST_CREATED = "created"
+INGEST_ALREADY_LOCAL = "already_local"
+INGEST_QUARANTINED_DATE = "quarantined_date"
+INGEST_WRITE_FAILED = "write_failed"
+INGEST_WOULD_CREATE = "would_create"     # dry run only; never stored
 
 
 @dataclass(frozen=True)
@@ -275,6 +317,11 @@ class DiscoveryResult:
     duplicate_records: int = 0
     invalid_identifier_records: int = 0
     ingested_records: int = 0
+    would_ingest_records: int = 0        # ingest dry run: valid records with no local row
+    quarantined_date_records: int = 0    # ingest: no Company row, the date could not be stored as it is
+    ingest_failed_records: int = 0       # ingest: an unexpected write error for that one company
+    observations_stored: int = 0
+    observations_suppressed: int = 0     # compact runs: unchanged repeats of today's evidence, not stored
     overlap_known_records: int = 0
     highest_gemi_number: str = ""
     # The highest identifier seen that already exists locally: the only frontier a bootstrap may trust.
@@ -291,6 +338,12 @@ class DiscoveryResult:
     def blocking_anomalies(self) -> list:
         return [item for item in self.anomalies if item.get("kind") in BLOCKING_ANOMALIES]
 
+    @property
+    def discovered_gemi_numbers(self) -> list[str]:
+        """Every identifier this run classified as newly discovered, stored or suppressed: the numbers a scoped
+        materialisation of this run has to look at."""
+        return [row["gemi_number"] for row in self.observations if row["classification"] != KNOWN]
+
     def summary(self) -> dict:
         data = {key: value for key, value in self.__dict__.items() if key != "observations"}
         data["blocking_anomalies"] = len(self.blocking_anomalies)
@@ -304,6 +357,9 @@ class DiscoveryResult:
             f"{prefix}records examined={self.records_examined} known={self.known_records} new={self.new_records} "
             f"(already local={self.rediscovered_local_records}) late_publication={self.late_publication_records} "
             f"invalid_date={self.invalid_date_records} ingested={self.ingested_records}",
+            f"{prefix}ingest would_create={self.would_ingest_records} quarantined_date={self.quarantined_date_records} "
+            f"write_failed={self.ingest_failed_records} observations stored={self.observations_stored} "
+            f"suppressed={self.observations_suppressed}",
             f"{prefix}guardrails duplicates={self.duplicate_records} invalid_identifiers={self.invalid_identifier_records} "
             f"anomalies={len(self.anomalies)} blocking={len(self.blocking_anomalies)} overlap_known={self.overlap_known_records}",
             f"{prefix}frontier previous={self.previous_high_water_mark or 'none'} highest_seen={self.highest_gemi_number or 'none'} "
@@ -332,18 +388,24 @@ def _classify(item: dict, *, as_of: date) -> tuple[str, Any, str]:
     return NEW_INCORPORATION, normalized.value, normalized.quality.value
 
 
-def _fetch_page(client, *, offset: int, policy: DiscoveryPolicy) -> dict:
+def _fetch_page(client, *, offset: int, policy: DiscoveryPolicy, max_wait: float | None = None) -> dict:
+    # The lane's own default wait unless the caller bounds it (the frequent ingestion cycle does).
+    bounded = {} if max_wait is None else {"max_wait": max_wait}
     with gemi_lane(GemiLane.DISCOVERY):
         return client.search_companies({
             "resultsSortBy": SORT_BY_GEMI_NUMBER_DESCENDING,
             "resultsOffset": offset,
             "resultsSize": policy.page_size,
-        }, lane=GemiLane.DISCOVERY)
+        }, lane=GemiLane.DISCOVERY, **bounded)
 
 
 def _scan(client, *, policy: DiscoveryPolicy, max_pages: int, frontier: int | None, as_of: date,
-          result: DiscoveryResult, on_new=None) -> None:
-    """Page from the newest identifier downwards, measuring ordering and overlap. Raises nothing itself."""
+          result: DiscoveryResult, on_new=None, max_wait: float | None = None) -> None:
+    """Page from the newest identifier downwards, measuring ordering and overlap. Raises nothing itself.
+
+    ``on_new`` receives each page's newly discovered ``(item, gemi_number, classification)`` records while the
+    payload is still in memory and returns ``{gemi_number: ingest outcome}``, stored on their observations.
+    """
     offset = 0
     previous_number: int | None = None
     seen: set[str] = set()
@@ -351,13 +413,14 @@ def _scan(client, *, policy: DiscoveryPolicy, max_pages: int, frontier: int | No
     # frontier" flag: every newness decision below is made per record against ``frontier`` itself.
     at_or_below_frontier = 0
     for page_index in range(max_pages):
-        payload = _fetch_page(client, offset=offset, policy=policy)
+        payload = _fetch_page(client, offset=offset, policy=policy, max_wait=max_wait)
         items = payload.get("searchResults") or []
         if not items:
             result.stop_reason = STOP_END_OF_RESULTS
             return
         result.pages_fetched += 1
-        page_new: list[tuple[dict, str]] = []
+        page_new: list[tuple[dict, str, str]] = []
+        page_rows: dict[str, dict] = {}
         page_numbers: list[str] = []
         parsed: list[tuple[dict, str, int]] = []
         for item in items:
@@ -403,6 +466,7 @@ def _scan(client, *, policy: DiscoveryPolicy, max_pages: int, frontier: int | No
                 result.observations.append({
                     "gemi_number": text, "classification": KNOWN, "incorporation_date": known_value,
                     "incorporation_date_quality": known_quality, "company_existed": True, "page_index": page_index,
+                    "ingest_outcome": "",
                 })
                 continue
             classification, value, quality = _classify(item, as_of=as_of)
@@ -410,14 +474,18 @@ def _scan(client, *, policy: DiscoveryPolicy, max_pages: int, frontier: int | No
             result.rediscovered_local_records += int(exists_locally)
             result.late_publication_records += int(classification == LATE_PUBLICATION)
             result.invalid_date_records += int(classification == INVALID_DATE)
-            result.observations.append({
+            page_rows[text] = {
                 "gemi_number": text, "classification": classification, "incorporation_date": value,
                 "incorporation_date_quality": quality, "company_existed": exists_locally, "page_index": page_index,
-            })
-            page_new.append((item, text))
+                "ingest_outcome": "",
+            }
+            result.observations.append(page_rows[text])
+            page_new.append((item, text, classification))
 
         if on_new is not None and page_new:
-            on_new(page_new)
+            for gemi_number, outcome in on_new(page_new).items():
+                # A dry run's "would create" is a report, not a stored outcome.
+                page_rows[gemi_number]["ingest_outcome"] = "" if outcome == INGEST_WOULD_CREATE else outcome
         if result.blocking_anomalies:
             result.stop_reason = STOP_ANOMALY
             return
@@ -433,35 +501,82 @@ def _scan(client, *, policy: DiscoveryPolicy, max_pages: int, frontier: int | No
     result.stop_reason = STOP_PAGE_LIMIT
 
 
-def _ingest(records: list[tuple[dict, str]]) -> int:
-    """Persist newly discovered companies through the existing importer path, creating only.
+def _ingest(records: list[tuple[dict, str, str]], *, dry_run: bool = False) -> dict[str, str]:
+    """Create the newly discovered companies of one page from the payload already in memory. Returns the ingest
+    outcome per GEMI number. See "Ingest" in the module docstring.
 
-    A record above the frontier is newly discovered even when its ``Company`` row already exists, so this
-    writer -- the one place discovery touches customer-facing data -- refuses to write over a row that is
-    already stored, whatever the caller passes. Rewriting it would replace legacy-imported data with a
-    discovery payload the moment the cutover path is switched on; skipping it costs nothing, because the
-    observation is already recorded either way.
+    No GEMI request is made here, and nothing is ever written over: a record above the frontier is newly
+    discovered even when its ``Company`` row already exists, and that row stays exactly as it is.
     """
-    from ..services import company_defaults, sync_company_activities
-
     Company = apps.get_model("gemiapp", "Company")
-    numbers = [gemi_number for _, gemi_number in records]
+    numbers = [gemi_number for _, gemi_number, _ in records]
     already_local = set(Company.objects.filter(gemi_number__in=numbers).values_list("gemi_number", flat=True))
-    ingested = 0
-    with transaction.atomic():
-        for item, gemi_number in records:
-            if gemi_number in already_local:
-                logger.info("Discovery ingest kept the stored company %s: never written over.", gemi_number)
-                continue
-            company, _ = Company.objects.update_or_create(gemi_number=gemi_number, defaults=company_defaults(item))
-            sync_company_activities(company, item.get("activities"))
-            ingested += 1
-    return ingested
+    outcomes: dict[str, str] = {}
+    for item, gemi_number, classification in records:
+        if gemi_number in already_local:
+            outcomes[gemi_number] = INGEST_ALREADY_LOCAL
+            continue
+        if classification == INVALID_DATE:
+            outcomes[gemi_number] = INGEST_QUARANTINED_DATE   # never handed to the writer at all
+            continue
+        try:
+            written = company_writer.create_company_from_search_item(gemi_number, item, dry_run=dry_run)
+        except Exception as exc:  # that company's savepoint rolled back; the rest of the page still counts
+            outcomes[gemi_number] = INGEST_WRITE_FAILED
+            logger.error("Discovery ingest: writing GEMI %s failed: %s.", gemi_number, type(exc).__name__)
+            continue
+        outcomes[gemi_number] = {
+            company_writer.CREATED: INGEST_CREATED,
+            company_writer.WOULD_CREATE: INGEST_WOULD_CREATE,
+            company_writer.EXISTS: INGEST_ALREADY_LOCAL,
+            company_writer.REFUSED_DATE: INGEST_QUARANTINED_DATE,
+        }[written.status]
+        if written.status == company_writer.REFUSED_DATE:
+            logger.warning("Discovery ingest: GEMI %s quarantined: its incorporation date is %s.",
+                           gemi_number, written.date_problem)
+    return outcomes
 
 
-def _save_run(result: DiscoveryResult, cursor, *, stream: str, policy: DiscoveryPolicy, started_at) -> None:
+def _count_ingest(result: DiscoveryResult, outcomes: dict[str, str]) -> dict[str, str]:
+    values = list(outcomes.values())
+    result.ingested_records += values.count(INGEST_CREATED)
+    result.would_ingest_records += values.count(INGEST_WOULD_CREATE)
+    result.quarantined_date_records += values.count(INGEST_QUARANTINED_DATE)
+    result.ingest_failed_records += values.count(INGEST_WRITE_FAILED)
+    return outcomes
+
+
+OBSERVATION_FINGERPRINT = ("classification", "ingest_outcome", "incorporation_date", "incorporation_date_quality",
+                           "company_existed")
+
+
+def _fingerprint(row: dict) -> tuple:
+    return tuple(row[name] for name in OBSERVATION_FINGERPRINT)
+
+
+def _worth_storing(observations: list[dict], *, started_at) -> list[dict]:
+    """The compact policy: drop an observation that only repeats that GEMI number's latest evidence of today."""
+    GemiDiscoveryObservation = apps.get_model("gemiapp", "GemiDiscoveryObservation")
+    day_start = timezone.localtime(started_at).replace(hour=0, minute=0, second=0, microsecond=0)
+    numbers = [row["gemi_number"] for row in observations]
+    latest_today: dict[str, tuple] = {}
+    for start in range(0, len(numbers), 500):
+        rows = (GemiDiscoveryObservation.objects
+                .filter(gemi_number__in=numbers[start:start + 500], run__started_at__gte=day_start)
+                .order_by("id").values("gemi_number", *OBSERVATION_FINGERPRINT))
+        for row in rows:
+            latest_today[row["gemi_number"]] = _fingerprint(row)
+    return [row for row in observations if latest_today.get(row["gemi_number"]) != _fingerprint(row)]
+
+
+def _save_run(result: DiscoveryResult, cursor, *, stream: str, policy: DiscoveryPolicy, started_at,
+              compact: bool = False) -> None:
+    """Persist the run, its observations and the cursor. Callers wrap this in one transaction."""
     GemiDiscoveryRun = apps.get_model("gemiapp", "GemiDiscoveryRun")
     GemiDiscoveryObservation = apps.get_model("gemiapp", "GemiDiscoveryObservation")
+    to_store = _worth_storing(result.observations, started_at=started_at) if compact else result.observations
+    result.observations_stored = len(to_store)
+    result.observations_suppressed = len(result.observations) - len(to_store)
     run = GemiDiscoveryRun.objects.create(
         stream=stream, mode=result.mode, status=result.status, finished_at=timezone.now(),
         pages_fetched=result.pages_fetched, records_examined=result.records_examined, known_records=result.known_records,
@@ -475,9 +590,9 @@ def _save_run(result: DiscoveryResult, cursor, *, stream: str, policy: Discovery
     )
     GemiDiscoveryRun.objects.filter(pk=run.pk).update(started_at=started_at)
     result.run_id = run.pk
-    if result.observations:
+    if to_store:
         GemiDiscoveryObservation.objects.bulk_create([
-            GemiDiscoveryObservation(run=run, **observation) for observation in result.observations
+            GemiDiscoveryObservation(run=run, **observation) for observation in to_store
         ], batch_size=500)
     cursor.last_run = run
     cursor.last_statistics = result.summary()
@@ -486,8 +601,13 @@ def _save_run(result: DiscoveryResult, cursor, *, stream: str, policy: Discovery
 
 def run_discovery(*, mode: str = SHADOW, dry_run: bool = False, max_pages: int | None = None,
                   policy: DiscoveryPolicy | None = None, client=None, as_of: date | None = None,
-                  stream: str = STREAM_COMPANIES) -> DiscoveryResult:
-    """One Discovery v2 run. See the module docstring. Never touches customer-facing data in shadow mode."""
+                  stream: str = STREAM_COMPANIES, compact_observations: bool = False,
+                  max_wait: float | None = None) -> DiscoveryResult:
+    """One Discovery v2 run. See the module docstring. Never touches customer-facing data in shadow mode.
+
+    ``compact_observations`` applies the compact policy (frequent runs); ``max_wait`` bounds how long each page
+    request may wait for a slot in the shared rate budget (None: the lane's default).
+    """
     if mode not in (SHADOW, INGEST):
         raise ValueError(f"unsupported discovery mode: {mode}")
     if mode == INGEST and not ingest_enabled():
@@ -506,14 +626,15 @@ def run_discovery(*, mode: str = SHADOW, dry_run: bool = False, max_pages: int |
         result.status, result.stop_reason = "failed", STOP_NO_CURSOR
         result.error_message = "Ο cursor δεν έχει αρχικοποιηθεί· τρέξε πρώτα bootstrap_gemi_discovery_v2."
         if not dry_run:
-            _save_run(result, cursor, stream=stream, policy=policy, started_at=started_at)
+            with transaction.atomic():
+                _save_run(result, cursor, stream=stream, policy=policy, started_at=started_at)
         return result
 
-    on_new = (lambda records: setattr(result, "ingested_records", result.ingested_records + _ingest(records))) \
-        if (mode == INGEST and not dry_run) else None
+    # In ingest mode each page's newly discovered records are written from the payload that page returned.
+    on_new = (lambda records: _count_ingest(result, _ingest(records, dry_run=dry_run))) if mode == INGEST else None
     try:
         _scan(client, policy=policy, max_pages=max_pages, frontier=cursor.high_water_mark_value, as_of=as_of,
-              result=result, on_new=on_new)
+              result=result, on_new=on_new, max_wait=max_wait)
     except Exception as exc:  # the client's own errors: budget timeout, transport, validation, HTTP
         result.status = "failed"
         result.error_message = f"{type(exc).__name__}: {exc}"[:300]
@@ -526,29 +647,33 @@ def run_discovery(*, mode: str = SHADOW, dry_run: bool = False, max_pages: int |
         else:
             result.status = "success"
 
-    advance = result.status == "success" and not dry_run
-    if advance and result.highest_gemi_number:
-        result.resulting_high_water_mark = max(
-            [result.highest_gemi_number, cursor.high_water_mark or "0"], key=lambda value: int(value or 0),
-        )
-        result.cursor_advanced = result.resulting_high_water_mark != cursor.high_water_mark
-    else:
+    if dry_run:
         result.resulting_high_water_mark = cursor.high_water_mark
-
-    if not dry_run:
-        cursor.last_attempted_at = started_at
-        if result.status == "success":
-            cursor.last_success_at = timezone.now()
-            cursor.consecutive_failures = 0
-            cursor.high_water_mark = result.resulting_high_water_mark
-            cursor.high_water_mark_value = int(result.resulting_high_water_mark or 0) or None
-        elif result.status == "failed":
-            cursor.consecutive_failures += 1
-        if result.blocking_anomalies:
-            cursor.status = "anomaly"
-            cursor.anomaly_reason = result.blocking_anomalies[0]["kind"]
-            cursor.anomaly_detected_at = timezone.now()
-        _save_run(result, cursor, stream=stream, policy=policy, started_at=started_at)
+    else:
+        # One transaction, the cursor row locked: the run, the evidence and the frontier move together, and
+        # the frontier is compared with what is stored now, never with the copy read before the scan.
+        with transaction.atomic():
+            cursor = type(cursor).objects.select_for_update().get(pk=cursor.pk)
+            result.resulting_high_water_mark = cursor.high_water_mark
+            if result.status == "success" and result.highest_gemi_number:
+                result.resulting_high_water_mark = max(
+                    [result.highest_gemi_number, cursor.high_water_mark or "0"], key=lambda value: int(value or 0),
+                )
+                result.cursor_advanced = result.resulting_high_water_mark != cursor.high_water_mark
+            cursor.last_attempted_at = started_at
+            if result.status == "success":
+                cursor.last_success_at = timezone.now()
+                cursor.consecutive_failures = 0
+                cursor.high_water_mark = result.resulting_high_water_mark
+                cursor.high_water_mark_value = int(result.resulting_high_water_mark or 0) or None
+            elif result.status == "failed":
+                cursor.consecutive_failures += 1
+            if result.blocking_anomalies:
+                cursor.status = "anomaly"
+                cursor.anomaly_reason = result.blocking_anomalies[0]["kind"]
+                cursor.anomaly_detected_at = timezone.now()
+            _save_run(result, cursor, stream=stream, policy=policy, started_at=started_at,
+                      compact=compact_observations)
     logger.info(
         "Discovery v2 %s run: status=%s pages=%s examined=%s new=%s late=%s cursor_advanced=%s",
         mode, result.status, result.pages_fetched, result.records_examined, result.new_records,
@@ -604,7 +729,8 @@ def bootstrap_discovery_cursor(*, policy: DiscoveryPolicy | None = None, client=
             cursor.high_water_mark = result.resulting_high_water_mark
             cursor.high_water_mark_value = int(result.resulting_high_water_mark or 0) or None
             result.cursor_advanced = True
-        _save_run(result, cursor, stream=stream, policy=policy, started_at=started_at)
+        with transaction.atomic():
+            _save_run(result, cursor, stream=stream, policy=policy, started_at=started_at)
     return result
 
 

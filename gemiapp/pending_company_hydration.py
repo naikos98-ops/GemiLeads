@@ -75,7 +75,9 @@ the shared budget and show up in ``report_gemi_request_budget``.
 
 Create-only
 -----------
-For each number, immediately before writing and inside one savepoint:
+The write is the shared ``gemiapp.ingestion.company_writer.create_company_from_search_item`` -- the same
+date-safe, create-only writer Discovery's ingest uses, so there is one rule. For each number, immediately
+before writing and inside one savepoint:
 
 1. if a ``Company`` with that number exists -> skip; nothing is updated, no activity is rewritten;
 2. otherwise ``Company.objects.create(gemi_number=..., **company_defaults(item))`` and
@@ -122,14 +124,13 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import date
 from typing import Callable
 
 from django.apps import apps
 from django.conf import settings
-from django.db import IntegrityError, transaction
 from django.db.models import Exists, Min, OuterRef
 
+from .ingestion import company_writer
 from .ingestion.client import get_gemi_client
 from .ingestion.discovery import LATE_PUBLICATION, NEW_INCORPORATION, normalize_gemi_number
 from .ingestion.errors import GemiApiError, GemiResponseValidationError
@@ -152,6 +153,13 @@ SKIPPED_DATE_CLAMPED = "skipped_date_clamped"
 HYDRATABLE_CLASSIFICATIONS = (NEW_INCORPORATION, LATE_PUBLICATION)
 NOT_FOUND = "not_found"
 AMBIGUOUS = "ambiguous"
+# The shared writer's outcomes, in this module's own (unchanged) vocabulary.
+_STATUS_OF = {
+    company_writer.CREATED: CREATED,
+    company_writer.WOULD_CREATE: WOULD_CREATE,
+    company_writer.EXISTS: RACE_SKIPPED,
+    company_writer.REFUSED_DATE: SKIPPED_DATE_CLAMPED,
+}
 
 
 class HydrationDisabled(Exception):
@@ -266,35 +274,6 @@ def _exact_item(payload, number: str):
     return matches[0], ""
 
 
-def _legacy_exposure(defaults: dict) -> tuple[bool, bool]:
-    """(stored as today, clamped): what company_defaults will store, judged with its own clock."""
-    stored = defaults["incorporation_date"]
-    source = str(defaults["raw_data"].get("incorporationDate") or "")[:10]
-    try:
-        clamped = date.fromisoformat(source) != stored
-    except ValueError:
-        clamped = True
-    return stored == date.today(), clamped
-
-
-def _create_only(number: str, item: dict, defaults: dict):
-    """(status, activity rows created). One savepoint: company and activities, or nothing."""
-    from .services import sync_company_activities
-
-    Company = apps.get_model("gemiapp", "Company")
-    try:
-        with transaction.atomic():
-            if Company.objects.filter(gemi_number=number).exists():
-                return RACE_SKIPPED, 0
-            company = Company.objects.create(gemi_number=number, **defaults)
-            counts = sync_company_activities(company, item.get("activities"))
-    except IntegrityError:
-        if Company.objects.filter(gemi_number=number).exists():
-            return RACE_SKIPPED, 0      # another writer won the insert; its row is left exactly as it is
-        raise
-    return CREATED, int(getattr(counts, "created", 0) or 0)
-
-
 def hydrate_pending_companies(
     *, limit: int = DEFAULT_LIMIT, dry_run: bool = False, pace_seconds: float = DEFAULT_PACE_SECONDS,
     client=None, sleep: Callable[[float], None] = time.sleep,
@@ -309,8 +288,6 @@ def hydrate_pending_companies(
         raise ValueError(f"limit must be between 1 and {MAX_LIMIT}")
     if pace_seconds < 0:
         raise ValueError("pace_seconds must not be negative")
-    from .services import company_defaults
-
     Company = apps.get_model("gemiapp", "Company")
     report = HydrationReport(dry_run=dry_run, limit=limit, pace_seconds=pace_seconds)
     report.pending_before = pending_numbers_queryset().count()
@@ -351,21 +328,14 @@ def hydrate_pending_companies(
             logger.warning("Pending hydration: GEMI %s -> %s.", number, problem)
             continue
         try:
-            defaults = company_defaults(item)
-            as_today, clamped = _legacy_exposure(defaults)
-            if clamped:
-                # The payload is the last authority: a date company_defaults would clamp is never written.
-                status, activities = SKIPPED_DATE_CLAMPED, 0
-            elif dry_run:
-                exists = Company.objects.filter(gemi_number=number).exists()
-                status, activities = (RACE_SKIPPED if exists else WOULD_CREATE), 0
-            else:
-                status, activities = _create_only(number, item, defaults)
+            # The payload is the last authority: a date company_defaults would clamp is never written.
+            outcome = company_writer.create_company_from_search_item(number, item, dry_run=dry_run)
         except Exception as exc:  # the savepoint already rolled back: no partial row
             report.write_failures += 1
             report.failed_gemi_numbers.append(number)
             logger.error("Pending hydration: writing GEMI %s failed: %s.", number, type(exc).__name__)
             continue
+        status = _STATUS_OF[outcome.status]
         if status == SKIPPED_DATE_CLAMPED:
             report.skipped_date_clamped += 1
             report.date_clamped_gemi_numbers.append(number)
@@ -376,9 +346,8 @@ def hydrate_pending_companies(
             continue
         report.created += int(status == CREATED)
         report.would_create += int(status == WOULD_CREATE)
-        report.activities_created += activities
-        report.stored_as_today += int(as_today)
-        report.date_clamped += int(clamped)
+        report.activities_created += outcome.activities_created
+        report.stored_as_today += int(outcome.stored_as_today)
 
     report.pending_after = pending_numbers_queryset().count()
     logger.info(

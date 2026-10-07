@@ -449,8 +449,9 @@ class GemiRefreshRunAdmin(DiscoveryReadOnlyAdmin):
 
 @admin.register(GemiDiscoveryObservation)
 class GemiDiscoveryObservationAdmin(DiscoveryReadOnlyAdmin):
-    list_display = ("gemi_number", "classification", "incorporation_date", "incorporation_date_quality", "run")
-    list_filter = ("classification", "incorporation_date_quality")
+    list_display = ("gemi_number", "classification", "ingest_outcome", "incorporation_date",
+                    "incorporation_date_quality", "run")
+    list_filter = ("classification", "ingest_outcome", "incorporation_date_quality")
     search_fields = ("gemi_number",)
 
 

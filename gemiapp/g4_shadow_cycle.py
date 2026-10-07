@@ -25,10 +25,12 @@ bounded by a window and a limit, and skips the signals this cycle just processed
 
 Safety
 ------
-Shadow only, and the precheck fails closed: Discovery ingest off, the discovery shadow flag on, the pipeline's
-modes still SHADOW-only, no LIVE signal in the database, the 2.0 tables present, the discovery cursor
-initialised, and the GEMI collector configured. Nothing here enables LIVE, changes a signal's mode, registers a
-schedule, ingests a company or writes a customer-visible row. No credential, host or environment name is
+Shadow only, and the precheck fails closed: the discovery shadow flag on, the pipeline's modes still
+SHADOW-only, no LIVE signal in the database, the 2.0 tables present, the discovery cursor initialised, and the
+GEMI collector configured. Company ingest (``GEMI_DISCOVERY_V2_ENABLED``) may be on -- it is reported, not
+refused: it concerns who may create ``Company`` rows (``gemiapp.ingestion_cycle``), never signal mode, and this
+cycle still runs Discovery in shadow mode and ingests nothing itself. Nothing here enables LIVE, changes a
+signal's mode, registers a schedule, ingests a company or writes a customer-visible row. No credential, host or environment name is
 hard-coded; what the precheck reports it reads from the running configuration.
 
 GEMI requests
@@ -298,8 +300,15 @@ def preflight() -> Precheck:
         environment=str(getattr(settings, "GEMI_LEADS_ENVIRONMENT", "")),
         database_vendor=connection.vendor,
     )
-    check.checks.append(("discovery ingest is off", not ingest_enabled(),
-                         "" if not ingest_enabled() else "GEMI_DISCOVERY_V2_ENABLED is on: this cycle is shadow only"))
+    # Company ingest (GEMI_DISCOVERY_V2_ENABLED) is not a refusal: it only lets Discovery's ingest mode create
+    # Company rows, create-only, and says nothing about signal mode. This cycle runs Discovery in shadow mode
+    # either way; what must hold is below -- SHADOW signals, a SHADOW-only pipeline and no LIVE signal.
+    if ingest_enabled():
+        check.checks.append(("company ingest is enabled", True,
+                             "Discovery ingest may create Company rows (create-only); signals and opportunities "
+                             "stay SHADOW"))
+    else:
+        check.checks.append(("discovery ingest is off", True, ""))
     check.checks.append(("discovery shadow flag is on", shadow_only(),
                          "" if shadow_only() else "GEMI_DISCOVERY_V2_SHADOW is off"))
     shadow_pipeline = tuple(PIPELINE_MODES) == (SHADOW,)

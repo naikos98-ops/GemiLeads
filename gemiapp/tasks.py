@@ -262,6 +262,30 @@ def run_gemi_discovery_v2_shadow_task():
     return run_discovery(mode=SHADOW).summary()
 
 
+def run_gemi_ingestion_cycle_task():
+    """One lean GEMI ingestion cycle (gemiapp.ingestion_cycle). Returns the counters.
+
+    Discovery v2 in ingest mode -- companies are created from the search page that was fetched, create-only and
+    date-safe -- then NEW_COMPANY materialisation scoped to that run and the SHADOW opportunity pipeline. It
+    holds its own non-hour-bucketed lock, so overlapping invocations do nothing.
+
+    Dormant, and deliberately not in apps.SCHEDULES: the legacy importer stays the canonical production fetch,
+    and scheduling this is a separate, explicit decision that also starts the new G4 certification window.
+    While GEMI_DISCOVERY_V2_ENABLED is off (the default) it refuses before any request or write, and reports
+    that instead of failing.
+    """
+    from gemiapp.ingestion_cycle import IngestionCycleRefused, run_ingestion_cycle
+
+    try:
+        report = run_ingestion_cycle()
+    except IngestionCycleRefused as refused:
+        logger.warning("GEMI ingestion cycle refused: %s", refused)
+        return {"status": "refused", "reason": str(refused)}
+    if report.failed_phases:
+        logger.warning("GEMI ingestion cycle finished with failed phases: %s", report.failed_phases)
+    return report.summary()
+
+
 def run_gemi_company_refresh_task():
     """One monitored company refresh run (B4). Returns the counts.
 

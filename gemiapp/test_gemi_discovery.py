@@ -127,7 +127,7 @@ class SchemaTests(TestCase):
         self.assertEqual(
             {field.name for field in GemiDiscoveryObservation._meta.concrete_fields},
             {"id", "run", "gemi_number", "classification", "incorporation_date", "incorporation_date_quality",
-             "company_existed", "page_index", "created_at"},
+             "company_existed", "page_index", "ingest_outcome", "created_at"},
         )
         forbidden = ("name", "email", "phone", "afm", "vat", "person", "address", "payload", "raw")
         for model in (GemiDiscoveryCursor, GemiDiscoveryRun, GemiDiscoveryObservation):

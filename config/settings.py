@@ -444,6 +444,10 @@ GEMI_DISCOVERY_V2_SHADOW = os.environ.get("GEMI_DISCOVERY_V2_SHADOW", "1") == "1
 GEMI_DISCOVERY_PENDING_COMPANY_HYDRATION_ENABLED = (
     os.environ.get("GEMI_DISCOVERY_PENDING_COMPANY_HYDRATION_ENABLED", "0") == "1"
 )
+# The lean ingestion cycle (gemiapp.ingestion_cycle; dormant, not scheduled): how long one page request may
+# wait for a slot in the shared GEMI rate budget. Short on purpose -- a starved run fails fast and the next one
+# repeats the window, instead of outliving the interval it is meant to run in. The budget itself is unchanged.
+GEMI_INGESTION_MAX_WAIT_SECONDS = float(os.environ.get("GEMI_INGESTION_MAX_WAIT_SECONDS", "120"))
 # Paging and safety limits. The overlap is how many already-known records must be seen beyond the frontier
 # before a run may stop: stopping at the first known record would miss irregular ordering and late arrivals.
 GEMI_DISCOVERY_PAGE_SIZE = int(os.environ.get("GEMI_DISCOVERY_PAGE_SIZE", "200"))

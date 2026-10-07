@@ -100,7 +100,7 @@ class ContractTests(TestCase):
         self.assertFalse([n for n in names if "Feed" in n])
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0057_email_delivery_suppression")
+                         "0058_discovery_observation_ingest_outcome")
         for cls in (FeedFilters, FeedCursor, FeedRadarOpportunity, OpportunityFeedCard, OpportunityFeedPage):
             self.assertTrue(dataclasses.is_dataclass(cls) and cls.__dataclass_params__.frozen, cls)
         self.assertEqual((DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE), (50, 200))

@@ -1113,7 +1113,7 @@ class GemiDiscoveryCursor(models.Model):
 
 
 class GemiDiscoveryObservation(models.Model):
-    """One newly discovered company in a run: identifier, dates and classification. No payload, no PII."""
+    """One company a run examined: identifier, dates, classification and ingest outcome. No payload, no PII."""
 
     CLASSIFICATIONS = [
         ("new_incorporation", "Νέα σύσταση"), ("late_publication", "Καθυστερημένη δημοσίευση"),
@@ -1131,6 +1131,15 @@ class GemiDiscoveryObservation(models.Model):
     incorporation_date_quality = models.CharField(max_length=16, choices=Company.INCORPORATION_DATE_QUALITIES)
     company_existed = models.BooleanField()
     page_index = models.PositiveIntegerField()
+    # What Discovery's ingest did with this record, from the search payload it had just received. Empty for a
+    # shadow or bootstrap run and for a ``known`` record. An outcome code only: still no payload, no PII.
+    INGEST_OUTCOMES = [
+        ("created", "Company created from the search payload"),
+        ("already_local", "Company already stored: never written over"),
+        ("quarantined_date", "No Company: the incorporation date could not be stored as it is"),
+        ("write_failed", "No Company: the write failed and was rolled back"),
+    ]
+    ingest_outcome = models.CharField(max_length=24, choices=INGEST_OUTCOMES, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

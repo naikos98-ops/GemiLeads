@@ -113,11 +113,11 @@ class ClassificationTests(NoNetworkMixin, TestCase):
         self.assertEqual(self.result.overlap_known_records, 3)
         self.assertEqual((get_cursor().high_water_mark, self.result.cursor_advanced), ("1003", True))
 
-    def test_the_discovery_tables_gained_no_column(self):   # a classification change needs no migration
+    def test_the_discovery_tables_gained_only_the_ingest_outcome(self):   # 0058: an outcome code, no payload
         self.assertEqual(
             {field.name for field in GemiDiscoveryObservation._meta.concrete_fields},
             {"id", "run", "gemi_number", "classification", "incorporation_date", "incorporation_date_quality",
-             "company_existed", "page_index", "created_at"},
+             "company_existed", "page_index", "ingest_outcome", "created_at"},
         )
 
 

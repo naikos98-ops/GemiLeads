@@ -159,6 +159,60 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Ενιαία ingestion ΓΕΜΗ, φάσεις 1–4 (2026-10-07). ΑΔΡΑΝΗΣ κώδικας: ΔΕΝ είναι προγραμματισμένη, ΔΕΝ είναι
+  ενεργή σε production, δεν έχει γίνει deploy/merge. Ο legacy importer (`import_for_date`) παραμένει η canonical
+  production λήψη. Το νέο 14ήμερο παράθυρο πιστοποίησης G4 ΔΕΝ έχει ξεκινήσει — ξεκινά μόνο όταν η
+  προγραμματισμένη ingestion ενεργοποιηθεί πραγματικά σε production· το merge/deploy αδρανούς κώδικα δεν το ξεκινά.**
+  - **Το πρόβλημα:** το Discovery v2 κατέβαζε σελίδες `/companies` με πλήρεις εγγραφές (έως 200), κρατούσε μόνο
+    αναγνωριστικά, και το hydration ξαναζητούσε κάθε εταιρεία με `GET /companies?arGemi=<n>`.
+  - **Στόχος (όταν ενεργοποιηθεί):** `σελίδα αναζήτησης → επικύρωση → create-only Company από το ίδιο payload →
+    τεκμήριο Discovery → NEW_COMPANY (SHADOW) → SHADOW opportunity pipeline`. Ένα **run** ανά 10 λεπτά (όχι
+    αναγκαστικά ένα αίτημα· η σελιδοποίηση συνεχίζει όσο χρειάζεται). Fetch και ειδοποιήσεις μένουν χωριστά:
+    τα daily/intraday crons και το `send_digests` **δεν άλλαξαν**.
+  - **Φάση 1 — κοινός writer:** `gemiapp/ingestion/company_writer.create_company_from_search_item(number, item,
+    dry_run=False)`. Create-only σε ένα savepoint (`Company.objects.create(**company_defaults(item))` +
+    `sync_company_activities`, ή τίποτα)· υπάρχουσα εταιρεία → `exists`, ποτέ update, ποτέ `update_or_create`·
+    `IntegrityError` στο insert → `exists` (η γραμμή του άλλου writer μένει ανέγγιχτη). **Ημερομηνία:** αρνείται
+    (`refused_date`) όταν η πηγή λείπει, δεν διαβάζεται, είναι πριν το 1900 ή στο μέλλον — κρίνεται απευθείας στην
+    πηγή **και** διασταυρώνεται ότι το `company_defaults` αποθηκεύει ακριβώς την ημερομηνία πηγής. Το
+    `company_defaults` (με το clamp του) **δεν άλλαξε**: το χρειάζεται ο legacy importer. Το hydration καλεί πλέον
+    αυτόν τον writer· εξωτερική συμπεριφορά, flag, επιλογή, pacing και έξοδος ίδια (και τα 34 tests του περνούν
+    αμετάβλητα).
+  - **Φάση 2 — ασφαλές ingest του Discovery:** το `discovery._ingest` δεν κάνει πια `update_or_create` με clamp·
+    γράφει με τον κοινό writer από το payload της σελίδας, **χωρίς κανένα αίτημα ανά εταιρεία**. Ανά νέο εύρημα,
+    νέο πεδίο `GemiDiscoveryObservation.ingest_outcome` (migration **`0058`**, ένα `AddField`, κενό για
+    shadow/bootstrap/known): `created` · `already_local` (ποτέ overwrite) · `quarantined_date` (κατάταξη
+    `invalid_date`, ή άρνηση του writer· καμία Company, το τεκμήριο μένει pending) · `write_failed` (σφάλμα μίας
+    εταιρείας, rollback, η σελίδα συνεχίζει). Κατάταξη, σύνορο και guardrails **αμετάβλητα**· ένα quarantined
+    εύρημα προχωρά τον cursor όπως σε shadow και ξανακρίνεται από το payload σε κάθε run που το ξαναβλέπει.
+    **Persistence:** run + observations + cursor σε **μία συναλλαγή** με κλειδωμένη τη γραμμή του cursor.
+  - **Φάση 3 — οικονομία observations:** `run_discovery(compact_observations=True)` αποθηκεύει observation μόνο
+    όταν λέει κάτι νέο: δεν υπάρχει observation του αριθμού σήμερα (τοπική ημέρα), ή η τελευταία σημερινή
+    διαφέρει σε κατάταξη / ingest outcome / ημερομηνία / ποιότητα / τοπική ύπαρξη. Άρα πρώτη θέαση, κάθε αλλαγή
+    και μία γραμμή ανά αριθμό ανά ημέρα κρατούνται πάντα· 100 αμετάβλητα runs = 0 νέες γραμμές
+    (`observations_suppressed`). Η προεπιλογή (operator runs, G4 cycle) μένει «όλα, κάθε run».
+  - **Φάση 4 — λιτός κύκλος:** `gemiapp/ingestion_cycle.run_ingestion_cycle()` + `manage.py
+    run_gemi_ingestion_cycle [--dry-run] [--max-pages N] [--verbose]` + `tasks.run_gemi_ingestion_cycle_task`
+    (**όχι** στο `apps.SCHEDULES`). Preflight → mutex → Discovery INGEST (compact) → υλοποίηση NEW_COMPANY
+    **μόνο** για (α) τους αριθμούς αυτού του run και (β) φραγμένο catch-up 24 ωρών (εταιρείες με τεκμήριο αλλά
+    χωρίς σήμα: επιδιορθώνει κύκλο που «πέθανε» πριν την υλοποίηση) → pipeline μετά το commit → counters.
+    **Mutex:** κλειδί στο shared cache, όχι ανά ώρα, TTL 1800 s, απελευθέρωση μόνο από τον κάτοχο· δεύτερος
+    κύκλος → `skipped_locked`, κανένα αίτημα/εγγραφή. **Budget:** `GEMI_INGESTION_MAX_WAIT_SECONDS=120` ανά
+    σελίδα (αντί 900 s του lane)· το όριο 7/λεπτό και τα lanes αμετάβλητα.
+  - **Flag:** ο κύκλος αρνείται (και σε `--dry-run`) χωρίς `GEMI_DISCOVERY_V2_ENABLED=1` (προεπιλογή 0). Το
+    preflight του G4 **δεν αρνείται πια** όταν το flag είναι ανοιχτό (το αναφέρει)· συνεχίζει να απαιτεί SHADOW
+    flag, SHADOW-only pipeline και **κανένα LIVE σήμα**. Ο `run_g4_shadow_cycle` τρέχει πάντα shadow discovery.
+  - **Create-only σε αυτή τη φάση:** καμία ενημέρωση υπάρχουσας εταιρείας. Η ενδοημερήσια ανανέωση μένει στον
+    legacy importer (`update_or_create` σε κάθε intraday run) μέχρι ρητή απόφαση.
+  - **Paging:** default overlap 200 **αμετάβλητο** και ρυθμίσιμο (`GEMI_DISCOVERY_OVERLAP_KNOWN_RECORDS`). Με
+    overlap 200 = page size 200, ένα run με έστω ένα νέο/pending εύρημα στη σελίδα 1 κάνει 2 αιτήματα.
+  - **Χειροκίνητη δοκιμή (αργότερα, μόνο με έγκριση):**
+    `GEMI_DISCOVERY_V2_ENABLED=1 python manage.py run_gemi_ingestion_cycle --dry-run` — καμία εγγραφή, **κάνει** τα
+    αιτήματα αναζήτησης.
+  - 56 νέα tests (`gemiapp/test_ingestion_cycle.py`)· mutation check 14 μεταλλάξεων (ένα κενό βρέθηκε και
+    καλύφθηκε)· migration pins 0057 → 0058· **2.338 tests OK**· `check`, `makemigrations --check` καθαρά·
+    κύκλος 0057 → 0058 → 0057 → 0058 σε αντίγραφο της dev βάσης (86 πίνακες, ίδια πλήθη).
+
 - **Email deliverability suppression (2026-09-28). ΔΕΝ έχει γίνει deploy· το backfill ΔΕΝ έχει τρέξει σε production.**
   - **Το bug:** λογαριασμός με verification email που έκανε bounce ενεργοποιήθηκε χειροκίνητα και έπαιρνε κάθε
     daily/intraday digest· το Brevo τα έκανε `blocked`, αλλά το `DigestDelivery` έγραφε `sent` (το SMTP είχε δεχτεί
@@ -2087,6 +2141,17 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Ενιαία ingestion — επόμενα βήματα (κανένα δεν έχει γίνει):** (1) merge/deploy του αδρανούς κώδικα (η `0058`
+  εφαρμόζεται από το `preDeployCommand`)· (2) χειροκίνητο `--dry-run` σε production και σύγκριση με την έξοδο του
+  G4 cycle· (3) πρώτο πραγματικό χειροκίνητο run· (4) **μόνο τότε** εγγραφή στο `apps.SCHEDULES` (πρώτα ανά 30′,
+  μετά 10′, σε λεπτό εκτός `:00`) — εκεί ξεκινά το νέο 14ήμερο G4· (5) απόσυρση του legacy fetch μόνο με τεκμήριο
+  `ImportRun.created_count == 0`. **Ανοιχτές αποφάσεις:** (α) ενδοημερήσια ανανέωση υπαρχουσών εταιρειών όταν
+  φύγει ο legacy fetch (η σελίδα 1 τις περιέχει ήδη: μηδέν αιτήματα, αλλά σημαίνει overwrite)· (β) αν οι
+  late publications θα φαίνονται στο legacy dashboard/CSV σε όγκο· (γ) overlap 100 + ημερήσιο «βαθύ» sweep·
+  (δ) το `compare_with_legacy` χάνει νόημα όταν το ingest γράφει Company — η σύγκριση πρέπει να διαβάζει το
+  `ingest_outcome`· (ε) ο κύκλος υλοποιεί σήματα και από run που απέτυχε σε επόμενη σελίδα (κανόνας B2)·
+  (στ) `save_limit: 50` του django-q: 144 επιτυχή tasks/ημέρα θα σπρώχνουν έξω το ιστορικό των άλλων.
+
 - **Email deliverability rollout (χειροκίνητο):** deploy (η `0057` εφαρμόζεται από το `preDeployCommand`) →
   `python manage.py backfill_email_delivery_suppressions` (dry run) → έλεγχος counters →
   `... --apply` → `digest_recipients --frequency daily` για επιβεβαίωση ότι ο γνωστός λογαριασμός δείχνει τον λόγο
@@ -2295,6 +2360,16 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-10-07 — Ενιαία ingestion ΓΕΜΗ, φάσεις 1–4 (αδρανής).** Νέα: `gemiapp/ingestion/company_writer.py`,
+  `gemiapp/ingestion_cycle.py`, `manage.py run_gemi_ingestion_cycle`, migration
+  `0058_discovery_observation_ingest_outcome`, `gemiapp/test_ingestion_cycle.py`. Αλλαγές:
+  `ingestion/discovery.py` (ασφαλές ingest, ατομικό persistence, compact observations, `max_wait`),
+  `pending_company_hydration.py` (κοινός writer), `g4_shadow_cycle.py` (preflight), `tasks.py` (task χωρίς
+  schedule), `models.py`, `admin.py`, `config/settings.py`, `.env.example`, pins/guards σε οκτώ test modules.
+  Επαλήθευση: 56 focused tests, mutation check, discovery/hydration/B2/G4 suites, `check`,
+  `makemigrations --check`, **2.338 tests OK** (`--parallel 4`), κύκλος migration σε αντίγραφο της dev βάσης.
+  Κανένα schedule, κανένα deploy, καμία εντολή ή εγγραφή σε production, κανένα hydration, cursor ανέγγιχτος.
 
 - **2026-09-28 — Email deliverability suppression.** Νέα: `gemiapp/email_deliverability.py`,
   `EmailDeliverySuppression` + migration `0057_email_delivery_suppression`, εντολές
