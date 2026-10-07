@@ -34,12 +34,22 @@ stored on its observation (``ingest_outcome``):
 * ``quarantined_date`` -- classified ``invalid_date``, or the writer refused the payload's own date (missing,
   unreadable, before 1900 or in the future). No Company row: ``company_defaults`` would store such a date as
   *today* and put the company into today's legacy digest. The observation stays as pending evidence;
-* ``write_failed``     -- an unexpected error for that one company; its savepoint rolled back, the batch
-  continues, and the evidence stays pending (pending-company hydration can recover it).
+* ``write_failed``     -- an **unexpected** Company or activity persistence error for that one company. Its
+  savepoint rolled back, so no partial row exists.
 
-None of these changes the classification, the frontier rule or the cursor: a quarantined or failed record
-advances the cursor exactly as a shadow run would, and is re-judged from its payload on every later run that
-still pages past it. ``update_or_create`` and ``company_defaults``' clamping are never reached from here.
+The first three are expected and never block: they do not change the classification, the frontier rule or the
+cursor. A quarantined record advances the cursor exactly as a shadow run would, and is re-judged from its
+payload on every later run that still pages past it.
+
+``write_failed`` is different, because it is not a fact about the record but a failure of this run. The rest of
+that page is still written (each company is its own savepoint, and every write is idempotent), then the run
+**stops paging** (stop reason ``ingest_write_failed``), ends as ``failed`` and **does not advance the cursor**.
+Companies already committed stay, and their evidence is stored with the failed run, so their signals can still be
+materialised. The affected record is still above the unchanged frontier, so the next run retries it from the
+payload it fetches then -- no operator step and no per-company lookup. Advancing past it would have left the
+record below the frontier, reachable only while it stayed inside the overlap window.
+
+``update_or_create`` and ``company_defaults``' clamping are never reached from here.
 
 Data model
 ----------
@@ -238,6 +248,7 @@ STOP_END_OF_RESULTS = "end_of_results"
 STOP_PAGE_LIMIT = "page_limit"
 STOP_NO_CURSOR = "no_cursor"
 STOP_ANOMALY = "ordering_anomaly"
+STOP_INGEST_WRITE_FAILED = "ingest_write_failed"
 
 ORDERING_VIOLATION = "ordering_violation"
 PAGE_BOUNDARY_VIOLATION = "page_boundary_violation"
@@ -489,6 +500,11 @@ def _scan(client, *, policy: DiscoveryPolicy, max_pages: int, frontier: int | No
         if result.blocking_anomalies:
             result.stop_reason = STOP_ANOMALY
             return
+        if result.ingest_failed_records:
+            # An unexpected write failure: this page was finished, but no further page is fetched and the
+            # frontier will not move, so the next run starts again from here.
+            result.stop_reason = STOP_INGEST_WRITE_FAILED
+            return
         if frontier is not None and at_or_below_frontier and result.overlap_known_records >= policy.overlap_known_records \
                 and result.pages_fetched >= policy.min_overlap_pages:
             result.stop_reason = STOP_OVERLAP_SATISFIED
@@ -521,9 +537,13 @@ def _ingest(records: list[tuple[dict, str, str]], *, dry_run: bool = False) -> d
             continue
         try:
             written = company_writer.create_company_from_search_item(gemi_number, item, dry_run=dry_run)
-        except Exception as exc:  # that company's savepoint rolled back; the rest of the page still counts
+        except Exception as exc:
+            # Unexpected (the writer already turns a bad date and an insert race into outcomes). That company's
+            # savepoint rolled back; the rest of this page is still written, and the run then fails without
+            # advancing the frontier (see _scan and run_discovery), so the next run retries this record.
             outcomes[gemi_number] = INGEST_WRITE_FAILED
-            logger.error("Discovery ingest: writing GEMI %s failed: %s.", gemi_number, type(exc).__name__)
+            logger.error("Discovery ingest: writing GEMI %s failed: %s. The frontier will not advance.",
+                         gemi_number, type(exc).__name__)
             continue
         outcomes[gemi_number] = {
             company_writer.CREATED: INGEST_CREATED,
@@ -642,6 +662,12 @@ def run_discovery(*, mode: str = SHADOW, dry_run: bool = False, max_pages: int |
     else:
         if result.blocking_anomalies:
             result.status = "anomaly"
+        elif result.ingest_failed_records:
+            # Never "success": only a successful run may move the frontier, and a record whose write failed
+            # unexpectedly must stay above it.
+            result.status = "failed"
+            result.error_message = (f"{result.ingest_failed_records} company write(s) failed unexpectedly; "
+                                    f"the frontier was not advanced and the next run retries them.")
         elif result.stop_reason == STOP_PAGE_LIMIT:
             result.status = "incomplete"
         else:

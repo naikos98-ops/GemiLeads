@@ -1137,7 +1137,7 @@ class GemiDiscoveryObservation(models.Model):
         ("created", "Company created from the search payload"),
         ("already_local", "Company already stored: never written over"),
         ("quarantined_date", "No Company: the incorporation date could not be stored as it is"),
-        ("write_failed", "No Company: the write failed and was rolled back"),
+        ("write_failed", "No Company: the write failed unexpectedly; the run did not advance the frontier"),
     ]
     ingest_outcome = models.CharField(max_length=24, choices=INGEST_OUTCOMES, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)

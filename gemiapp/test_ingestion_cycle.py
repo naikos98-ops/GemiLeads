@@ -35,6 +35,7 @@ from .ingestion.discovery import (
     LATE_PUBLICATION,
     NEW_INCORPORATION,
     ORDERING_VIOLATION,
+    STOP_INGEST_WRITE_FAILED,
     DiscoveryPolicy,
     get_cursor,
     run_discovery,
@@ -265,22 +266,6 @@ class IngestOutcomeTests(DiscoveryIngestTestCase):
         self.assertEqual((result.ingested_records, Company.objects.get(gemi_number="1001").incorporation_date),
                          (1, date(2022, 2, 2)))
 
-    def test_one_failing_write_is_recorded_and_the_rest_of_the_page_is_still_created(self):
-        real = company_writer.create_company_from_search_item
-
-        def fail_one(number, record, **kwargs):
-            if number == "1002":
-                raise RuntimeError("boom")
-            return real(number, record, **kwargs)
-
-        with patch.object(company_writer, "create_company_from_search_item", side_effect=fail_one):
-            result, _ = self.ingest([[item(1003, TODAY), item(1002, TODAY), item(1001, TODAY), item(1000)],
-                                     [item(999)]])
-        self.assertEqual((outcomes()["1003"], outcomes()["1002"], outcomes()["1001"]),
-                         (INGEST_CREATED, INGEST_WRITE_FAILED, INGEST_CREATED))
-        self.assertEqual((result.ingested_records, result.ingest_failed_records), (2, 1))
-        self.assertFalse(Company.objects.filter(gemi_number="1002").exists())
-
     def test_a_dry_run_requests_the_pages_and_writes_nothing(self):
         before = (Company.objects.count(), GemiDiscoveryRun.objects.count(), get_cursor().high_water_mark)
         result, transport = self.ingest([[item(1002, TODAY), item(1001, TODAY), item(1000), item(999)]],
@@ -350,6 +335,150 @@ class PagingTests(DiscoveryIngestTestCase):
         self.assertEqual((again.ingested_records, again.new_records), (0, 0))
         self.assertEqual(list(Company.objects.order_by("pk").values()), before)
         self.assertEqual(CompanyActivity.objects.count(), activities)
+
+
+class UnexpectedWriteFailureTests(DiscoveryIngestTestCase):
+    """An unexpected Company/activity persistence error is a failure of the run, never a fact about the record:
+    the frontier does not move, and the next run retries from it."""
+
+    # Two pages above the frontier (1000): the failure is on the second one.
+    PAGES = [[item(1008, TODAY), item(1007, TODAY), item(1006, "2023-03-03"), item(1005, TODAY)],
+             [item(1004, TODAY), item(1003, TODAY), item(1002, TODAY), item(1001, TODAY)],
+             [item(1000), item(999)]]
+
+    def failing(self, *numbers, error=RuntimeError("database hiccup")):
+        real = company_writer.create_company_from_search_item
+
+        def write(number, record, **kwargs):
+            if number in numbers:
+                raise error
+            return real(number, record, **kwargs)
+
+        return patch.object(company_writer, "create_company_from_search_item", side_effect=write)
+
+    def test_a_the_cursor_does_not_advance_and_no_further_page_is_fetched(self):
+        with self.failing("1003"):
+            result, transport = self.ingest(self.PAGES)
+
+        self.assertEqual((result.status, result.stop_reason, result.cursor_advanced),
+                         ("failed", STOP_INGEST_WRITE_FAILED, False))
+        cursor = get_cursor()
+        self.assertEqual((cursor.high_water_mark, cursor.high_water_mark_value, cursor.consecutive_failures),
+                         ("1000", 1000, 1))
+        self.assertEqual(cursor.status, "ready")                    # a failure, not an ordering anomaly
+        self.assertEqual(len(transport.calls), 2)                   # page 3 was never requested
+        self.assertIn("frontier was not advanced", result.error_message)
+        stored = GemiDiscoveryRun.objects.get()
+        self.assertEqual((stored.status, stored.cursor_advanced, stored.resulting_high_water_mark),
+                         ("failed", False, "1000"))
+        # The evidence is kept: the failure itself, and the rest of that page, which was still written.
+        self.assertEqual({number: outcomes()[number] for number in ("1004", "1003", "1002", "1001")}, {
+            "1004": INGEST_CREATED, "1003": INGEST_WRITE_FAILED, "1002": INGEST_CREATED, "1001": INGEST_CREATED})
+        self.assertFalse(Company.objects.filter(gemi_number="1003").exists())
+        self.assertEqual((result.ingested_records, result.ingest_failed_records), (7, 1))
+
+    def test_a_failing_activity_sync_is_such_a_failure_and_leaves_no_partial_company(self):
+        from .services import sync_canonical_company_activities as real
+
+        def sync(company, activities, **kwargs):
+            if company.gemi_number == "1007":
+                raise RuntimeError("activity write failed")
+            return real(company, activities, **kwargs)
+
+        with patch("gemiapp.services.sync_canonical_company_activities", side_effect=sync):
+            result, _ = self.ingest(self.PAGES)
+        self.assertEqual((result.status, get_cursor().high_water_mark), ("failed", "1000"))
+        self.assertEqual(outcomes()["1007"], INGEST_WRITE_FAILED)
+        self.assertFalse(Company.objects.filter(gemi_number="1007").exists())            # rolled back with it
+        self.assertFalse(CompanyActivity.objects.filter(company__gemi_number="1007").exists())
+
+    def test_b_the_next_run_retries_the_affected_record_from_the_unchanged_frontier(self):
+        with self.failing("1003"):
+            self.ingest(self.PAGES)
+        with patch.object(company_writer, "create_company_from_search_item",
+                          wraps=company_writer.create_company_from_search_item) as writer:
+            result, _ = self.ingest(self.PAGES)
+
+        self.assertEqual([call.args[0] for call in writer.call_args_list], ["1003"])   # retried, and only it
+        self.assertEqual((result.status, result.ingested_records, result.ingest_failed_records), ("success", 1, 0))
+        self.assertTrue(Company.objects.filter(gemi_number="1003", incorporation_date=TODAY).exists())
+        self.assertEqual((get_cursor().high_water_mark, get_cursor().consecutive_failures), ("1008", 0))
+        latest = GemiDiscoveryObservation.objects.filter(gemi_number="1003").order_by("id").last()
+        self.assertEqual((latest.classification, latest.ingest_outcome), (NEW_INCORPORATION, INGEST_CREATED))
+
+    def test_b_a_record_that_keeps_failing_keeps_the_frontier_where_it_is(self):
+        for expected_failures in (1, 2, 3):
+            with self.failing("1003"):
+                result, _ = self.ingest(self.PAGES)
+            self.assertEqual((result.status, get_cursor().high_water_mark, get_cursor().consecutive_failures),
+                             ("failed", "1000", expected_failures))
+        self.assertEqual(Company.objects.count(), 9)                 # the seven others once, plus the two known
+
+    def test_c_companies_written_before_the_failure_stay_and_are_never_written_twice(self):
+        with self.failing("1003"):
+            self.ingest(self.PAGES)
+        written = list(Company.objects.exclude(gemi_number="1003").order_by("pk").values())
+        activities = CompanyActivity.objects.count()
+        self.assertEqual(len(written), 9)
+
+        again, _ = self.ingest(self.PAGES)
+
+        self.assertEqual(list(Company.objects.exclude(gemi_number="1003").order_by("pk").values()), written)
+        self.assertEqual(CompanyActivity.objects.exclude(company__gemi_number="1003").count(), activities)
+        self.assertEqual((again.rediscovered_local_records, again.ingested_records), (7, 1))
+        self.assertEqual({number: outcomes()[number] for number in ("1008", "1006", "1001")},   # latest evidence
+                         {"1008": INGEST_ALREADY_LOCAL, "1006": INGEST_ALREADY_LOCAL, "1001": INGEST_ALREADY_LOCAL})
+        self.assertEqual(Company.objects.get(gemi_number="1006").incorporation_date, date(2023, 3, 3))
+
+    def test_d_a_quarantined_date_still_does_not_freeze_the_cursor(self):
+        future = (TODAY + timedelta(days=1)).isoformat()
+        result, transport = self.ingest([
+            [item(1004, incorporationDate=None), item(1003, future), item(1002, "1850-01-01"), item(1001, TODAY)],
+            [item(1000), item(999)]])
+        self.assertEqual({number: outcomes()[number] for number in ("1004", "1003", "1002", "1001")}, {
+            "1004": INGEST_QUARANTINED_DATE, "1003": INGEST_QUARANTINED_DATE, "1002": INGEST_QUARANTINED_DATE,
+            "1001": INGEST_CREATED})
+        self.assertEqual((result.status, result.quarantined_date_records, result.ingest_failed_records),
+                         ("success", 3, 0))
+        self.assertEqual((get_cursor().high_water_mark, result.cursor_advanced, len(transport.calls)),
+                         ("1004", True, 2))
+
+    def test_e_an_insert_race_still_does_not_freeze_the_cursor(self):
+        # Another writer's row exists, but neither Discovery's page lookup nor the writer's own check sees it:
+        # only the unique gemi_number stops the insert, and the shared writer turns that into a safe skip.
+        Company.objects.bulk_create([Company(gemi_number="1002", name="Ο ΑΛΛΟΣ WRITER",
+                                             incorporation_date=date(2026, 9, 1))])
+        real_known, real_filter = discovery_module._known_numbers, Company.objects.filter
+        state = {"blind": True}
+
+        def blind_once(*args, **kwargs):
+            if kwargs.get("gemi_number") == "1002" and state["blind"]:
+                state["blind"] = False
+                return Company.objects.none()
+            if "1002" in (kwargs.get("gemi_number__in") or ()):
+                return real_filter(*args, **kwargs).exclude(gemi_number="1002")
+            return real_filter(*args, **kwargs)
+
+        with patch.object(discovery_module, "_known_numbers", side_effect=lambda numbers: real_known(numbers) - {"1002"}), \
+                patch.object(Company.objects, "filter", side_effect=blind_once):
+            result, _ = self.ingest([[item(1002, TODAY), item(1001, TODAY), item(1000), item(999)]])
+
+        self.assertFalse(state["blind"])                             # the insert really was attempted
+        self.assertEqual((outcomes()["1002"], outcomes()["1001"]), (INGEST_ALREADY_LOCAL, INGEST_CREATED))
+        self.assertEqual((result.status, result.ingest_failed_records, result.cursor_advanced), ("success", 0, True))
+        self.assertEqual(get_cursor().high_water_mark, "1002")
+        self.assertEqual(Company.objects.get(gemi_number="1002").name, "Ο ΑΛΛΟΣ WRITER")
+
+    def test_f_neither_the_failure_nor_the_retry_issues_a_per_company_lookup(self):
+        with patch("gemiapp.pending_company_hydration.hydrate_pending_companies",
+                   side_effect=AssertionError("recovery must not need hydration")):
+            with self.failing("1003"):
+                _, failed_transport = self.ingest(self.PAGES)
+            _, retry_transport = self.ingest(self.PAGES)
+        self.assertEqual((lookups(failed_transport), lookups(retry_transport)), ([], []))
+        self.assertEqual((len(failed_transport.calls), len(retry_transport.calls)), (2, 3))   # search pages only
+        for call in failed_transport.calls + retry_transport.calls:
+            self.assertIn("resultsSortBy=-arGemi", call["url"])
 
 
 class PersistenceTests(DiscoveryIngestTestCase):
@@ -620,6 +749,35 @@ class ScopedMaterialisationTests(IngestionCycleTestCase):
         self.assertEqual((repaired.discovered_numbers, repaired.catch_up_numbers), (0, 1))
         self.assertEqual(CompanySignal.objects.filter(company__gemi_number=str(NEW), mode=SHADOW).count(), 1)
         self.assertEqual(Opportunity.objects.count(), 1)
+
+
+class CycleWriteFailureTests(IngestionCycleTestCase):
+    def test_the_cycle_fails_keeps_the_frontier_materialises_what_was_written_and_heals_next_time(self):
+        real = company_writer.create_company_from_search_item
+
+        def fail_late(number, record, **kwargs):
+            if number == str(LATE):
+                raise RuntimeError("database hiccup")
+            return real(number, record, **kwargs)
+
+        with patch.object(company_writer, "create_company_from_search_item", side_effect=fail_late):
+            report, transport = self.run_cycle(item(LATE, OLD), item(NEW, self.today))
+
+        self.assertEqual((report.status, report.discovery.status, report.discovery.stop_reason),
+                         (FAILED_CYCLE, "failed", STOP_INGEST_WRITE_FAILED))
+        self.assertEqual(get_cursor().high_water_mark, str(FRONTIER))                 # not advanced
+        # The company that was written is kept and its SHADOW signal is still materialised.
+        self.assertEqual(set(CompanySignal.objects.values_list("company__gemi_number", "mode")), {(str(NEW), SHADOW)})
+        self.assertFalse(Company.objects.filter(gemi_number=str(LATE)).exists())
+        self.assertEqual(lookups(transport), [])
+        self.assertIsNone(caches["shared"].get(LOCK_KEY))
+
+        healed, transport = self.run_cycle(item(LATE, OLD), item(NEW, self.today))    # nothing but the next run
+        self.assertEqual((healed.status, healed.discovery.ingested_records), (OK, 1))
+        self.assertEqual(get_cursor().high_water_mark, str(LATE))
+        self.assertEqual(CompanySignal.objects.filter(mode=SHADOW).count(), 2)
+        self.assertEqual(Company.objects.filter(gemi_number=str(NEW)).count(), 1)
+        self.assertEqual(lookups(transport), [])
 
 
 class FailureTests(IngestionCycleTestCase):

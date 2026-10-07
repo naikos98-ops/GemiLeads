@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='gemidiscoveryobservation',
             name='ingest_outcome',
-            field=models.CharField(blank=True, choices=[('created', 'Company created from the search payload'), ('already_local', 'Company already stored: never written over'), ('quarantined_date', 'No Company: the incorporation date could not be stored as it is'), ('write_failed', 'No Company: the write failed and was rolled back')], default='', max_length=24),
+            field=models.CharField(blank=True, choices=[('created', 'Company created from the search payload'), ('already_local', 'Company already stored: never written over'), ('quarantined_date', 'No Company: the incorporation date could not be stored as it is'), ('write_failed', 'No Company: the write failed unexpectedly; the run did not advance the frontier')], default='', max_length=24),
         ),
     ]
