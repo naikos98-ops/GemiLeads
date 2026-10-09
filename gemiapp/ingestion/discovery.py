@@ -160,7 +160,8 @@ Compact observations (frequent runs)
 By default every examined record is stored, every run. A run every few minutes would store the same few
 hundred ``known`` rows each time, so ``compact_observations=True`` stores an observation only when it says
 something new: no observation of that GEMI number exists yet today (local day), or its latest one today
-differs in classification, ingest outcome, source date, date quality or local existence. So the first
+differs in classification, ingest outcome, source date, date quality or local existence -- compared **within
+the run's own stream**, so one lane's evidence never suppresses another lane's first sighting. So the first
 sighting, every change and one row per number per day are always kept; an unchanged repeat is counted
 (``observations_suppressed``) and not stored. Counters, anomalies, the run row and the cursor are unaffected.
 
@@ -574,15 +575,19 @@ def _fingerprint(row: dict) -> tuple:
     return tuple(row[name] for name in OBSERVATION_FINGERPRINT)
 
 
-def _worth_storing(observations: list[dict], *, started_at) -> list[dict]:
-    """The compact policy: drop an observation that only repeats that GEMI number's latest evidence of today."""
+def _worth_storing(observations: list[dict], *, started_at, stream: str = STREAM_COMPANIES) -> list[dict]:
+    """The compact policy: drop an observation that only repeats that GEMI number's latest evidence of today.
+
+    Per stream: what one discovery lane recorded never suppresses another lane's first evidence of a number.
+    """
     GemiDiscoveryObservation = apps.get_model("gemiapp", "GemiDiscoveryObservation")
     day_start = timezone.localtime(started_at).replace(hour=0, minute=0, second=0, microsecond=0)
     numbers = [row["gemi_number"] for row in observations]
     latest_today: dict[str, tuple] = {}
     for start in range(0, len(numbers), 500):
         rows = (GemiDiscoveryObservation.objects
-                .filter(gemi_number__in=numbers[start:start + 500], run__started_at__gte=day_start)
+                .filter(gemi_number__in=numbers[start:start + 500], run__started_at__gte=day_start,
+                        run__stream=stream)
                 .order_by("id").values("gemi_number", *OBSERVATION_FINGERPRINT))
         for row in rows:
             latest_today[row["gemi_number"]] = _fingerprint(row)
@@ -594,7 +599,8 @@ def _save_run(result: DiscoveryResult, cursor, *, stream: str, policy: Discovery
     """Persist the run, its observations and the cursor. Callers wrap this in one transaction."""
     GemiDiscoveryRun = apps.get_model("gemiapp", "GemiDiscoveryRun")
     GemiDiscoveryObservation = apps.get_model("gemiapp", "GemiDiscoveryObservation")
-    to_store = _worth_storing(result.observations, started_at=started_at) if compact else result.observations
+    to_store = (_worth_storing(result.observations, started_at=started_at, stream=stream)
+                if compact else result.observations)
     result.observations_stored = len(to_store)
     result.observations_suppressed = len(result.observations) - len(to_store)
     run = GemiDiscoveryRun.objects.create(

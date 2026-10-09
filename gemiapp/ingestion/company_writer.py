@@ -18,15 +18,20 @@ Date safety
 -----------
 ``company_defaults`` (unchanged, the legacy importer depends on it) stores a missing, unreadable, pre-1900 or
 future source ``incorporationDate`` as *today*. Such a row would enter today's legacy digest and matching as if
-incorporated today, so this writer refuses it before anything is written (``REFUSED_DATE``):
+incorporated today, so this writer never lets that value through. **The writer, not ``company_defaults``, is the
+authority for the stored incorporation date:**
 
-1. the source date is judged directly -- missing, unreadable, before 1900 or later than today is refused,
-   whatever ``company_defaults`` would do with it;
-2. and the date ``company_defaults`` returns must equal the source date exactly (the clamp can never slip
-   through even if its rule changes).
+1. the source date is parsed and judged here -- missing, unreadable, before 1900 or later than the
+   application's local business date (``timezone.localdate()``, Europe/Athens) is refused before anything is
+   written (``REFUSED_DATE``);
+2. the row is stored with **exactly that validated source date**. Whatever ``company_defaults`` computed for
+   ``incorporation_date`` is replaced by it, so the legacy clamp can neither slip through nor reject a record.
 
-A genuine source date of today is not clamped and is written. The clock is the one ``company_defaults`` uses
-(``date.today()``), and a date later than the configured local date is refused as well.
+Why the override and not a comparison: ``company_defaults`` clamps against ``date.today()``, the container's
+clock, which is UTC in production. Between 00:00 and about 03:00 Athens the UTC date is still yesterday, so a
+company incorporated *today in Athens* looks "future" to it and comes back clamped. Comparing with that value
+would quarantine a perfectly valid record for hours; the business date is the Athens one, so it is accepted
+and stored as it is.
 
 Identity
 --------
@@ -53,7 +58,7 @@ DATE_MISSING = "missing"
 DATE_UNREADABLE = "unreadable"
 DATE_BEFORE_1900 = "before_1900"
 DATE_FUTURE = "future"
-DATE_CLAMPED = "clamped"           # company_defaults would store something other than the source date
+DATE_CLAMPED = "clamped"           # kept for callers' vocabulary; the writer overrides the clamp instead
 
 
 @dataclass(frozen=True)
@@ -69,20 +74,28 @@ def _gemi_number_of(item: Any) -> str:
     return text if text.isdigit() and int(text) > 0 else ""
 
 
-def source_date_problem(item: dict) -> str:
-    """Why the record's own ``incorporationDate`` may not be stored as a legacy-visible date, or ""."""
+def validated_source_date(item: dict) -> tuple[date | None, str]:
+    """``(the record's own incorporation date, "")`` when it may be stored as it is, else ``(None, problem)``.
+
+    "Future" is judged against the application's local business date, never the container's ``date.today()``.
+    """
     raw = str(item.get("incorporationDate") or "")[:10]
     if not raw:
-        return DATE_MISSING
+        return None, DATE_MISSING
     try:
         value = date.fromisoformat(raw)
     except ValueError:
-        return DATE_UNREADABLE
+        return None, DATE_UNREADABLE
     if value.year < 1900:
-        return DATE_BEFORE_1900
-    if value > date.today() or value > timezone.localdate():
-        return DATE_FUTURE
-    return ""
+        return None, DATE_BEFORE_1900
+    if value > timezone.localdate():
+        return None, DATE_FUTURE
+    return value, ""
+
+
+def source_date_problem(item: dict) -> str:
+    """Why the record's own ``incorporationDate`` may not be stored as a legacy-visible date, or ""."""
+    return validated_source_date(item)[1]
 
 
 def create_company_from_search_item(gemi_number: str, item: dict, *, dry_run: bool = False) -> WriteOutcome:
@@ -95,14 +108,13 @@ def create_company_from_search_item(gemi_number: str, item: dict, *, dry_run: bo
 
     if not isinstance(item, dict) or _gemi_number_of(item) != str(gemi_number):
         raise ValueError("the search record is not the requested GEMI number")
-    problem = source_date_problem(item)
+    source_date, problem = validated_source_date(item)
     if problem:
         return WriteOutcome(REFUSED_DATE, date_problem=problem)
     defaults = company_defaults(item)
-    stored = defaults["incorporation_date"]
-    if stored != date.fromisoformat(str(item.get("incorporationDate"))[:10]):
-        return WriteOutcome(REFUSED_DATE, date_problem=DATE_CLAMPED)
-    as_today = stored == date.today()
+    # Authoritative: the validated source date, whatever the legacy clamp made of it (see "Date safety").
+    defaults["incorporation_date"] = source_date
+    as_today = source_date == timezone.localdate()
 
     Company = apps.get_model("gemiapp", "Company")
     if dry_run:

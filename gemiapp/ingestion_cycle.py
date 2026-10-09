@@ -51,6 +51,22 @@ the next run those records are below the frontier and ``known``, so (a) alone wo
 Evidence a run recorded before failing is materialised too: B2's rule is that a record GEMI returned and A2
 validated is authentic whatever happened to the run afterwards.
 
+The same-day lane (dormant)
+---------------------------
+The frontier lane cannot reach a company with an old GEMI number and today's incorporation date. While
+``GEMI_DISCOVERY_SAMEDAY_LANE_ENABLED`` is on, the cycle therefore runs a second lane after it
+(``gemiapp.ingestion.sameday_discovery``: ``/companies`` by ``-incorporationDate``, active and inactive passes,
+over ``[as_of - 1 day, as_of]``), with one ``as_of = timezone.localdate()`` fixed at the start of the cycle and
+shared by both lanes::
+
+    frontier lane -> same-day lane -> ONE materialisation over the union of their numbers -> pipeline
+
+Frontier first, so every company the same-day lane creates is one the frontier could not have found. Both use
+the same writer, the same evidence tables (their own streams) and the same producer, so a company either lane
+saw first is one Company, one NEW_COMPANY signal and one pass through the pipeline. The lane has no cursor: a
+failure is that stream's failed run, visible as a failed phase, and the next cycle rescans the window. The
+flag is off by default, and while it is off this cycle is exactly the frontier lane alone.
+
 SHADOW
 ------
 Signals are created by a producer that has no live option, the pipeline accepts SHADOW only, and every customer
@@ -74,6 +90,9 @@ from django.utils import timezone
 from .company_signals import NEW_COMPANY
 from .g4_shadow_cycle import Precheck, preflight
 from .ingestion.discovery import INGEST, DiscoveryPolicy, DiscoveryResult, ingest_enabled, run_discovery
+from .ingestion.sameday_discovery import (
+    TRIGGER_CYCLE, SameDayPolicy, SameDayResult, run_sameday_discovery, sameday_enabled,
+)
 from .new_company_signals import ELIGIBLE_CLASSIFICATIONS, MaterialisationReport, materialize_new_company_signals
 from .opportunity_pipeline import FAILED, collect_pipeline_runs
 
@@ -90,6 +109,7 @@ SKIPPED_LOCKED = "skipped_locked"
 FAILED_CYCLE = "failed"
 
 DISCOVERY_PHASE = "discovery"
+SAMEDAY_PHASE = "sameday_discovery"
 MATERIALISATION_PHASE = "materialisation"
 PIPELINE_PHASE = "opportunity_pipeline"
 
@@ -148,6 +168,8 @@ class IngestionCycleReport:
     status: str = OK
     failed_phases: list = field(default_factory=list)   # (phase, detail)
     discovery: DiscoveryResult | None = None
+    sameday_enabled: bool = False                # the dormant second lane; False = the frontier lane alone
+    sameday: SameDayResult | None = None
     materialisation: MaterialisationReport | None = None
     pipeline_runs: list = field(default_factory=list)    # observed after commit, never repeated
     discovered_numbers: int = 0      # newly discovered identifiers of this run (scope a)
@@ -156,10 +178,33 @@ class IngestionCycleReport:
 
     @property
     def gemi_requests(self) -> int:
-        """Pages fetched by the discovery run: the only GEMI requests this cycle makes."""
-        return self.discovery.pages_fetched if self.discovery is not None else 0
+        """Search pages requested by the discovery lanes: the only GEMI requests this cycle makes."""
+        return ((self.discovery.pages_fetched if self.discovery is not None else 0)
+                + (self.sameday.pages_fetched if self.sameday is not None else 0))
 
     def summary(self) -> dict:
+        return {**self._frontier_summary(), **self._sameday_summary()}
+
+    def _sameday_summary(self) -> dict:
+        """The second lane's counters. Absent while the lane is disabled: the summary is then what it was."""
+        if not self.sameday_enabled:
+            return {}
+        lane = self.sameday
+        return {
+            "sameday_status": lane.status if lane else "", "sameday_stop_reason": lane.stop_reason if lane else "",
+            "sameday_run_id": lane.run_id if lane else None,
+            "sameday_requests": lane.pages_fetched if lane else 0,
+            "sameday_examined": lane.records_examined if lane else 0,
+            "sameday_newly_discovered": lane.new_records if lane else 0,
+            "sameday_companies_created": lane.ingested_records if lane else 0,
+            "sameday_already_local": lane.rediscovered_local_records if lane else 0,
+            "sameday_write_failed": lane.ingest_failed_records if lane else 0,
+            "sameday_date_order_anomalies": lane.date_order_anomalies if lane else 0,
+            "sameday_skipped_future": lane.future_date_records if lane else 0,
+            "sameday_skipped_unusable": lane.unusable_date_records if lane else 0,
+        }
+
+    def _frontier_summary(self) -> dict:
         discovery, materialised = self.discovery, self.materialisation
         return {
             "status": self.status, "dry_run": self.dry_run, "gemi_requests": self.gemi_requests,
@@ -195,7 +240,16 @@ class IngestionCycleReport:
             out.append("  not run")
         else:
             out += [f"  {line}" for line in self.discovery.lines()]
-            out.append(f"  GEMI requests={self.gemi_requests} (search pages only; zero per-company lookups)")
+            out.append(f"  GEMI requests={self.discovery.pages_fetched} (search pages only; zero per-company "
+                       f"lookups)")
+        if self.sameday_enabled:
+            out.append("SAME-DAY DISCOVERY (by -incorporationDate; active and inactive passes)")
+            if self.sameday is None:
+                out.append("  not run")
+            else:
+                out += [f"  {line}" for line in self.sameday.lines()]
+            out.append(f"  GEMI requests of the whole cycle={self.gemi_requests} (search pages only; zero "
+                       f"per-company lookups)")
         out.append("NEW_COMPANY MATERIALISATION (scoped to this run)")
         out.append(f"  scope: newly discovered={self.discovered_numbers} catch-up (stored, no signal yet)="
                    f"{self.catch_up_numbers}")
@@ -226,7 +280,8 @@ def cycle_preflight() -> Precheck:
 
 def run_ingestion_cycle(*, dry_run: bool = False, max_pages: int | None = None, max_wait: float | None = None,
                         policy: DiscoveryPolicy | None = None, client=None,
-                        catch_up_hours: int = DEFAULT_CATCH_UP_HOURS) -> IngestionCycleReport:
+                        catch_up_hours: int = DEFAULT_CATCH_UP_HOURS,
+                        sameday_policy: SameDayPolicy | None = None) -> IngestionCycleReport:
     """One lean ingestion cycle. See the module docstring.
 
     Raises ``IngestionCycleRefused`` before any lock, request or write when the precheck refuses. A phase that
@@ -236,7 +291,8 @@ def run_ingestion_cycle(*, dry_run: bool = False, max_pages: int | None = None, 
         raise ValueError("catch_up_hours must not be negative")
     started_at = timezone.now()
     precheck = cycle_preflight()
-    report = IngestionCycleReport(dry_run=dry_run, started_at=started_at, precheck=precheck)
+    report = IngestionCycleReport(dry_run=dry_run, started_at=started_at, precheck=precheck,
+                                  sameday_enabled=sameday_enabled())
     if precheck.refusals:
         raise IngestionCycleRefused("; ".join(f"{name}: {detail}" for name, detail in precheck.refusals))
 
@@ -248,7 +304,7 @@ def run_ingestion_cycle(*, dry_run: bool = False, max_pages: int | None = None, 
     try:
         _run_locked(report, dry_run=dry_run, max_pages=max_pages, policy=policy, client=client,
                     max_wait=max_wait_from_settings() if max_wait is None else max_wait,
-                    catch_up_hours=catch_up_hours)
+                    catch_up_hours=catch_up_hours, sameday_policy=sameday_policy)
     finally:
         release()
     report.status = FAILED_CYCLE if report.failed_phases else OK
@@ -264,11 +320,16 @@ def run_ingestion_cycle(*, dry_run: bool = False, max_pages: int | None = None, 
     return report
 
 
-def _run_locked(report: IngestionCycleReport, *, dry_run, max_pages, policy, client, max_wait, catch_up_hours) -> None:
-    # The only phase that talks to GEMI: search pages, in the DISCOVERY lane, under the shared budget.
+def _run_locked(report: IngestionCycleReport, *, dry_run, max_pages, policy, client, max_wait, catch_up_hours,
+                sameday_policy=None) -> None:
+    # One local business date for the whole cycle when two lanes share it; the frontier lane alone resolves
+    # its own, exactly as before.
+    as_of = timezone.localdate() if report.sameday_enabled else None
+    # The only phases that talk to GEMI: search pages, in the DISCOVERY lane, under the shared budget.
     try:
         report.discovery = run_discovery(mode=INGEST, dry_run=dry_run, max_pages=max_pages, policy=policy,
-                                         client=client, compact_observations=True, max_wait=max_wait)
+                                         client=client, as_of=as_of, compact_observations=True,
+                                         max_wait=max_wait)
     except Exception as error:
         report.failed_phases.append((DISCOVERY_PHASE, f"{type(error).__name__}: {error}"[:200]))
         logger.exception("GEMI ingestion cycle: discovery raised")
@@ -278,6 +339,19 @@ def _run_locked(report: IngestionCycleReport, *, dry_run, max_pages, policy, cli
                 DISCOVERY_PHASE, f"status={report.discovery.status} stop_reason={report.discovery.stop_reason}"))
 
     discovered = set(report.discovery.discovered_gemi_numbers) if report.discovery is not None else set()
+    if report.sameday_enabled:
+        # After the frontier lane, whatever it did: the lanes are independent and this one has no cursor.
+        try:
+            report.sameday = run_sameday_discovery(dry_run=dry_run, as_of=as_of, policy=sameday_policy,
+                                                   client=client, max_wait=max_wait, trigger=TRIGGER_CYCLE)
+        except Exception as error:
+            report.failed_phases.append((SAMEDAY_PHASE, f"{type(error).__name__}: {error}"[:200]))
+            logger.exception("GEMI ingestion cycle: same-day discovery raised")
+        else:
+            if report.sameday.status in ("failed", "anomaly"):
+                report.failed_phases.append((
+                    SAMEDAY_PHASE, f"status={report.sameday.status} stop_reason={report.sameday.stop_reason}"))
+            discovered |= set(report.sameday.discovered_gemi_numbers)
     try:
         catch_up = set(unmaterialised_recent_numbers(hours=catch_up_hours, now=timezone.now())) - discovered \
             if catch_up_hours else set()

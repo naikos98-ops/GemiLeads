@@ -21,6 +21,19 @@ When an operator is alerted
   initialised, a table is missing). It can never make progress until someone acts.
 * ``phase_failed`` -- discovery succeeded but materialisation or the opportunity pipeline raised.
 
+The same-day lane (``gemiapp.ingestion.sameday_discovery``; dormant) is judged on its own stream, with its own
+kinds, so a problem in one lane is never reported as the other's and each is alerted once:
+
+* ``sameday_date_order_anomaly`` -- an in-window record appeared after the older boundary was established.
+  Alerted on the first occurrence: the ``-incorporationDate`` ordering the lane relies on did not hold.
+* ``sameday_repeated_failures`` -- ``GEMI_INGESTION_ALERT_FAILURE_THRESHOLD`` consecutive same-day runs ended
+  without success, whatever the reason (GEMI unreachable, a write failure that repeats, the page limit).
+* ``sameday_no_progress`` -- the lane is enabled and has run, but not successfully for
+  ``GEMI_INGESTION_ALERT_STALE_SECONDS``.
+
+The lane has no cursor, so nothing is "held": every run rescans its window. While the lane is disabled none of
+these is ever evaluated.
+
 One voice
 ---------
 The scheduled task runs the cycle inside ``config.operator_alerts.managed_alerting()``. Without it every failed
@@ -61,6 +74,7 @@ from django.core.mail import mail_admins
 from django.utils import timezone
 
 from .ingestion.discovery import INGEST, STOP_INGEST_WRITE_FAILED, STREAM_COMPANIES, get_cursor
+from .ingestion.sameday_discovery import STREAM_INCORPORATION_DATE
 
 # Named in settings.OPERATOR_ALERT_LOGGERS: an ERROR here is an operator email, a WARNING is a server-log line.
 logger = logging.getLogger("gemiapp.ingestion_alerts")
@@ -71,7 +85,11 @@ REPEATED_FAILURES = "repeated_failures"
 NO_PROGRESS = "no_progress"
 REFUSED = "refused"
 PHASE_FAILED = "phase_failed"
-KINDS = (WRITE_FAILED, ORDERING_ANOMALY, REPEATED_FAILURES, NO_PROGRESS, REFUSED, PHASE_FAILED)
+SAMEDAY_DATE_ORDER_ANOMALY = "sameday_date_order_anomaly"
+SAMEDAY_REPEATED_FAILURES = "sameday_repeated_failures"
+SAMEDAY_NO_PROGRESS = "sameday_no_progress"
+KINDS = (WRITE_FAILED, ORDERING_ANOMALY, REPEATED_FAILURES, NO_PROGRESS, REFUSED, PHASE_FAILED,
+         SAMEDAY_DATE_ORDER_ANOMALY, SAMEDAY_REPEATED_FAILURES, SAMEDAY_NO_PROGRESS)
 
 DEFAULT_WRITE_FAILURE_THRESHOLD = 2
 DEFAULT_FAILURE_THRESHOLD = 3
@@ -149,6 +167,56 @@ def _stale(cursor, *, policy: AlertPolicy, now: datetime) -> timedelta | None:
         return None     # never succeeded: an uninitialised cursor is a refusal, reported as such
     age = now - cursor.last_success_at
     return age if age > timedelta(seconds=policy.stale_seconds) else None
+
+
+def _sameday_stale(*, policy: AlertPolicy, now: datetime) -> timedelta | None:
+    """How long the same-day lane has gone without a successful run, when that exceeds the stale interval.
+
+    Read from the run rows (the lane has no cursor). None while the lane has never run: a lane that is not
+    running is disabled or refused, and that is reported elsewhere.
+    """
+    GemiDiscoveryRun = apps.get_model("gemiapp", "GemiDiscoveryRun")
+    runs = GemiDiscoveryRun.objects.filter(stream=STREAM_INCORPORATION_DATE, mode=INGEST)
+    since = (runs.filter(status="success").order_by("-started_at").values_list("started_at", flat=True).first()
+             or runs.order_by("started_at").values_list("started_at", flat=True).first())
+    if since is None:
+        return None
+    age = now - since
+    return age if age > timedelta(seconds=policy.stale_seconds) else None
+
+
+def _evaluate_sameday(report, *, policy: AlertPolicy, now: datetime) -> list:
+    """The same-day lane's own alerts for one non-successful cycle. Empty while the lane is disabled."""
+    if not getattr(report, "sameday_enabled", False):
+        return []
+    raised: list[Raised] = []
+    lane = report.sameday
+    streak = failure_streak(STREAM_INCORPORATION_DATE)
+    anomaly = lane is not None and bool(lane.blocking_anomalies)
+    if anomaly:
+        first = lane.blocking_anomalies[0]
+        raised.append(_raise(
+            SAMEDAY_DATE_ORDER_ANOMALY,
+            f"the same-day lane met an in-window record after {first.get('older_records_before')} older records "
+            f"({lane.date_order_anomalies} such record(s), run {lane.run_id}): the -incorporationDate ordering it "
+            f"relies on did not hold. The record was still processed; every cycle rescans the window.",
+            policy=policy, now=now))
+    elif len(streak) >= policy.failure_threshold:
+        reasons = sorted({f"{run.status}/{run.stop_reason or 'error'}" for run in streak})
+        raised.append(_raise(
+            SAMEDAY_REPEATED_FAILURES,
+            f"{len(streak)} consecutive same-day discovery runs ended without success ({', '.join(reasons)}); "
+            f"latest run {streak[0].pk}. The lane has no cursor: each cycle rescans the window, but companies "
+            f"below the -arGemi frontier are not being discovered meanwhile.",
+            policy=policy, now=now))
+    age = _sameday_stale(policy=policy, now=now)
+    if age is not None:
+        hours, minutes = divmod(int(age.total_seconds()) // 60, 60)
+        raised.append(_raise(
+            SAMEDAY_NO_PROGRESS,
+            f"no successful same-day discovery run for {hours}h {minutes:02d}m",
+            policy=policy, now=now))
+    return raised
 
 
 def _recover(*, now: datetime) -> list[str]:
@@ -244,7 +312,9 @@ def evaluate_cycle(report, *, policy: AlertPolicy | None = None, now: datetime |
                 f"{len(streak)} consecutive ingestion runs ended without success ({', '.join(reasons)}); "
                 f"latest run {streak[0].pk}. The frontier is held at {cursor.high_water_mark or 'none'}.",
                 policy=policy, now=now))
-        phases = [name for name, _ in report.failed_phases if name != "discovery"]
+        # Each lane is judged on its own stream; neither is "a phase that failed after discovery".
+        raised += _evaluate_sameday(report, policy=policy, now=now)
+        phases = [name for name, _ in report.failed_phases if name not in ("discovery", "sameday_discovery")]
         if phases:
             raised.append(_raise(
                 PHASE_FAILED,
@@ -255,10 +325,39 @@ def evaluate_cycle(report, *, policy: AlertPolicy | None = None, now: datetime |
             logger.warning("GEMI ingestion cycle did not succeed (status=%s, consecutive non-successful runs=%s); "
                            "recorded, no alert yet.", report.status, len(streak))
 
+    elif getattr(report, "sameday_enabled", False):
+        # A skipped cycle ran neither lane; the lane's own staleness is still worth an alert.
+        age = _sameday_stale(policy=policy, now=now)
+        if age is not None:
+            hours, minutes = divmod(int(age.total_seconds()) // 60, 60)
+            raised.append(_raise(SAMEDAY_NO_PROGRESS,
+                                 f"no successful same-day discovery run for {hours}h {minutes:02d}m",
+                                 policy=policy, now=now))
+
     age = _stale(cursor, policy=policy, now=now)
     if age is not None:
         raised.append(_raise(NO_PROGRESS, _no_progress(age), policy=policy, now=now))
     return AlertOutcome(raised, [])
+
+
+def sameday_health(*, now: datetime | None = None) -> list[str]:
+    """A read-only description of the same-day lane. Empty while it is disabled and has never run."""
+    from .ingestion.sameday_discovery import sameday_enabled
+
+    now = now or timezone.now()
+    GemiDiscoveryRun = apps.get_model("gemiapp", "GemiDiscoveryRun")
+    runs = GemiDiscoveryRun.objects.filter(stream=STREAM_INCORPORATION_DATE, mode=INGEST)
+    latest = runs.order_by("-id").first()
+    if latest is None and not sameday_enabled():
+        return []
+    success = runs.filter(status="success").order_by("-started_at").values_list("started_at", flat=True).first()
+    streak = failure_streak(STREAM_INCORPORATION_DATE)
+    return [
+        f"same-day lane: {'enabled' if sameday_enabled() else 'disabled (dormant)'}; stateless, no cursor; "
+        f"last success: {'never' if success is None else f'{int((now - success).total_seconds()) // 60} min ago'}",
+        f"consecutive non-successful same-day runs={len(streak)}"
+        + (f" (latest: run {streak[0].pk} {streak[0].status}/{streak[0].stop_reason or 'error'})" if streak else ""),
+    ]
 
 
 def ingestion_health(*, now: datetime | None = None) -> list[str]:
@@ -274,5 +373,6 @@ def ingestion_health(*, now: datetime | None = None) -> list[str]:
         f"(last attempt: {cursor.last_attempted_at.isoformat() if cursor.last_attempted_at else 'never'})",
         f"consecutive non-successful ingest runs={len(streak)}"
         + (f" (latest: run {streak[0].pk} {streak[0].status}/{streak[0].stop_reason or 'error'})" if streak else ""),
+        *sameday_health(now=now),
         f"open alerts: {', '.join(open_alerts()) or 'none'}",
     ]

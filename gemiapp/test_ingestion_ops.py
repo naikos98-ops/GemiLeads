@@ -451,7 +451,7 @@ class ParityTests(ParityTestCase):
         self.legacy_import(item(500, TODAY))
         self.ingest(self.page(item(1001, TODAY)))
         before = (Company.objects.count(), GemiDiscoveryRun.objects.count(), ImportRun.objects.count())
-        with self.assertNumQueries(8):
+        with self.assertNumQueries(6):      # both lanes in the same six reads
             text = "\n".join(self.report().lines())
         self.assertEqual((Company.objects.count(), GemiDiscoveryRun.objects.count(), ImportRun.objects.count()),
                          before)

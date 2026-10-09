@@ -117,12 +117,18 @@ class SharedWriterTests(NoNetworkMixin, TestCase):
                     self.assertEqual((outcome.status, outcome.date_problem), (company_writer.REFUSED_DATE, problem))
         self.assertEqual((Company.objects.count(), CompanyActivity.objects.count()), (0, 0))
 
-    def test_the_clamp_is_caught_even_if_the_source_date_check_missed_it(self):
-        with patch.object(company_writer, "source_date_problem", return_value=""):
-            outcome = self.write(item(3001, "1850-01-01"))
-        self.assertEqual((outcome.status, outcome.date_problem),
-                         (company_writer.REFUSED_DATE, company_writer.DATE_CLAMPED))
-        self.assertFalse(Company.objects.exists())
+    def test_the_writer_not_company_defaults_decides_the_stored_date(self):
+        # Whatever the legacy defaults compute for the date -- here a clamp to another day -- the row is stored
+        # with the validated source date. (Athens midnight: gemiapp.test_sameday_discovery.)
+        real = company_defaults
+
+        def clamping(record):
+            return {**real(record), "incorporation_date": date(2001, 1, 1)}
+
+        with patch("gemiapp.services.company_defaults", side_effect=clamping):
+            outcome = self.write(item(3001, "2019-03-07"))
+        self.assertEqual(outcome.status, company_writer.CREATED)
+        self.assertEqual(Company.objects.get(gemi_number="3001").incorporation_date, date(2019, 3, 7))
 
     def test_an_existing_company_is_never_updated(self):
         stored = known_company(3001)

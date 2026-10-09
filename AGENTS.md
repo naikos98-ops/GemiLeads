@@ -159,6 +159,65 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Same-day discovery lane — ΑΔΡΑΝΗΣ (2026-10-09). Branch `claude/unified-ingestion-parity-miss-58e98f`, ΟΧΙ στο
+  `main`, κανένα deploy, καμία εντολή ή εγγραφή σε production. `GEMI_DISCOVERY_SAMEDAY_LANE_ENABLED` = 0
+  (προεπιλογή). Το production schedule της frontier lane (`13,43 * * * *`, ανά 30′) μένει αμετάβλητο.**
+  - **G4: η τρέχουσα περίοδος περιέχει ΕΠΙΒΕΒΑΙΩΜΕΝΟ MISS και ΝΕΟ παράθυρο πιστοποίησης ΔΕΝ έχει ξεκινήσει.**
+    Parity production για 2026-10-08: 48/48 επιτυχή unified runs, unified created 329, legacy created 27,
+    **LEGACY-ONLY = 7** (`121413403000`, `127322401000`, `128023737000`, `144542553000`, `182931138001`,
+    `57043309000`, `67552603000`). Και οι επτά υπάρχουν ως `Company` με `incorporation_date=2026-10-08`, τις
+    δημιούργησε ο legacy importer και έχουν **μηδέν** `GemiDiscoveryObservation`. Η ημέρα μένει ιστορικό
+    τεκμήριο MISS. Το νέο παράθυρο ξεκινά **μόνο** στον πρώτο προγραμματισμένο κύκλο production με τη λωρίδα
+    ενεργή (flag = 1)· merge ή deploy με flag 0 δεν το ξεκινά. Η LIVE παραμένει απαγορευμένη.
+  - **Αιτία (δομική, όχι αποτυχία run):** η frontier lane σελιδοποιεί `-arGemi` και σταματά στο overlap γύρω
+    από το σύνορο· δεν κατεβαίνει ποτέ σε εταιρεία με **παλιό/χαμηλό** αριθμό ΓΕΜΗ και **σημερινή** ημερομηνία
+    σύστασης. Ο legacy τις βρίσκει γιατί σελιδοποιεί `-incorporationDate`.
+  - **Η λωρίδα (`gemiapp/ingestion/sameday_discovery.py`, stream `companies_by_incorporation_date`):** δύο
+    περάσματα, ακριβώς το query του legacy,
+    `GET /companies?isActive=true|false&resultsSortBy=-incorporationDate&resultsOffset=N&resultsSize=200`, lane
+    DISCOVERY, κοινό budget 7/λεπτό. Παράθυρο `[as_of − 1 ημέρα, as_of]` με `as_of = timezone.localdate()`
+    (Europe/Athens). **Χωρίς cursor**: κάθε run ξανασαρώνει το παράθυρο· αποτυχημένο run δεν χάνει τίποτα.
+    - **Ανά εγγραφή:** ημερομηνία μέσα στο παράθυρο → υποψήφια· μελλοντική / κενή / μη αναγνώσιμη / πριν το
+      1900 → **ούτε εγγραφή, ούτε observation, ούτε όριο στάσης**, μόνο counters (`future_date_records`,
+      `unusable_date_records`)· παλαιότερη του παραθύρου → μόνο όριο, **ποτέ** εγγραφή.
+    - **Στάση ανά πέρασμα:** `older_boundary` όταν έχουν φανεί ≥ 20 παλαιότερες εγγραφές **και** η τελευταία
+      αναγνώσιμη ημερομηνία της σελίδας είναι παλαιότερη του παραθύρου· `end_of_results` (επιτυχία)·
+      `page_limit` στις 10 σελίδες/πέρασμα (`incomplete`). Υποψήφια **μετά** από εδραιωμένο όριο =
+      `date_order_violation` → run `anomaly` (η εγγραφή επεξεργάζεται κανονικά)· μετά από λιγότερες = ανεκτή,
+      μετριέται.
+    - **Newness:** χωρίς `Company` → κοινός writer· `Company` υπάρχει αλλά **καμία** eligible discovery
+      evidence σε κανένα stream → γνήσιο εύρημα `already_local` (race με legacy· το σήμα υλοποιείται)· υπάρχει
+      evidence → `known`. Σκόπιμα **χωρίς** επιπλέον έλεγχο «η γραμμή δημιουργήθηκε μέσα στο παράθυρο».
+    - Persistence στους ίδιους πίνακες, **καμία migration**: παράθυρο, `trigger` (`cycle` / `operator` /
+      δεσμευμένο `operator_backfill`) και διαγνωστικά στο `GemiDiscoveryRun.policy` JSON. Η συμπύκνωση
+      observations είναι πλέον **ανά stream** (και για τη frontier lane).
+  - **Athens date safety (κοινός writer, `company_writer`):** ο writer είναι η αρχή για την ημερομηνία.
+    «Μελλοντική» = `> timezone.localdate()` (όχι `date.today()` του container, που στο Render είναι UTC) και η
+    γραμμή αποθηκεύεται με **ακριβώς** την επικυρωμένη ημερομηνία πηγής — ό,τι υπολογίσει το `company_defaults`
+    αντικαθίσταται. Έτσι στις 00:30 Αθήνας (UTC ακόμη χθες) μια εταιρεία με σημερινή ημερομηνία δημιουργείται
+    αμέσως, δεν μπαίνει σε quarantine. Το `company_defaults` **δεν άλλαξε** (το χρειάζεται ο legacy importer).
+    Ισχύει και για frontier ingest και hydration.
+  - **Κύκλος (`ingestion_cycle`), μόνο με `GEMI_DISCOVERY_SAMEDAY_LANE_ENABLED=1`:** ένα `as_of` στην αρχή →
+    frontier lane → same-day lane → **μία** υλοποίηση NEW_COMPANY στην ένωση → SHADOW pipeline μετά το commit.
+    Μία Company, ένα σήμα, μία ευκαιρία όποια λωρίδα κι αν τη δει πρώτη. Αποτυχία της λωρίδας = failed phase
+    `sameday_discovery` του δικού της stream, η frontier δεν επηρεάζεται, ο επόμενος κύκλος ξανασαρώνει. Με
+    flag 0 ο κύκλος είναι ακριβώς η frontier lane μόνη (ίδια κλήση, ίδιο summary, ίδια αιτήματα).
+  - **Parity (`ingestion_parity`):** ανά λωρίδα runs/pages/created· ανά εταιρεία frontier only / same-day only /
+    both· `FRONTIER GAPS RECOVERED BY THE SAME-DAY LANE`· future/unusable skipped, date-order anomalies, write
+    failures· verdict στην **ένωση**. **Η evidence πρέπει να είναι έγκαιρη:** μετρά μόνο αν το run ξεκίνησε έως
+    το τέλος της επόμενης τοπικής ημέρας και δεν είναι `operator_backfill`· αλλιώς `recovered late` /
+    `operator backfill evidence` και η ημέρα μένει `MISS`.
+  - **Alerts ανά stream:** `sameday_date_order_anomaly` (πρώτη εμφάνιση), `sameday_repeated_failures` (3
+    συνεχόμενα), `sameday_no_progress` (2 ώρες χωρίς επιτυχία). Ίδια πολιτική (μία φορά, υπενθύμιση 24 ώρες,
+    recovery)· ποτέ δεν αξιολογούνται με τη λωρίδα κλειστή.
+  - **Εντολή (operator, εκτός schedule):**
+    `GEMI_DISCOVERY_SAMEDAY_LANE_ENABLED=1 python manage.py run_gemi_sameday_discovery --dry-run` — καμία
+    εγγραφή, **κάνει** τα αιτήματα αναζήτησης. Αρνείται χωρίς τα δύο flags.
+  - **ΔΕΝ υλοποιήθηκε:** ιστορικό backfill (οι επτά εταιρείες μένουν χωρίς discovery evidence/σήμα), αλλαγή
+    cadence, αλλαγή του legacy importer ή της frontier lane.
+  - 50 νέα tests (`gemiapp/test_sameday_discovery.py`)· mutation check 26/26· **2.437 tests OK**· `check`,
+    `makemigrations --check` καθαρά· **καμία migration**.
+
 - **Ενιαία ingestion — επιχειρησιακό επίπεδο ασφάλειας (2026-10-07). Branch `feature/gemi-ingestion-ops-safety`,
   ΟΧΙ στο `main`, κανένα deploy. Το schedule είναι έτοιμο αλλά ΟΧΙ ενεργό: `GEMI_DISCOVERY_V2_ENABLED` μένει 0.**
   - **Κανόνας G4 (ισχύει από τώρα):** το **νέο 14ήμερο παράθυρο πιστοποίησης G4 ξεκινά μόνο τη στιγμή που η
@@ -2197,6 +2256,19 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Same-day lane — επόμενα βήματα (όλα με ρητή έγκριση):** (1) merge και deploy με flag 0 (καμία migration)·
+  (2) σε production, σε ώρα αιχμής,
+  `GEMI_DISCOVERY_SAMEDAY_LANE_ENABLED=1 python manage.py run_gemi_sameday_discovery --dry-run`: σύγκριση του
+  σημερινού συνόλου με του legacy και πραγματικό πλήθος σελίδων/αιτημάτων· (3) ενεργοποίηση του flag στο Render →
+  **εκεί ξεκινά το νέο 14ήμερο G4**· (4) καθημερινά `report_gemi_ingestion_parity`. **Ανοιχτά:** (α) ιστορικό
+  backfill των επτά (και όσων χάθηκαν από την ενεργοποίηση του schedule): μόνο με πραγματική παρατήρηση ΓΕΜΗ και
+  `trigger=operator_backfill`, ποτέ observations φτιαγμένα από `Company`· (β) budget αιτημάτων: εκτίμηση 3–5
+  αιτήματα/κύκλο, μη μετρημένη· (γ) ενιαίο query χωρίς `isActive` (πιθανώς πληρέστερο κατά ~129 εταιρείες) μόνο
+  ως μετρημένη βελτιστοποίηση· (δ) το `GemiRequestAttempt` δεν ξεχωρίζει τις δύο λωρίδες (ίδιο lane/endpoint)·
+  (ε) γιατί το ΓΕΜΗ εμφανίζει παλιούς αριθμούς με σημερινή ημερομηνία δεν έχει ελεγχθεί (read-only έλεγχος
+  `raw_data` των επτά)· (στ) το κοινό `_ingest` γράφει «The frontier will not advance» και για τη λωρίδα χωρίς
+  cursor (μόνο κείμενο log).
+
 - **Ενιαία ingestion — επόμενα βήματα:** (1) merge του `feature/gemi-ingestion-ops-safety` στο `main` και deploy
   (καμία migration· με flag 0 δεν δημιουργείται γραμμή schedule)· (2) `manage.py sendtestemail --admins` σε
   production, ώστε να είναι βέβαιο ότι τα alerts φτάνουν· (3) **ενεργοποίηση:** `GEMI_DISCOVERY_V2_ENABLED=1` στο
@@ -2421,6 +2493,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-10-09 — Same-day discovery lane (αδρανής), Athens date safety, parity δύο λωρίδων, alerts ανά stream.**
+  Νέα: `gemiapp/ingestion/sameday_discovery.py`, `manage.py run_gemi_sameday_discovery`,
+  `gemiapp/test_sameday_discovery.py`. Αλλαγές: `ingestion/company_writer.py` (τοπική ημερομηνία, ο writer ορίζει
+  την αποθηκευμένη ημερομηνία), `ingestion/discovery.py` (μόνο συμπύκνωση ανά stream), `ingestion_cycle.py`,
+  `ingestion_parity.py`, `ingestion_alerts.py`, `config/settings.py`, `.env.example`, `test_ingestion_cycle.py`
+  (ένα test του παλιού clamp ξαναγράφτηκε), `test_ingestion_ops.py` (pin queries 8 → 6). Αφορμή: production parity
+  2026-10-08 με 7 legacy-only. Επαλήθευση: 50 focused tests, mutation check 26/26, σχετικά suites (429), `check`,
+  `makemigrations --check`, **2.437 tests OK**. Καμία migration, κανένα deploy, καμία εντολή σε production, κανένα
+  backfill, flag 0.
 - **2026-10-07 — Ενιαία ingestion: alerts, parity, έτοιμο (κλειστό) schedule.** Νέα: `gemiapp/ingestion_alerts.py`,
   `gemiapp/ingestion_parity.py`, `manage.py report_gemi_ingestion_parity`, `gemiapp/test_ingestion_ops.py`.
   Αλλαγές: `gemiapp/apps.py` (εγγραφή `13,43 * * * *` με `requires`· γενίκευση του gate), `gemiapp/tasks.py`

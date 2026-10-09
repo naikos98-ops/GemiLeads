@@ -452,6 +452,17 @@ GEMI_DISCOVERY_V2_SHADOW = os.environ.get("GEMI_DISCOVERY_V2_SHADOW", "1") == "1
 GEMI_DISCOVERY_PENDING_COMPANY_HYDRATION_ENABLED = (
     os.environ.get("GEMI_DISCOVERY_PENDING_COMPANY_HYDRATION_ENABLED", "0") == "1"
 )
+# The same-day discovery lane (gemiapp.ingestion.sameday_discovery): a second, complementary scan of /companies
+# by -incorporationDate over [local today - lookback, local today], because the -arGemi frontier never pages
+# down to a company with an old GEMI number and today's incorporation date. Dormant: off by default, and it
+# also needs GEMI_DISCOVERY_V2_ENABLED because it creates Company rows (create-only, the shared safe writer).
+# While 0 the ingestion cycle is exactly the frontier lane alone. Enabling it in production restarts the G4
+# certification window; merging or deploying it disabled does not.
+GEMI_DISCOVERY_SAMEDAY_LANE_ENABLED = os.environ.get("GEMI_DISCOVERY_SAMEDAY_LANE_ENABLED", "0") == "1"
+GEMI_DISCOVERY_SAMEDAY_LOOKBACK_DAYS = int(os.environ.get("GEMI_DISCOVERY_SAMEDAY_LOOKBACK_DAYS", "1"))
+# Per isActive pass: the hard page limit, and how many older-than-window records must be seen before stopping.
+GEMI_DISCOVERY_SAMEDAY_MAX_PAGES = int(os.environ.get("GEMI_DISCOVERY_SAMEDAY_MAX_PAGES", "10"))
+GEMI_DISCOVERY_SAMEDAY_OLDER_BOUNDARY_RECORDS = int(os.environ.get("GEMI_DISCOVERY_SAMEDAY_OLDER_BOUNDARY_RECORDS", "20"))
 # The lean ingestion cycle (gemiapp.ingestion_cycle; dormant, not scheduled): how long one page request may
 # wait for a slot in the shared GEMI rate budget. Short on purpose -- a starved run fails fast and the next one
 # repeats the window, instead of outliving the interval it is meant to run in. The budget itself is unchanged.
