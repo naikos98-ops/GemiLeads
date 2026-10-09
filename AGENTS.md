@@ -185,9 +185,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
       `page_limit` στις 10 σελίδες/πέρασμα (`incomplete`). Υποψήφια **μετά** από εδραιωμένο όριο =
       `date_order_violation` → run `anomaly` (η εγγραφή επεξεργάζεται κανονικά)· μετά από λιγότερες = ανεκτή,
       μετριέται.
-    - **Newness:** χωρίς `Company` → κοινός writer· `Company` υπάρχει αλλά **καμία** eligible discovery
-      evidence σε κανένα stream → γνήσιο εύρημα `already_local` (race με legacy· το σήμα υλοποιείται)· υπάρχει
-      evidence → `known`. Σκόπιμα **χωρίς** επιπλέον έλεγχο «η γραμμή δημιουργήθηκε μέσα στο παράθυρο».
+    - **Newness:** (1) χωρίς `Company` → κοινός writer· (2) `Company` με eligible discovery evidence σε
+      οποιοδήποτε stream → `known`· (3) `Company` χωρίς evidence: γνήσιο εύρημα `already_local` (race με
+      legacy· το σήμα υλοποιείται) **μόνο** αν η τοπική ημερομηνία του `Company.imported_at` είναι μέσα στο
+      `[as_of − 1 ημέρα, as_of]`· αν η γραμμή αποθηκεύτηκε **πριν** το παράθυρο → `known`
+      (`historical_existing_records`), **καμία** eligible evidence, **κανένα** NEW_COMPANY. Έτσι μια εδραιωμένη
+      εταιρεία της οποίας το ΓΕΜΗ άλλαξε/διόρθωσε αργότερα την `incorporationDate` σε σήμερα δεν γίνεται ποτέ
+      «νέα». Η γραμμή `Company` δεν αγγίζεται σε καμία περίπτωση.
     - Persistence στους ίδιους πίνακες, **καμία migration**: παράθυρο, `trigger` (`cycle` / `operator` /
       δεσμευμένο `operator_backfill`) και διαγνωστικά στο `GemiDiscoveryRun.policy` JSON. Η συμπύκνωση
       observations είναι πλέον **ανά stream** (και για τη frontier lane).
@@ -215,8 +219,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     εγγραφή, **κάνει** τα αιτήματα αναζήτησης. Αρνείται χωρίς τα δύο flags.
   - **ΔΕΝ υλοποιήθηκε:** ιστορικό backfill (οι επτά εταιρείες μένουν χωρίς discovery evidence/σήμα), αλλαγή
     cadence, αλλαγή του legacy importer ή της frontier lane.
-  - 50 νέα tests (`gemiapp/test_sameday_discovery.py`)· mutation check 26/26· **2.437 tests OK**· `check`,
-    `makemigrations --check` καθαρά· **καμία migration**.
+  - 56 tests (`gemiapp/test_sameday_discovery.py`)· mutation check 26/26 + 6/6 για τον χρονικό φραγμό·
+    **2.443 tests OK**· `check`, `makemigrations --check` καθαρά· **καμία migration**.
 
 - **Ενιαία ingestion — επιχειρησιακό επίπεδο ασφάλειας (2026-10-07). Branch `feature/gemi-ingestion-ops-safety`,
   ΟΧΙ στο `main`, κανένα deploy. Το schedule είναι έτοιμο αλλά ΟΧΙ ενεργό: `GEMI_DISCOVERY_V2_ENABLED` μένει 0.**
@@ -2493,6 +2497,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-10-09 — Same-day lane: χρονικός φραγμός στο newness.** `Company` χωρίς discovery evidence είναι εύρημα
+  `already_local` μόνο όταν το `imported_at` (τοπική ημερομηνία) είναι μέσα στο παράθυρο· αλλιώς `known`, χωρίς
+  evidence και χωρίς σήμα. Αλλαγές: `ingestion/sameday_discovery.py`, `test_sameday_discovery.py` (+6 tests A–E),
+  `AGENTS.md`. Επαλήθευση: 56 focused tests, mutation check 6/6, σχετικά suites, `check`, `makemigrations --check`,
+  **2.443 tests OK**. Καμία migration, κανένα merge/deploy, καμία εντολή σε production.
 - **2026-10-09 — Same-day discovery lane (αδρανής), Athens date safety, parity δύο λωρίδων, alerts ανά stream.**
   Νέα: `gemiapp/ingestion/sameday_discovery.py`, `manage.py run_gemi_sameday_discovery`,
   `gemiapp/test_sameday_discovery.py`. Αλλαγές: `ingestion/company_writer.py` (τοπική ημερομηνία, ο writer ορίζει

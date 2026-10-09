@@ -350,6 +350,16 @@ class NewnessTests(LaneTestCase):
         self.assertEqual((again.known_records, again.ingested_records), (1, 0))
         self.assertEqual(list(Company.objects.values()), row)
 
+    def test_a_company_stored_before_the_window_is_known_and_leaves_no_finding(self):
+        known_company(LOW, TODAY)
+        Company.objects.update(imported_at=timezone.now() - timedelta(days=400))
+        before = list(Company.objects.values())
+        result, _ = self.lane(active=[[item(LOW, TODAY)]])
+        self.assertEqual(lane_rows(), {str(LOW): (KNOWN, "", True)})
+        self.assertEqual((result.new_records, result.historical_existing_records, result.discovered_gemi_numbers),
+                         (0, 1, []))
+        self.assertEqual(list(Company.objects.values()), before)
+
     def test_a_dry_run_requests_the_pages_and_writes_nothing(self):
         result, transport = self.lane(active=[[item(LOW, TODAY)]], dry_run=True)
         self.assertEqual((result.would_ingest_records, len(transport.calls)), (1, 2))
@@ -513,6 +523,68 @@ class NoDuplicateTests(TwoLaneCycleTestCase):
         self.assertEqual((again.sameday.known_records, self.signals(LOW).count(),
                           Opportunity.objects.filter(company=company).count()), (1, 1, 1))
         self.assertEqual(again.pipeline_runs, [])
+
+    def stored(self, number, *, days_ago):
+        """A company the legacy importer stored ``days_ago`` days ago, never seen by discovery."""
+        company = imported(number, self.today)
+        Company.objects.filter(pk=company.pk).update(imported_at=timezone.now() - timedelta(days=days_ago))
+        return Company.objects.filter(pk=company.pk).values().get()
+
+    def test_a_company_stored_yesterday_inside_the_lookback_is_still_a_legacy_first_race(self):
+        before = self.stored(LOW, days_ago=1)
+        report, _ = self.two_lanes(active=[item(LOW, self.today)])
+        self.assertEqual(lane_rows(), {str(LOW): (NEW_INCORPORATION, INGEST_ALREADY_LOCAL, True)})
+        self.assertEqual((self.signals(LOW).count(), report.sameday.historical_existing_records), (1, 0))
+        self.assertEqual(Company.objects.filter(gemi_number=str(LOW)).values().get(), before)
+
+    def test_an_established_company_whose_date_moved_into_the_window_is_never_a_new_company(self):
+        # Stored months (and years) ago; upstream its incorporationDate now equals today.
+        before = {LOW: self.stored(LOW, days_ago=120), LOW_2: self.stored(LOW_2, days_ago=900)}
+        for _ in range(2):
+            report, _ = self.two_lanes(active=[item(LOW, self.today), item(LOW_2, self.today)])
+            self.assertEqual((report.status, report.sameday.new_records, report.sameday.known_records,
+                              report.sameday.historical_existing_records), (OK, 0, 2, 2))
+            self.assertEqual(report.sameday.discovered_gemi_numbers, [])
+        self.assertEqual(lane_rows(), {str(LOW): (KNOWN, "", True), str(LOW_2): (KNOWN, "", True)})   # no finding
+        self.assertFalse(GemiDiscoveryObservation.objects.exclude(classification=KNOWN)
+                         .filter(gemi_number__in=[str(LOW), str(LOW_2)]).exists())
+        self.assertEqual((self.signals(LOW).count(), self.signals(LOW_2).count()), (0, 0))
+        self.assertFalse(Opportunity.objects.filter(company__gemi_number__in=[str(LOW), str(LOW_2)]).exists())
+        for number, row in before.items():
+            self.assertEqual(Company.objects.filter(gemi_number=str(number)).values().get(), row)
+        run = GemiDiscoveryRun.objects.filter(stream=STREAM_INCORPORATION_DATE).first()
+        self.assertEqual(run.policy["statistics"]["historical_existing_records"], 2)
+
+    def test_the_day_before_the_window_is_already_historical(self):
+        self.stored(LOW, days_ago=2)
+        report, _ = self.two_lanes(active=[item(LOW, self.today)])
+        self.assertEqual((report.sameday.historical_existing_records, self.signals(LOW).count()), (1, 0))
+
+    def test_an_established_company_with_valid_discovery_evidence_stays_idempotent(self):
+        self.two_lanes(active=[item(LOW, self.today)])              # discovered and signalled properly, once
+        Company.objects.filter(gemi_number=str(LOW)).update(imported_at=timezone.now() - timedelta(days=200))
+        world = self.world(), list(Company.objects.order_by("pk").values())
+        observations = GemiDiscoveryObservation.objects.exclude(classification=KNOWN).count()
+
+        again, _ = self.two_lanes(active=[item(LOW, self.today)])
+
+        self.assertEqual((again.status, again.sameday.known_records, again.sameday.historical_existing_records),
+                         (OK, 1, 0))
+        self.assertEqual((self.world(), list(Company.objects.order_by("pk").values())), world)
+        self.assertEqual((self.signals(LOW).count(), again.pipeline_runs), (1, []))
+        self.assertEqual(GemiDiscoveryObservation.objects.exclude(classification=KNOWN).count(), observations)
+
+    def test_the_seven_miss_shape_stored_by_legacy_during_the_day_is_recovered(self):
+        # Production 2026-10-08: below the frontier, dated today, stored by the legacy importer that day.
+        numbers = (121413403000, 57043309000, 67552603000)
+        for number in numbers:
+            imported(number, self.today)
+        report, _ = self.two_lanes(item(NEW, self.today), active=[item(number, self.today) for number in numbers])
+        self.assertEqual((report.status, report.sameday.rediscovered_local_records,
+                          report.sameday.historical_existing_records), (OK, 3, 0))
+        for number in numbers:
+            self.assertEqual(lane_rows()[str(number)], (NEW_INCORPORATION, INGEST_ALREADY_LOCAL, True))
+            self.assertEqual(self.signals(number).count(), 1)
 
     def test_a_second_cycle_changes_nothing(self):
         self.two_lanes(item(NEW, self.today), active=[item(LOW, self.today)])

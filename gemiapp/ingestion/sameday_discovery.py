@@ -68,10 +68,15 @@ For a candidate:
 
 * no local ``Company`` -> newly discovered, handed to the shared writer (``created`` / ``quarantined_date`` /
   ``write_failed``, as in the frontier lane);
-* a local ``Company`` and **no eligible discovery evidence in any stream** -> newly discovered, outcome
-  ``already_local``. Genuine evidence of a race the other writer won: never written over, and its signal is
-  materialised;
-* a local ``Company`` that already has eligible evidence -> ``known``.
+* a local ``Company`` that already has eligible discovery evidence in any stream -> ``known``;
+* a local ``Company`` with no such evidence, **first stored inside the window** (the local date of
+  ``Company.imported_at`` -- ``auto_now_add``, never moved -- is in ``[as_of - lookback_days, as_of]``) -> newly
+  discovered, outcome ``already_local``. Genuine evidence of a race the other writer won: never written over,
+  and its signal is materialised;
+* a local ``Company`` with no such evidence that was **stored before the window** -> ``known``, counted as
+  ``historical_existing_records``. It is an established company whose ``incorporationDate`` GEMI later changed
+  or corrected into the window, not a new one: no eligible evidence is recorded, so no NEW_COMPANY signal can
+  follow, and the row is not touched.
 
 One Company (unique ``gemi_number``, create-only), one NEW_COMPANY signal (its dedupe key is per company) and
 therefore one pass through the opportunity pipeline, whichever lane saw the record first.
@@ -122,7 +127,6 @@ from .discovery import (
     _classify,
     _count_ingest,
     _ingest,
-    _known_numbers,
     _worth_storing,
     ingest_enabled,
     normalize_gemi_number,
@@ -203,6 +207,8 @@ class SameDayResult(DiscoveryResult):
     unusable_date_records: int = 0           # missing, unreadable or before 1900: likewise
     older_boundary_records: int = 0          # readable and older than the window: boundary only
     tolerated_order_irregularities: int = 0  # a candidate after a few older records, below the threshold
+    # Stored before the window, no discovery evidence, dated into the window upstream: known, never a finding.
+    historical_existing_records: int = 0
     date_order_anomalies: int = 0
     passes: list = field(default_factory=list)   # {"pass", "pages", "stop_reason"} per isActive pass
 
@@ -217,6 +223,7 @@ class SameDayResult(DiscoveryResult):
             "older_boundary_records": self.older_boundary_records,
             "tolerated_order_irregularities": self.tolerated_order_irregularities,
             "date_order_anomalies": self.date_order_anomalies, "already_local_records": self.rediscovered_local_records,
+            "historical_existing_records": self.historical_existing_records,
             "quarantined_date_records": self.quarantined_date_records,
             "ingest_failed_records": self.ingest_failed_records, "passes": [dict(item) for item in self.passes],
         }
@@ -235,6 +242,7 @@ class SameDayResult(DiscoveryResult):
             f"requests={self.pages_fetched} run_id={self.run_id} trigger={self.trigger}",
             f"{prefix}window={self.window_start} .. {self.as_of} (local dates) passes: {passes or 'none'}",
             f"{prefix}in-window records examined={self.records_examined} known={self.known_records} "
+            f"(stored before the window, never a finding={self.historical_existing_records}) "
             f"new={self.new_records} (already local, first evidence={self.rediscovered_local_records}) "
             f"dated before today={self.late_publication_records} ingested={self.ingested_records}",
             f"{prefix}ingest would_create={self.would_ingest_records} quarantined_date={self.quarantined_date_records} "
@@ -272,6 +280,13 @@ def _fetch_page(client, *, is_active: str, offset: int, policy: SameDayPolicy, m
             "resultsOffset": offset,
             "resultsSize": policy.page_size,
         }, lane=GemiLane.DISCOVERY, **bounded)
+
+
+def _stored_on(numbers: list[str]) -> dict[str, date]:
+    """``{gemi_number: the local date its Company row was first stored}`` for the numbers stored locally."""
+    Company = apps.get_model("gemiapp", "Company")
+    return {number: timezone.localdate(imported_at) for number, imported_at in
+            Company.objects.filter(gemi_number__in=numbers).values_list("gemi_number", "imported_at")}
 
 
 def _evidenced_numbers(numbers: list[str]) -> set[str]:
@@ -370,24 +385,28 @@ def _examine(candidates: list[tuple[dict, str]], *, result: SameDayResult, page_
     if not candidates:
         return
     numbers = [text for _, text in candidates]
-    local = _known_numbers(numbers)
+    stored_on = _stored_on(numbers)
     evidenced = _evidenced_numbers(numbers)
     page_new: list[tuple[dict, str, str]] = []
     page_rows: dict[str, dict] = {}
     for item, text in candidates:
         result.records_examined += 1
         classification, value, quality = _classify(item, as_of=result.as_of)
-        exists_locally = text in local
+        exists_locally = text in stored_on
         row = {
             "gemi_number": text, "classification": classification, "incorporation_date": value,
             "incorporation_date_quality": quality, "company_existed": exists_locally, "page_index": page_index,
             "ingest_outcome": "",
         }
         result.observations.append(row)
-        if exists_locally and text in evidenced:
-            row["classification"] = KNOWN
-            result.known_records += 1
-            continue
+        if exists_locally:
+            # A race with another writer only when the row itself was first stored inside the window.
+            raced = result.window_start <= stored_on[text] <= result.as_of
+            if text in evidenced or not raced:
+                row["classification"] = KNOWN
+                result.known_records += 1
+                result.historical_existing_records += int(text not in evidenced)
+                continue
         result.new_records += 1
         result.rediscovered_local_records += int(exists_locally)
         result.late_publication_records += int(classification == LATE_PUBLICATION)
