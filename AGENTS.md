@@ -194,7 +194,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     ιστορικό μόνο αναφέρεται· ανοιχτή περίοδος με flag 0 αναφέρεται («κλείνει στον επόμενο κύκλο»).
   - **Ορατότητα (μία πηγή: `live_cutover.customer_visible` / `customer_visible_signal_mode`):** όλα τα scopes του
     `organization_access` (D29, Save/Assign/Status/Notes/Tasks/DNC, audit, notifications, dashboard, feed, Saved,
-    Tasks, μετρήσεις Radars) και το TASK_DUE. Με 0: κενά/404/άρνηση ακόμη κι αν υπάρχουν LIVE γραμμές· το TASK_DUE
+    Tasks, μετρήσεις Radars), τα εσωτερικά G5 `get_authorized_opportunity`, `get_authorized_opportunity_score_breakdown`,
+    `get_authorized_opportunity_feed` (μετά τους αμετάβλητους ελέγχους membership/entitlement/ρόλου) και το TASK_DUE. Με 0: κενά/404/άρνηση ακόμη κι αν υπάρχουν LIVE γραμμές· το TASK_DUE
     σιωπά. Με 1: όλα μαζί, μόνο LIVE-backed. Staff/superuser: καμία παράκαμψη.
   - **Συνύπαρξη legacy:** η ομάδα Signals/Leads μένει. Με visibility 0 το κείμενο είναι το σημερινό («until
     opportunities go live»)· με 1 γίνεται «PREVIOUS SERVICE · Signals / Leads» και φεύγουν τα pointers «Μέχρι να
@@ -214,7 +215,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     διαγραφή/υποβιβασμός.
   - 37 νέα tests (`gemiapp/test_live_cutover.py`)· τα D29–D37 test modules τρέχουν πλέον με visibility 1 ανά module
     (μοντελοποιούν τη μετά-cutover συμπεριφορά)· mutation check: 15 μεταλλάξεις πιάνονται, 4 ισοδύναμες (διπλά
-    στρώματα)· **2.480 tests OK**· `check`, `makemigrations --check` καθαρά· κύκλος 0058 → 0059 → 0058 → 0059 σε
+    στρώματα)· **2.484 tests OK**· `check`, `makemigrations --check` καθαρά· κύκλος 0058 → 0059 → 0058 → 0059 σε
     αντίγραφο της dev βάσης (86 → 87 πίνακες, όλοι οι υπόλοιποι ίδιοι, `migrate --check` καθαρό).
 
 - **Same-day discovery lane (2026-10-09). Σήμερα στο `main` και ενεργή σε production (αναφορά χρήστη: parity OK
@@ -2333,8 +2334,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   πρώτα digests/Leads πάνω σε opportunities, intraday refresh υπαρχουσών εταιρειών και `ImportRun` για Superadmin).
   **Ανοιχτά:** (α) ευκαιρίες ανενεργών Radars μένουν ορατές ως ιστορικό (απόφαση προϊόντος)· (β) ένα LIVE σήμα
   γραμμένο εκτός κύκλου ανάμεσα σε flag 0 και τον επόμενο κύκλο θα μετρούσε εξουσιοδοτημένο (δεν υπάρχει τέτοιος
-  writer)· (γ) τα εσωτερικά `get_authorized_opportunity*` / `get_authorized_opportunity_feed` του G5 (όχι σε views)
-  δεν περνούν από τον visibility helper.
+  writer).
 
 - **Same-day lane — ανοιχτά (η λωρίδα τρέχει σε production):** (α) ιστορικό
   backfill των επτά (και όσων χάθηκαν από την ενεργοποίηση του schedule): μόνο με πραγματική παρατήρηση ΓΕΜΗ και
@@ -2568,6 +2568,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-10-14 — LIVE cutover: και οι εσωτερικοί G5 helpers πίσω από την πύλη ορατότητας.** Οι
+  `get_authorized_opportunity`, `get_authorized_opportunity_score_breakdown` (μέσω του πρώτου) και
+  `get_authorized_opportunity_feed` (μέσω του `_feed_for`, που πλέον εφαρμόζει μόνο του την πύλη για κάθε feed)
+  περνούν από τον ίδιο `customer_visible` / `customer_visible_signal_mode`: με visibility 0 άρνηση / κενή σελίδα
+  ακόμη και με LIVE γραμμές, με 1 μόνο LIVE-backed. Τα fixtures του `test_organization_access` έγιναν LIVE-backed με
+  visibility 1 ανά module. 4 νέα tests, mutation check 3/3, **2.484 tests OK**, `check`, `makemigrations --check`.
 
 - **2026-10-14 — LIVE cutover: αδρανής υποδομή (εγκεκριμένο σχέδιο με δύο διορθώσεις).** Νέα:
   `gemiapp/live_cutover.py`, `gemiapp/live_cutover_readiness.py`, `gemiapp/signal_replay.py`, `LiveSignalPeriod` +

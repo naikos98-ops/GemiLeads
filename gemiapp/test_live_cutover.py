@@ -32,13 +32,14 @@ from .live_cutover import (
 from .live_cutover_readiness import BLOCKED, EXPECTED_CRON, INGESTION_TASK, READY, build_readiness_report
 from .models import (
     Company, CompanySignal, GemiDiscoveryRun, LiveSignalPeriod, Opportunity, OpportunityNote, OpportunitySignal,
-    OpportunityTask, OrganizationNotification,
+    OpportunityTask, OrganizationMember, OrganizationNotification,
 )
 from .notifications import generate_due_task_notifications
 from .organization_access import (
     OrganizationAccessDenied, add_authorized_opportunity_note, apply_authorized_company_do_not_contact,
     assign_authorized_opportunity, complete_authorized_opportunity_task, create_authorized_opportunity_task,
-    get_authorized_company_opportunity_page, get_authorized_notifications, get_authorized_workspace_dashboard,
+    get_authorized_company_opportunity_page, get_authorized_notifications, get_authorized_opportunity,
+    get_authorized_opportunity_feed, get_authorized_opportunity_score_breakdown, get_authorized_workspace_dashboard,
     get_authorized_workspace_opportunities, get_authorized_workspace_tasks, save_authorized_opportunity,
     set_authorized_opportunity_status,
 )
@@ -50,6 +51,7 @@ from .test_gemi_discovery import item, ready_cursor
 from .test_ingestion_cycle import IngestionCycleTestCase
 from .test_legacy_radar_sync import SyncTestCase
 from .test_new_company_signals import discovery_run, make_company, observation
+from .test_organization_access import LiveAccessTestCase, user
 from .test_organization_radar_matching import T0, new_company_signal, snapshot
 
 LIVE_ON = override_settings(GEMI_LIVE_SIGNALS_ENABLED=True)
@@ -585,3 +587,92 @@ class SourceGuardTests(TestCase):
             source = open(path, encoding="utf-8").read()
             self.assertNotIn("promote_company_signal(", source, path)
             self.assertNotIn(".update(mode", source, path)
+
+
+# --- the internal G5 helpers obey the same gate ------------------------------------------------------------------
+
+class G5HelperGateTests(LiveAccessTestCase):
+    """``get_authorized_opportunity``, its score-breakdown variant and ``get_authorized_opportunity_feed`` read
+    through the one customer visibility helper, after the unchanged membership / entitlement / role checks."""
+
+    ORG_WIDE = ("owner", "admin", "sales_manager", "viewer")
+
+    def setUp(self):
+        super().setUp()
+        radar = self.radar(name="gate", **self.everything())
+        snapshot(self.company, T0)
+        self.live_row = self.materialize(new_company_signal(self.company, T0, mode=LIVE), radar).opportunity
+        self.shadow_company = make_company("880099")
+        snapshot(self.shadow_company, T0)
+        self.shadow_row = self.materialize(new_company_signal(self.shadow_company, T0), radar).opportunity
+
+    def helpers(self, who, org=None, row=None):
+        org, row = org or self.org, row or self.live_row
+        return (
+            lambda: get_authorized_opportunity(who, org, row.pk),
+            lambda: get_authorized_opportunity_score_breakdown(who, org, row.pk),
+        )
+
+    def test_hidden_while_visibility_is_off_even_with_live_rows(self):
+        self.assertEqual(self.live_row.latest_signal.mode, LIVE)
+        for role in self.ORG_WIDE:
+            for call in self.helpers(self.members[role]):
+                self.denied(call)
+            self.assertEqual(get_authorized_opportunity_feed(self.members[role], self.org).cards, ())
+        Opportunity.objects.filter(pk=self.live_row.pk).update(
+            assigned_to=OrganizationMember.objects.get(organization=self.org, user=self.members["sales_user"]))
+        self.assertEqual(get_authorized_opportunity_feed(self.members["sales_user"], self.org).cards, ())
+        self.denied(lambda: get_authorized_opportunity(self.members["sales_user"], self.org, self.live_row.pk))
+
+    def test_normal_with_visibility_on(self):
+        with VISIBLE:
+            for role in self.ORG_WIDE:
+                self.assertEqual(get_authorized_opportunity(self.members[role], self.org, self.live_row.pk).pk,
+                                 self.live_row.pk)
+                breakdown = get_authorized_opportunity_score_breakdown(self.members[role], self.org,
+                                                                       self.live_row.pk)
+                self.assertEqual(breakdown.organization_id, self.org.pk)
+                cards = get_authorized_opportunity_feed(self.members[role], self.org).cards
+                self.assertEqual([card.company_id for card in cards], [self.company.pk])   # SHADOW row hidden
+            for call in self.helpers(self.owner, row=self.shadow_row):
+                self.denied(call)                                   # SHADOW stays invisible to customers
+            # role behaviour unchanged: a sales user still sees only assignments
+            self.denied(lambda: get_authorized_opportunity(self.members["sales_user"], self.org, self.live_row.pk))
+            self.assertEqual(get_authorized_opportunity_feed(self.members["sales_user"], self.org).cards, ())
+
+    def test_tenant_and_entitlement_protections_are_unchanged(self):
+        from .opportunity_feed import FeedFilters
+        from .organization_access import OrganizationNotEntitled
+
+        unpaid_owner = user("unpaid-owner@example.com")
+        unpaid = create_organization(owner=unpaid_owner, name="Unpaid").organization
+        for visible in (False, True):
+            with override_settings(GEMI_LIVE_OPPORTUNITIES_VISIBLE=visible):
+                for call in self.helpers(self.b_owner):                       # tenant B asking for tenant A's row
+                    self.denied(call)
+                self.denied(lambda: get_authorized_opportunity(self.owner, self.org_b, self.live_row.pk))
+                self.denied(lambda: get_authorized_opportunity_feed(
+                    self.owner, self.org, FeedFilters(radar_ids=(self.radar_b_foreign.pk,))))
+                with self.assertRaises(OrganizationNotEntitled):
+                    get_authorized_opportunity_feed(unpaid_owner, unpaid)
+                with self.assertRaises(OrganizationNotEntitled):
+                    get_authorized_opportunity(unpaid_owner, unpaid, self.live_row.pk)
+
+    def test_staff_and_superusers_do_not_bypass_the_gate(self):
+        from django.contrib.auth.models import User
+
+        root = User.objects.create_superuser("root-g5", "root-g5@example.com", "StrongPass123")
+        staff_member = self.members["viewer"]
+        staff_member.is_staff = staff_member.is_superuser = True
+        staff_member.save()
+        for call in self.helpers(root):
+            self.denied(call)                                               # not a member: refused either way
+        self.denied(lambda: get_authorized_opportunity_feed(root, self.org))
+        for call in self.helpers(staff_member):
+            self.denied(call)                                               # a superuser member, visibility off
+        self.assertEqual(get_authorized_opportunity_feed(staff_member, self.org).cards, ())
+        with VISIBLE:
+            for call in self.helpers(root):
+                self.denied(call)
+            self.assertEqual(get_authorized_opportunity(staff_member, self.org, self.live_row.pk).pk,
+                             self.live_row.pk)                              # exactly a viewer's access, no more

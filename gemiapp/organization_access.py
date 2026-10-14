@@ -252,9 +252,11 @@ def get_authorized_radar(user, organization, radar_id):
 
 
 def get_authorized_opportunity(user, organization, opportunity_id):
-    """One opportunity this membership may see, or the single refusal (§82). The foundation of the D29 page."""
+    """One customer-visible opportunity this membership may see, or the single refusal (§82). The foundation of the
+    D29 page. Gated like every customer path: nothing while customer visibility is off, LIVE-backed only."""
     context = get_organization_access_context(user, organization)
-    opportunity = (organization_opportunities_for(context).filter(pk=_object_id(opportunity_id))
+    # The customer visibility gate (LIVE cutover): hidden opportunities are the same single refusal.
+    opportunity = (customer_visible(organization_opportunities_for(context)).filter(pk=_object_id(opportunity_id))
                    .select_related("radar", "company", "first_signal", "latest_signal").first())
     if opportunity is None:
         raise OrganizationAccessDenied()
@@ -262,20 +264,24 @@ def get_authorized_opportunity(user, organization, opportunity_id):
 
 
 def get_authorized_opportunity_score_breakdown(user, organization, opportunity_id):
-    """The frozen C8 explanation of an opportunity this membership may see («Why this lead»). Read-only."""
+    """The frozen C8 explanation of an opportunity this membership may see («Why this lead»). Read-only; gated through
+    ``get_authorized_opportunity``."""
     return get_opportunity_score_breakdown(get_authorized_opportunity(user, organization, opportunity_id))
 
 
 def get_authorized_opportunity_feed(user, organization, filters: FeedFilters | None = None, *,
                                     limit: int = DEFAULT_PAGE_SIZE, cursor: str | None = None) -> OpportunityFeedPage:
     """The C9 feed as this membership may see it. C9 itself is unchanged and still requires an explicit
-    organization; this layer decides whether and how much of it a member may read."""
+    organization; this layer decides whether and how much of it a member may read -- and, through ``_feed_for``,
+    applies the customer visibility gate."""
     context = get_organization_access_context(user, organization)
     return _feed_for(context, organization, filters, limit=limit, cursor=cursor)
 
 
-def _feed_for(context: OrganizationAccessContext, organization, filters, *, limit, cursor, latest_signal_mode=None):
-    """The C9 feed inside this membership's visibility. ``latest_signal_mode`` is passed through to C9 unchanged."""
+def _feed_for(context: OrganizationAccessContext, organization, filters, *, limit, cursor):
+    """The C9 feed inside this membership's visibility. Authorization first (filters, foreign Radar ids, role); then
+    the one customer visibility gate: an empty page while customers see no opportunity, LIVE-backed cards only
+    otherwise."""
     filters = filters or FeedFilters()
     if not isinstance(filters, FeedFilters):
         raise OrganizationAccessDenied()
@@ -285,14 +291,17 @@ def _feed_for(context: OrganizationAccessContext, organization, filters, *, limi
         if owned != len(set(filters.radar_ids)):
             raise OrganizationAccessDenied()
     if can(context, Capability.VIEW_ALL_OPPORTUNITIES):
-        return get_opportunity_feed(organization, filters, limit=limit, cursor=cursor,
-                                    latest_signal_mode=latest_signal_mode)
-    if can(context, Capability.VIEW_ASSIGNED_OPPORTUNITIES):
+        scope = {}
+    elif can(context, Capability.VIEW_ASSIGNED_OPPORTUNITIES):
         # Only this membership's assignments, restricted inside C9's SQL before cards are aggregated.
-        return get_opportunity_feed(organization, filters, limit=limit, cursor=cursor,
-                                    assigned_to_membership_id=context.membership_id,
-                                    latest_signal_mode=latest_signal_mode)
-    raise OrganizationAccessDenied()
+        scope = {"assigned_to_membership_id": context.membership_id}
+    else:
+        raise OrganizationAccessDenied()
+    visible_mode = customer_visible_signal_mode()
+    if visible_mode is None:
+        return OpportunityFeedPage(organization_id=context.organization_id, cards=(), limit=limit, next_cursor=None)
+    return get_opportunity_feed(organization, filters, limit=limit, cursor=cursor, latest_signal_mode=visible_mode,
+                                **scope)
 
 
 def get_authorized_organization_profile(user, organization):
@@ -1670,11 +1679,8 @@ def _workspace_opportunities(context: OrganizationAccessContext, organization, f
     opportunity's assignee. A malformed cursor or filter is refused like everything else."""
     from .company_opportunity_page import REASON_LABELS, SCORE_CLASS_LABELS, SIGNAL_LABELS, STATUS_LABELS
 
-    visible_mode = customer_visible_signal_mode()
-    if visible_mode is None:
-        return (), None
     try:
-        page = _feed_for(context, organization, filters, limit=limit, cursor=cursor, latest_signal_mode=visible_mode)
+        page = _feed_for(context, organization, filters, limit=limit, cursor=cursor)   # gated inside
     except FeedError:
         raise OrganizationAccessDenied() from None
     if not page.cards:

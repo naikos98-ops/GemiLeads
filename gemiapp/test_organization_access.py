@@ -14,10 +14,11 @@ from django.core import mail
 from django.core.signing import TimestampSigner
 from django.db import connection
 from django.db.migrations.loader import MigrationLoader
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 
 from . import organization_access as g5
+from .company_signals import LIVE
 from .company_contact import extract_company_contact_phones
 from .ingestion.monitoring import radar_match_evidence
 from .ingestion.refresh import RefreshPolicy, build_company_refresh_plan
@@ -92,9 +93,28 @@ class AccessTestCase(FeedTestCase):
         return caught.exception
 
 
+
+class LiveAccessTestCase(AccessTestCase):
+    """The G5 helpers read customer opportunities, which are LIVE-backed only and only while customer visibility is
+    on (gemiapp.live_cutover): these fixtures are LIVE-backed and the module runs with visibility on. The gate itself
+    is covered by gemiapp.test_live_cutover."""
+
+    signal_mode = "live"
+
+
+_LIVE_VISIBLE = override_settings(GEMI_LIVE_OPPORTUNITIES_VISIBLE=True)
+
+
+def setUpModule():
+    _LIVE_VISIBLE.enable()
+
+
+def tearDownModule():
+    _LIVE_VISIBLE.disable()
+
 # --- the pair, the membership, the context ---------------------------------------------------------
 
-class ContextTests(AccessTestCase):
+class ContextTests(LiveAccessTestCase):
     def test_a_member_gets_an_immutable_context_from_their_membership(self):
         context = get_organization_access_context(self.members["viewer"], self.org)
         membership = OrganizationMember.objects.get(organization=self.org, user=self.members["viewer"])
@@ -149,7 +169,7 @@ class ContextTests(AccessTestCase):
 
 # --- the capability matrix -------------------------------------------------------------------------
 
-class CapabilityMatrixTests(AccessTestCase):
+class CapabilityMatrixTests(LiveAccessTestCase):
     def test_the_matrix_is_exactly_section_64_and_covers_every_c1_role(self):
         self.assertEqual(set(ROLE_CAPABILITIES), {value for value, _ in OrganizationMember.ROLES})
         self.assertEqual(set(EXPECTED), set(Capability.ALL))
@@ -195,11 +215,11 @@ class CapabilityMatrixTests(AccessTestCase):
 
 # --- opportunities, feed, radars -------------------------------------------------------------------
 
-class OpportunityAccessTests(AccessTestCase):
+class OpportunityAccessTests(LiveAccessTestCase):
     def test_org_wide_roles_read_their_own_opportunities_with_the_frozen_breakdown(self):
         radar = self.radar(name="real", **self.everything())
         snapshot(self.company, T0)
-        result = self.materialize(new_company_signal(self.company, T0), radar)
+        result = self.materialize(new_company_signal(self.company, T0, mode=LIVE), radar)
         for role in ("owner", "admin", "sales_manager", "viewer"):
             row = get_authorized_opportunity(self.members[role], self.org, result.opportunity.pk)
             self.assertEqual(row.pk, result.opportunity.pk, role)
@@ -262,7 +282,7 @@ class OpportunityAccessTests(AccessTestCase):
         self.assertNotIn(self.radar_b_foreign, set(organization_radars_for(context)))
 
 
-class SettingsAndMembersAccessTests(AccessTestCase):
+class SettingsAndMembersAccessTests(LiveAccessTestCase):
     def test_profile_icp_and_members_are_reachable_only_through_the_membership(self):
         from .organization_icp import ICPCriteria, create_organization_icp
 
@@ -298,7 +318,7 @@ class SettingsAndMembersAccessTests(AccessTestCase):
 
 # --- scoping, efficiency, safety -------------------------------------------------------------------
 
-class SafetyTests(AccessTestCase):
+class SafetyTests(LiveAccessTestCase):
     def test_every_read_is_scoped_in_sql_and_bounded(self):
         for index in range(20):
             self.opportunity(self.radar_a if index % 2 else self.radar_b, make_company(f"61{index:04d}"), score=50)

@@ -55,7 +55,8 @@ class FeedTestCase(OpportunityTestCase):
     def signal(self, company, at, signal_type="new_company"):
         source = DISCOVERY if signal_type == "new_company" else SNAPSHOT_DIFF
         signal, _ = record_company_signal(company=company, signal_type=signal_type, source_type=source,
-                                          event_key={"feed": next(_events)}, detected_at=at)
+                                          event_key={"feed": next(_events)}, detected_at=at,
+                                          mode=getattr(self, "signal_mode", "shadow"))
         return signal
 
     def opportunity(self, radar, company, *, score, at=T0, signals=None, status="new", kads=(), regions=(),
