@@ -1030,6 +1030,41 @@ class CompanySignal(models.Model):
         return f"{self.signal_type} · company #{self.company_id} · {self.mode}"
 
 
+class LiveSignalPeriod(models.Model):
+    """One authorized LIVE signal period of the cutover (gemiapp.live_cutover). Append-only: a period is opened by
+    the first ingestion cycle that ran with ``GEMI_LIVE_SIGNALS_ENABLED`` on, closed by the first one that ran with it
+    off, and never deleted. A LIVE signal created inside a period is legitimate history; one created outside every
+    period is a defect. At most one period is open."""
+
+    opened_at = models.DateTimeField()
+    opened_by_cycle_at = models.DateTimeField()    # start of the ingestion cycle that opened it
+    closed_at = models.DateTimeField(null=True, blank=True)
+    closed_by_cycle_at = models.DateTimeField(null=True, blank=True)
+    is_open = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["opened_at", "id"]
+        verbose_name = "LIVE signal period"
+        constraints = [
+            models.UniqueConstraint(fields=["is_open"], condition=models.Q(is_open=True),
+                                    name="one_open_live_signal_period"),
+            models.CheckConstraint(
+                condition=(models.Q(is_open=True, closed_at__isnull=True, closed_by_cycle_at__isnull=True)
+                           | models.Q(is_open=False, closed_at__isnull=False, closed_by_cycle_at__isnull=False)),
+                name="live_signal_period_open_consistent",
+            ),
+            models.CheckConstraint(condition=models.Q(closed_at__isnull=True) | models.Q(closed_at__gte=models.F("opened_at")),
+                                   name="live_signal_period_closes_after_opening"),
+        ]
+
+    def __str__(self):
+        return f"LIVE period #{self.pk} {self.opened_at:%Y-%m-%d %H:%M} -> {self.closed_at or 'open'}"
+
+    def delete(self, *args, **kwargs):
+        raise RuntimeError("LIVE signal periods are audit history and are never deleted")
+
+
 class GemiDiscoveryRun(models.Model):
     """One Discovery v2 run (A10): what it fetched, found and decided. Counts and ids only, no payload.
 

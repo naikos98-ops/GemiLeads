@@ -32,9 +32,24 @@ from .test_customer_workspace import WorkspaceTestCase
 from .test_gemi_company_activities import entitled_user, radar_for
 from .test_opportunity_scoring import FRESH
 from .test_organization_radar_matching import T0, make_company, new_company_signal, snapshot
+from django.test import override_settings
 
 _numbers = iter(range(700_000, 800_000))
 
+
+
+# These tests exercise the customer surfaces as they behave after the LIVE cutover, so customers see LIVE-backed
+# opportunities for the whole module. The dormant default (GEMI_LIVE_OPPORTUNITIES_VISIBLE off) is covered by
+# gemiapp.test_live_cutover.
+_LIVE_VISIBLE = override_settings(GEMI_LIVE_OPPORTUNITIES_VISIBLE=True)
+
+
+def setUpModule():
+    _LIVE_VISIBLE.enable()
+
+
+def tearDownModule():
+    _LIVE_VISIBLE.disable()
 
 class PipelineTestCase(WorkspaceTestCase):
     """Tenant A and B (both paying) with LIVE opportunities for ``self.company`` from the workspace fixture; every

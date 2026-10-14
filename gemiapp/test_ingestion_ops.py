@@ -237,7 +237,7 @@ class NoProgressTests(AlertTestCase):
         summary = self.task(item(NEW, self.today))
         self.assertEqual(summary["status"], "refused")
         self.assertEqual((len(alert_mails()), open_alerts()), (1, [REFUSED]))
-        self.assertIn("no LIVE signal exists", alert_mails()[0].body)
+        self.assertIn("no unauthorized LIVE signal", alert_mails()[0].body)
         self.task(item(NEW, self.today))
         self.assertEqual(len(alert_mails()), 1)
 

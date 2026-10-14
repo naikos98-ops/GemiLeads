@@ -21,7 +21,7 @@ from django.db import connection
 from django.db.models import Exists, F, OuterRef, Q
 from django.utils import timezone
 
-from .company_signals import LIVE
+from .live_cutover import customer_visible
 from .organization_access import NOTIFY, ROLE_CAPABILITIES, Capability
 
 DUE_NOTIFICATION_BATCH = 500
@@ -60,11 +60,12 @@ def due_task_candidates(today):
     Notification = _model("OrganizationNotification")
     existing = Notification.objects.filter(notification_type=NOTIFY.TASK_DUE, task_id=OuterRef("pk"),
                                            recipient_id=OuterRef("assigned_to_id"), due_on=OuterRef("due_on"))
-    return (_model("OpportunityTask").objects
+    # Only tasks of customer-visible opportunities: silent while GEMI_LIVE_OPPORTUNITIES_VISIBLE is off.
+    return (customer_visible(_model("OpportunityTask").objects, path="opportunity__")
             .filter(completed_at__isnull=True, assigned_to__isnull=False, due_on__lte=today,
                     assigned_to__organization_id=F("organization_id"),
                     opportunity__organization_id=F("organization_id"),
-                    assigned_to__user__is_active=True, opportunity__latest_signal__mode=LIVE)
+                    assigned_to__user__is_active=True)
             .filter(_assignee_may_read_opportunity())
             .filter(~Exists(existing))
             .order_by("pk"))

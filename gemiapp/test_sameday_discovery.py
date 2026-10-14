@@ -606,6 +606,7 @@ class FlagOffEquivalenceTests(TwoLaneCycleTestCase):
         "examined", "newly_discovered", "companies_created", "would_create", "quarantined_date", "write_failed",
         "observations_stored", "observations_suppressed", "cursor_advanced", "materialisation_scope",
         "signals_created", "signals_existing", "pending_no_company", "pipeline_runs", "opportunities_created",
+        "signal_mode", "live_period_transition",
     }
 
     def test_with_the_flag_off_the_cycle_is_the_frontier_lane_alone(self):

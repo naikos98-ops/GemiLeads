@@ -45,6 +45,21 @@ from .services import company_matches_radar, eligible_radars, send_digests
 from .test_gemi_company_activities import entitled_user, radar_for
 from .test_opportunity_notes import NoteTestCase
 from .test_organization_radar_matching import T0, snapshot
+from django.test import override_settings
+
+
+# These tests exercise the customer surfaces as they behave after the LIVE cutover, so customers see LIVE-backed
+# opportunities for the whole module. The dormant default (GEMI_LIVE_OPPORTUNITIES_VISIBLE off) is covered by
+# gemiapp.test_live_cutover.
+_LIVE_VISIBLE = override_settings(GEMI_LIVE_OPPORTUNITIES_VISIBLE=True)
+
+
+def setUpModule():
+    _LIVE_VISIBLE.enable()
+
+
+def tearDownModule():
+    _LIVE_VISIBLE.disable()
 
 MOMENT = datetime(2026, 9, 18, 10, tzinfo=dt_timezone.utc)
 

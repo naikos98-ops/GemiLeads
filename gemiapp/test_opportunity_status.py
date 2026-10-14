@@ -42,6 +42,21 @@ from .services import company_matches_radar, eligible_radars, send_digests
 from .test_gemi_company_activities import entitled_user, radar_for
 from .test_opportunity_assignment import MARIA_EMAIL, AssignTestCase
 from .test_organization_radar_matching import T0, snapshot
+from django.test import override_settings
+
+
+# These tests exercise the customer surfaces as they behave after the LIVE cutover, so customers see LIVE-backed
+# opportunities for the whole module. The dormant default (GEMI_LIVE_OPPORTUNITIES_VISIBLE off) is covered by
+# gemiapp.test_live_cutover.
+_LIVE_VISIBLE = override_settings(GEMI_LIVE_OPPORTUNITIES_VISIBLE=True)
+
+
+def setUpModule():
+    _LIVE_VISIBLE.enable()
+
+
+def tearDownModule():
+    _LIVE_VISIBLE.disable()
 
 MOMENT = datetime(2026, 9, 18, 10, tzinfo=dt_timezone.utc)
 SPECIALISED = ("new", "viewed", "saved", "assigned", "do_not_contact")
@@ -308,7 +323,7 @@ class BoundaryTests(StatusTestCase):
         self.assertEqual({n for n in names if "Audit" in n}, {"AdminAuditLog", "OrganizationAuditEvent"})  # D36
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0058_discovery_observation_ingest_outcome")
+                         "0059_live_signal_period")
 
     def test_the_frozen_capture_signals_snapshots_timeline_and_ranking_are_untouched(self):
         self.put_assigned(self.maria)

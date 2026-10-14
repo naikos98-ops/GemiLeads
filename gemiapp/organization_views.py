@@ -42,6 +42,7 @@ from .organization_access import (
     get_authorized_workspace_tasks, get_workspace_navigation, mark_all_authorized_notifications_read,
     mark_authorized_notification_read, save_authorized_opportunity, set_authorized_opportunity_status,
 )
+from .live_cutover import live_opportunities_visible
 from .organization_radar_form import initial_radar_form, parse_radar_form, radar_error_message, radar_form_choices
 
 ENTITLEMENT_REQUIRED_MESSAGE = "Απαιτείται ενεργή συνδρομή του ιδιοκτήτη του οργανισμού."
@@ -96,6 +97,8 @@ def workspace_navigation(request):
             # G4 transition: the current service (Signals, Leads) stays reachable from the organization navigation
             # until opportunities go live. Off after the LIVE cutover; the legacy URLs keep resolving either way.
             "transition_legacy_access": bool(getattr(settings, "GEMI_TRANSITION_LEGACY_ACCESS", True)),
+            # LIVE cutover: once customers see opportunities, the legacy group is coexistence, not "until live".
+            "live_opportunities_visible": live_opportunities_visible(),
             "legacy_radar_url_names": LEGACY_RADAR_URL_NAMES}
 
 

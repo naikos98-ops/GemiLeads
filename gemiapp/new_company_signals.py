@@ -101,9 +101,10 @@ creating ``Company`` rows outside the legacy importer, which is the gated cutove
 
 Mode
 ----
-Every signal this producer creates is SHADOW. There is no parameter, flag or command option that produces a
-live one: Discovery v2 is not authoritative until its 14-day shadow gate is reviewed, and promotion is a
-separate, explicit decision.
+SHADOW unless the caller passes ``mode=LIVE``. Only the scheduled ingestion cycle does, with the mode it fixed once
+per cycle from ``live_cutover.current_signal_mode()`` (``GEMI_LIVE_SIGNALS_ENABLED``, default off). The management
+command, the G4 shadow cycle and every other caller create SHADOW signals. An existing signal keeps its mode: this
+producer never promotes or demotes anything.
 
 Conflicts
 ---------
@@ -125,6 +126,7 @@ from django.utils import timezone
 
 from .company_signals import (
     DISCOVERY,
+    LIVE,
     NEW_COMPANY,
     SHADOW,
     SignalConflictError,
@@ -232,7 +234,7 @@ def _effective_date(observation):
     return None
 
 
-def produce_new_company_signal(observation) -> ProducerResult:
+def produce_new_company_signal(observation, *, mode: str = SHADOW) -> ProducerResult:
     """Materialise the NEW_COMPANY signal for one discovery observation. See the module docstring."""
     Company = apps.get_model("gemiapp", "Company")
     CompanySignalDiscoveryEvidence = apps.get_model("gemiapp", "CompanySignalDiscoveryEvidence")
@@ -260,7 +262,7 @@ def produce_new_company_signal(observation) -> ProducerResult:
                     detected_at = max(discovered_at, baseline.observed_at)
             signal, created = record_company_signal(
                 company=company, signal_type=NEW_COMPANY, source_type=DISCOVERY, event_key=dict(EVENT_KEY),
-                effective=effective, confidence=CONFIDENCE, mode=SHADOW,
+                effective=effective, confidence=CONFIDENCE, mode=mode,
                 detected_at=detected_at,
             )
             # First evidence wins: an existing link is never replaced by a later observation.
@@ -276,6 +278,7 @@ def produce_new_company_signal(observation) -> ProducerResult:
 @dataclass
 class MaterialisationReport:
     dry_run: bool
+    mode: str = SHADOW               # the mode of the signals this run creates
     observations_inspected: int = 0
     candidate_companies: int = 0
     signals_created: int = 0
@@ -305,21 +308,24 @@ class MaterialisationReport:
             f"{self.valid_effective_dates} missing or invalid dates={self.missing_or_invalid_effective_dates}",
             f"{prefix}detection-time state: baselines created={self.baselines_created} reused="
             f"{self.baselines_reused} unavailable={self.state_unavailable}",
-            f"{prefix}conflicts={self.conflicts} invalid evidence={self.invalid_evidence} mode=shadow (always)",
+            f"{prefix}conflicts={self.conflicts} invalid evidence={self.invalid_evidence} mode={self.mode}",
             *([f"{prefix}conflicting gemi numbers: {self.conflicting_gemi_numbers}"] if self.conflicting_gemi_numbers else []),
         ]
 
 
 def materialize_new_company_signals(
     *, batch_size: int = 500, dry_run: bool = False, start_gemi_number: str = "",
-    gemi_numbers: Iterable[str] | None = None,
+    gemi_numbers: Iterable[str] | None = None, mode: str = SHADOW,
 ) -> MaterialisationReport:
-    """Turn eligible discovery evidence into SHADOW NEW_COMPANY signals, one per company. Idempotent."""
+    """Turn eligible discovery evidence into NEW_COMPANY signals of ``mode`` (SHADOW by default), one per company.
+    Idempotent; an existing signal keeps its mode."""
     if batch_size < 1:
         raise ValueError("batch_size must be at least 1")
+    if mode not in (SHADOW, LIVE):
+        raise ValueError(f"unknown signal mode: {mode}")
     Company = apps.get_model("gemiapp", "Company")
     CompanySignal = apps.get_model("gemiapp", "CompanySignal")
-    report = MaterialisationReport(dry_run=dry_run)
+    report = MaterialisationReport(dry_run=dry_run, mode=mode)
     observations = eligible_observations()
     if gemi_numbers is not None:
         observations = observations.filter(gemi_number__in=list(gemi_numbers))
@@ -351,7 +357,7 @@ def materialize_new_company_signals(
                 report.signals_existing += int(exists)
                 report.signals_created += int(not exists)
                 continue
-            result = produce_new_company_signal(observation)
+            result = produce_new_company_signal(observation, mode=mode)
             if result.status == CREATED:
                 report.signals_created += 1
                 report.baselines_created += int(result.detection_state == STATE_BASELINE_CREATED)

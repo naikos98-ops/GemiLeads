@@ -305,11 +305,11 @@ class PrecheckTests(CycleTestCase):
     def test_a_deployment_without_a_gemi_key_refuses_the_cycle(self):
         self.assertRefused("GEMI collector is configured")
 
-    def test_a_live_signal_refuses_the_cycle(self):
+    def test_an_unauthorized_live_signal_refuses_the_cycle(self):
         company = self.new_company()
         record_company_signal(company=company, signal_type="new_company", source_type=DISCOVERY_SOURCE,
                               event_key={"fixture": "live"}, detected_at=timezone.now(), mode=LIVE)
-        self.assertRefused("no LIVE signal exists", signals=1)
+        self.assertRefused("no unauthorized LIVE signal", signals=1)
 
     def test_an_uninitialised_cursor_refuses_the_cycle(self):
         cursor = get_cursor()

@@ -67,11 +67,17 @@ saw first is one Company, one NEW_COMPANY signal and one pass through the pipeli
 failure is that stream's failed run, visible as a failed phase, and the next cycle rescans the window. The
 flag is off by default, and while it is off this cycle is exactly the frontier lane alone.
 
-SHADOW
-------
-Signals are created by a producer that has no live option, the pipeline accepts SHADOW only, and every customer
-surface reads LIVE-backed opportunities only. Nothing here sends an email or a notification, promotes a signal
-or changes a schedule. The G4 preflight still refuses when a LIVE signal exists.
+Signal mode (LIVE cutover, dormant)
+-----------------------------------
+The cycle reads ``live_cutover.current_signal_mode()`` **once**, inside the mutex, and every NEW_COMPANY signal it
+creates gets that mode: SHADOW exactly as before while ``GEMI_LIVE_SIGNALS_ENABLED`` is off (the default), LIVE when
+it is on. A real cycle first makes the persistent LIVE periods agree with that mode (``record_cycle_signal_mode``:
+open one on the first LIVE cycle, close it on the first SHADOW cycle after), so every LIVE signal it creates is
+inside an authorized period. If that bookkeeping fails, the cycle stops before any request or write -- it never
+creates a signal whose mode it could not authorize. The mode is reported, logged and stamped on the cycle's
+discovery runs (``policy["signal_mode"]``), so the first LIVE cycle is queryable. Existing signals are never
+promoted or demoted, and nothing here sends an email or a notification or changes a schedule. The preflight
+refuses only an inconsistent state (``g4_shadow_cycle.preflight``), never historical authorized LIVE rows.
 """
 
 from __future__ import annotations
@@ -88,7 +94,9 @@ from django.db.models import Exists, OuterRef
 from django.utils import timezone
 
 from .company_signals import NEW_COMPANY
+from .company_signals import SHADOW
 from .g4_shadow_cycle import Precheck, preflight
+from .live_cutover import current_signal_mode, record_cycle_signal_mode
 from .ingestion.discovery import INGEST, DiscoveryPolicy, DiscoveryResult, ingest_enabled, run_discovery
 from .ingestion.sameday_discovery import (
     TRIGGER_CYCLE, SameDayPolicy, SameDayResult, run_sameday_discovery, sameday_enabled,
@@ -111,6 +119,7 @@ FAILED_CYCLE = "failed"
 DISCOVERY_PHASE = "discovery"
 SAMEDAY_PHASE = "sameday_discovery"
 MATERIALISATION_PHASE = "materialisation"
+LIVE_CUTOVER_PHASE = "live_cutover"
 PIPELINE_PHASE = "opportunity_pipeline"
 
 INGEST_FLAG_OFF = ("GEMI_DISCOVERY_V2_ENABLED is off: the ingestion cycle creates Company rows and only runs "
@@ -174,6 +183,8 @@ class IngestionCycleReport:
     pipeline_runs: list = field(default_factory=list)    # observed after commit, never repeated
     discovered_numbers: int = 0      # newly discovered identifiers of this run (scope a)
     catch_up_numbers: int = 0        # stored, evidenced in the window, still without a signal (scope b)
+    signal_mode: str = SHADOW        # fixed once, inside the mutex (live_cutover.current_signal_mode)
+    live_period_transition: str = ""  # opened / closed / unchanged; empty for dry runs and skipped cycles
     finished_at: datetime | None = None
 
     @property
@@ -208,6 +219,7 @@ class IngestionCycleReport:
         discovery, materialised = self.discovery, self.materialisation
         return {
             "status": self.status, "dry_run": self.dry_run, "gemi_requests": self.gemi_requests,
+            "signal_mode": self.signal_mode, "live_period_transition": self.live_period_transition,
             "failed_phases": [name for name, _ in self.failed_phases],
             "discovery_status": discovery.status if discovery else "",
             "stop_reason": discovery.stop_reason if discovery else "",
@@ -235,7 +247,10 @@ class IngestionCycleReport:
         out = [f"{prefix}GEMI INGESTION CYCLE {self.started_at.isoformat()} -> {now.isoformat()} status={self.status}"]
         if self.status == SKIPPED_LOCKED:
             return out + [f"{prefix}another cycle holds the lock: nothing requested, nothing written."]
-        out += ["PRECHECK", *self.precheck.lines(), "DISCOVERY (ingest: companies are created from the fetched page)"]
+        out += ["PRECHECK", *self.precheck.lines(),
+                f"SIGNAL MODE {self.signal_mode} (fixed for the whole cycle)"
+                f"{f'; LIVE period {self.live_period_transition}' if self.live_period_transition else ''}",
+                "DISCOVERY (ingest: companies are created from the fetched page)"]
         if self.discovery is None:
             out.append("  not run")
         else:
@@ -262,7 +277,7 @@ class IngestionCycleReport:
                    f"opportunities created={sum(run.created for run in self.pipeline_runs)} failed={len(broken)}")
         for name, detail in self.failed_phases:
             out.append(f"FAILED {name}{f' -- {detail}' if detail else ''}")
-        out.append("SHADOW only: no signal mode changed, no email or notification, nothing visible to customers. "
+        out.append(f"New signals: {self.signal_mode}. No existing signal's mode changed, no email or notification. "
                    "Existing companies are never updated.")
         if self.dry_run:
             out.append("[dry-run] nothing was written; the search pages WERE requested from GEMI.")
@@ -270,9 +285,10 @@ class IngestionCycleReport:
 
 
 def cycle_preflight() -> Precheck:
-    """The G4 preflight (SHADOW signals and pipeline, no LIVE signal, tables, cursor, collector) plus the one
-    thing this cycle needs on top: Company ingest explicitly enabled."""
-    check = preflight()
+    """The shared preflight in its non-certification form (pipeline modes consistent with the LIVE flag, no
+    unauthorized LIVE signal, tables, cursor, collector) plus the one thing this cycle needs on top: Company
+    ingest explicitly enabled. Authorized LIVE history never refuses."""
+    check = preflight(certification=False)
     enabled = ingest_enabled()
     check.checks.append(("company ingest is explicitly enabled", enabled, "" if enabled else INGEST_FLAG_OFF))
     return check
@@ -311,17 +327,43 @@ def run_ingestion_cycle(*, dry_run: bool = False, max_pages: int | None = None, 
     report.finished_at = timezone.now()
     summary = report.summary()
     logger.info(
-        "GEMI ingestion cycle%s: status=%s gemi_requests=%s created=%s quarantined=%s signals=%s "
+        "GEMI ingestion cycle%s: status=%s signal_mode=%s gemi_requests=%s created=%s quarantined=%s signals=%s "
         "pipeline_runs=%s failed_phases=%s",
-        " (dry run)" if dry_run else "", report.status, report.gemi_requests, summary["companies_created"],
+        " (dry run)" if dry_run else "", report.status, report.signal_mode, report.gemi_requests,
+        summary["companies_created"],
         summary["quarantined_date"], summary["signals_created"], len(report.pipeline_runs),
         summary["failed_phases"] or "none",
     )
     return report
 
 
+def _stamp_signal_mode(run_id, mode: str) -> None:
+    """Record the cycle's signal mode on a discovery run it saved, so the first LIVE cycle is queryable."""
+    if run_id is None:
+        return
+    try:
+        GemiDiscoveryRun = apps.get_model("gemiapp", "GemiDiscoveryRun")
+        run = GemiDiscoveryRun.objects.filter(pk=run_id).only("pk", "policy").first()
+        if run is not None:
+            run.policy = {**(run.policy or {}), "signal_mode": mode}
+            run.save(update_fields=["policy"])
+    except Exception:  # diagnostics only: the cycle's own result must not depend on it
+        logger.exception("GEMI ingestion cycle: stamping the signal mode on run %s failed", run_id)
+
+
 def _run_locked(report: IngestionCycleReport, *, dry_run, max_pages, policy, client, max_wait, catch_up_hours,
                 sameday_policy=None) -> None:
+    # The signal mode is read exactly once, inside the mutex, and fixed for the whole cycle.
+    report.signal_mode = current_signal_mode()
+    if not dry_run:
+        try:
+            report.live_period_transition = record_cycle_signal_mode(report.signal_mode,
+                                                                     cycle_started_at=report.started_at)
+        except Exception as error:
+            # Never create a signal whose mode could not be authorized: stop before any request or write.
+            report.failed_phases.append((LIVE_CUTOVER_PHASE, f"{type(error).__name__}: {error}"[:200]))
+            logger.exception("GEMI ingestion cycle: recording the LIVE period failed; nothing was done")
+            return
     # One local business date for the whole cycle when two lanes share it; the frontier lane alone resolves
     # its own, exactly as before.
     as_of = timezone.localdate() if report.sameday_enabled else None
@@ -337,6 +379,8 @@ def _run_locked(report: IngestionCycleReport, *, dry_run, max_pages, policy, cli
         if report.discovery.status in ("failed", "anomaly"):
             report.failed_phases.append((
                 DISCOVERY_PHASE, f"status={report.discovery.status} stop_reason={report.discovery.stop_reason}"))
+        if not dry_run:
+            _stamp_signal_mode(report.discovery.run_id, report.signal_mode)
 
     discovered = set(report.discovery.discovered_gemi_numbers) if report.discovery is not None else set()
     if report.sameday_enabled:
@@ -352,6 +396,8 @@ def _run_locked(report: IngestionCycleReport, *, dry_run, max_pages, policy, cli
                 report.failed_phases.append((
                     SAMEDAY_PHASE, f"status={report.sameday.status} stop_reason={report.sameday.stop_reason}"))
             discovered |= set(report.sameday.discovered_gemi_numbers)
+            if not dry_run:
+                _stamp_signal_mode(report.sameday.run_id, report.signal_mode)
     try:
         catch_up = set(unmaterialised_recent_numbers(hours=catch_up_hours, now=timezone.now())) - discovered \
             if catch_up_hours else set()
@@ -360,7 +406,8 @@ def _run_locked(report: IngestionCycleReport, *, dry_run, max_pages, policy, cli
         if not scope:
             return
         with collect_pipeline_runs() as observed:
-            report.materialisation = materialize_new_company_signals(dry_run=dry_run, gemi_numbers=scope)
+            report.materialisation = materialize_new_company_signals(dry_run=dry_run, gemi_numbers=scope,
+                                                                     mode=report.signal_mode)
         report.pipeline_runs = list(observed)
     except Exception as error:
         report.failed_phases.append((MATERIALISATION_PHASE, f"{type(error).__name__}: {error}"[:200]))

@@ -47,6 +47,21 @@ from .test_opportunity_tasks import TaskTestCase
 from . import opportunities as c8
 from .test_organization_radar_matching import T0, new_company_signal, snapshot
 from .test_opportunity_scoring import FRESH
+from django.test import override_settings
+
+
+# These tests exercise the customer surfaces as they behave after the LIVE cutover, so customers see LIVE-backed
+# opportunities for the whole module. The dormant default (GEMI_LIVE_OPPORTUNITIES_VISIBLE off) is covered by
+# gemiapp.test_live_cutover.
+_LIVE_VISIBLE = override_settings(GEMI_LIVE_OPPORTUNITIES_VISIBLE=True)
+
+
+def setUpModule():
+    _LIVE_VISIBLE.enable()
+
+
+def tearDownModule():
+    _LIVE_VISIBLE.disable()
 
 MOMENT = datetime(2026, 9, 18, 10, tzinfo=dt_timezone.utc)
 Suppression = OrganizationContactSuppression

@@ -9,20 +9,29 @@
 Nothing is re-implemented here: matching, scoring, explanation and persistence are the existing C5-C8 functions,
 called in order; this module chooses which evaluations may reach persistence and reports what happened.
 
-Shadow only
------------
-Only SHADOW signals are processed. A LIVE signal is skipped (``live_not_enabled``): the LIVE cutover is a separate,
-gated decision (G4 is NOT PASSED) and nothing here promotes a signal or changes its mode. A shadow-backed opportunity
-is internal evaluation data: every customer surface reads LIVE-backed opportunities only (D29 page, feed lists,
-dashboard counts, notifications), so it is never shown. Materialising sends nothing: no notification (the D37
-emitters are the D31 assignment and the TASK_DUE job), no email, digest or outreach, no assignment and no task.
+Modes (LIVE cutover)
+--------------------
+SHADOW signals are always processed. A LIVE signal is processed only through the explicitly enabled LIVE path:
+``GEMI_LIVE_SIGNALS_ENABLED`` on (``live_cutover.supported_pipeline_modes``) **and** the signal created inside an
+authorized LIVE period (``live_cutover.signal_is_authorized_live``). Otherwise it is skipped (``live_not_enabled`` /
+``live_not_authorized``) and left untouched, so a rollback of the flag stops LIVE processing without rewriting
+anything. Nothing here promotes a signal or changes its mode. A SHADOW-backed opportunity is internal evaluation
+data; customers see LIVE-backed opportunities only, and only while ``GEMI_LIVE_OPPORTUNITIES_VISIBLE`` is on.
+Materialising sends nothing: no notification (the D37 emitters are the D31 assignment and the TASK_DUE job), no
+email, digest or outreach, no assignment and no task.
 
-Never over a LIVE opportunity
------------------------------
-C8 recaptures an existing opportunity with the newest qualifying signal whatever its mode. For a SHADOW signal that
-would make a customer-visible, LIVE-backed opportunity SHADOW-backed and so hide it. The pipeline therefore never
-materialises a SHADOW signal into an opportunity whose current capture is LIVE-backed (``skipped_live_backed``); C8
-itself is unchanged. (None exist today: nothing writes LIVE signals before the cutover.)
+Protection between modes
+------------------------
+C8 recaptures an existing opportunity with the newest qualifying signal whatever its mode. Two rules decide when
+the pipeline lets it:
+
+* a SHADOW signal never recaptures an opportunity whose current capture is LIVE-backed (``skipped_live_backed``):
+  that would make a customer-visible row SHADOW-backed and hide it;
+* a LIVE signal may recapture an existing SHADOW-backed opportunity **in place** -- the same row of the
+  (organization, Radar, company) unique key, keeping its ``first_signal``, status (Do Not Contact included),
+  assignment, notes and tasks. No second opportunity, no second link.
+
+C8 itself is unchanged.
 
 Entitlement
 -----------
@@ -75,15 +84,18 @@ from django.db.models import Exists, OuterRef
 from django.utils import timezone
 
 from . import organization_radar_matching as matching
-from .company_signals import SHADOW
+from .company_signals import LIVE, SHADOW
+from .live_cutover import signal_is_authorized_live, supported_pipeline_modes
 from .opportunities import _score_of, materialize_opportunity, qualifies
 from .opportunity_score_breakdown import explain_opportunity_scores_for_report
 from .organization_entitlement import entitled_organizations
 
 logger = logging.getLogger(__name__)
 
-PIPELINE_MODES = (SHADOW,)       # LIVE is deliberately absent until the G4-gated cutover
+# Accepted unconditionally. LIVE is added only by the explicitly enabled LIVE path (``supported_pipeline_modes``).
+PIPELINE_MODES = (SHADOW,)
 LIVE_NOT_ENABLED = "live_not_enabled"
+LIVE_NOT_AUTHORIZED = "live_not_authorized"   # a LIVE signal created outside every authorized LIVE period
 FAILED = "failed"
 
 
@@ -161,9 +173,14 @@ def _process_company_signal(signal, *, as_of, dry_run: bool) -> PipelineRun:
     if stored is None:
         raise PipelineError("the CompanySignal no longer exists")
     run = PipelineRun(signal_id=stored.pk, signal_mode=stored.mode, dry_run=dry_run)
-    if stored.mode not in PIPELINE_MODES:
+    if stored.mode not in supported_pipeline_modes():
         run.skipped_reason = LIVE_NOT_ENABLED
         logger.info("Shadow opportunity pipeline: %s", run.line())
+        return run
+    if stored.mode == LIVE and not signal_is_authorized_live(stored):
+        run.skipped_reason = LIVE_NOT_AUTHORIZED
+        logger.error("Opportunity pipeline: LIVE signal %s was created outside every authorized LIVE period; "
+                     "it is not processed", stored.pk)
         return run
     as_of = as_of or timezone.now()
     try:
@@ -196,9 +213,10 @@ def _process_company_signal(signal, *, as_of, dry_run: bool) -> PipelineRun:
                     .annotate(linked=Exists(OpportunitySignal.objects.filter(opportunity=OuterRef("pk"),
                                                                              signal_id=stored.pk)))
                     .values_list("latest_signal__mode", "linked").first())
-        if existing is not None and existing[0] != SHADOW:
-            run.skipped_live_backed += 1  # a customer-visible opportunity is never recaptured by a SHADOW signal
+        if existing is not None and stored.mode == SHADOW and existing[0] != SHADOW:
+            run.skipped_live_backed += 1  # a SHADOW signal never recaptures a LIVE-backed opportunity
             continue
+        # A LIVE signal recaptures an existing SHADOW-backed row in place: C8 keeps its first_signal and status.
         if existing is not None and existing[1]:
             run.unchanged += 1  # this signal was already processed for this Radar: never recaptured by a replay
             continue

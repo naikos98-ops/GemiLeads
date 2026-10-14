@@ -4,6 +4,8 @@
   pages, under their own names and in their own group, never presented as opportunities. Rendered only when
   GEMI_TRANSITION_LEGACY_ACCESS is on (context: transition_legacy_access). After the LIVE cutover turn it off, and
   later delete this partial and its two includes in base.html; the legacy URLs keep resolving for rollback.
+  LIVE cutover: while GEMI_LIVE_OPPORTUNITIES_VISIBLE is on (context: live_opportunities_visible) the group stays,
+  labelled as the previous service that coexists with the opportunities, instead of "until opportunities go live".
   mobile=False: a labelled rail group; mobile=True: a divider and two labels in the mobile bar.
 {% endcomment %}
 {% if transition_legacy_access %}
@@ -14,7 +16,7 @@
 <a href="{% url 'lead_list' %}" data-transition="leads" {% if url_name == 'lead_list' or url_name == 'company_detail' %}aria-current="page"{% endif %}>Leads</a>
 {% else %}
 <div class="product-rail-workspace product-rail-transition" data-transition-nav>
-  <p><span>CURRENT SERVICE</span><small>until opportunities go live</small></p>
+  {% if live_opportunities_visible %}<p data-transition-coexistence><span>PREVIOUS SERVICE</span><small>Signals / Leads</small></p>{% else %}<p><span>CURRENT SERVICE</span><small>until opportunities go live</small></p>{% endif %}
   <a href="{% url 'dashboard' %}" data-transition="signals" {% if url_name == 'dashboard' %}aria-current="page"{% endif %}>Signals · new registrations</a>
   <a href="{% url 'lead_list' %}" data-transition="leads" {% if url_name == 'lead_list' or url_name == 'company_detail' %}aria-current="page"{% endif %}>Leads · your Radar matches</a>
 </div>

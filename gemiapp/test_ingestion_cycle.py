@@ -636,7 +636,7 @@ class DormantTests(IngestionCycleTestCase):
         with self.assertRaises(IngestionCycleRefused):
             self.run_cycle(item(NEW, self.today))
 
-    def test_a_live_signal_still_refuses(self):
+    def test_an_unauthorized_live_signal_still_refuses(self):
         from .company_signals import DISCOVERY, LIVE, record_company_signal
 
         record_company_signal(company=Company.objects.get(gemi_number=str(BELOW)), signal_type="new_company",
@@ -644,7 +644,7 @@ class DormantTests(IngestionCycleTestCase):
                               detected_at=timezone.now())
         with self.assertRaises(IngestionCycleRefused) as refused:
             self.run_cycle(item(NEW, self.today))
-        self.assertIn("no LIVE signal exists", str(refused.exception))
+        self.assertIn("no unauthorized LIVE signal", str(refused.exception))
 
 
 class EndToEndTests(IngestionCycleTestCase):

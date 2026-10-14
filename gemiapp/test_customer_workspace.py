@@ -31,6 +31,20 @@ from .test_organization_radars import entitle
 
 _numbers = iter(range(500_000, 900_000))
 
+
+# These tests exercise the customer surfaces as they behave after the LIVE cutover, so customers see LIVE-backed
+# opportunities for the whole module. The dormant default (GEMI_LIVE_OPPORTUNITIES_VISIBLE off) is covered by
+# gemiapp.test_live_cutover.
+_LIVE_VISIBLE = override_settings(GEMI_LIVE_OPPORTUNITIES_VISIBLE=True)
+
+
+def setUpModule():
+    _LIVE_VISIBLE.enable()
+
+
+def tearDownModule():
+    _LIVE_VISIBLE.disable()
+
 PRIMARY = ["dashboard", "opportunities", "saved", "tasks", "radars", "notifications", "settings"]
 LEGACY_MOBILE = ["/dashboard/", "/radars/", "/leads/", "/settings/"]
 
@@ -334,6 +348,7 @@ class UnifiedNavigationTests(WorkspaceTestCase):
         self.assertIn('href="/dashboard/"', brand.split(">", 1)[0])
         self.assertEqual(list(UserSubscription.objects.filter(user=free_owner).values()), subscription)
 
+    @override_settings(GEMI_LIVE_OPPORTUNITIES_VISIBLE=False)  # the copy before customers see opportunities
     def test_the_current_service_group_is_separate_honest_and_marks_its_page(self):
         for name, key in (("dashboard", "signals"), ("lead_list", "leads")):
             html = self.page(self.owner, reverse(name))
@@ -348,6 +363,7 @@ class UnifiedNavigationTests(WorkspaceTestCase):
         for link in re.findall(r'href="([^"]+)" data-transition=', html):
             self.assertEqual(resolve(link).func.__module__, "gemiapp.views")   # the unchanged legacy pages
 
+    @override_settings(GEMI_LIVE_OPPORTUNITIES_VISIBLE=False)  # the copy before customers see opportunities
     def test_the_empty_states_point_to_leads_during_the_transition(self):
         owner = entitle(User.objects.create_user("empty-org@example.com", "empty-org@example.com", "x"))
         org = create_organization(owner=owner, name="Κενός").organization

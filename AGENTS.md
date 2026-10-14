@@ -159,7 +159,66 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
-- **Same-day discovery lane — ΑΔΡΑΝΗΣ (2026-10-09). Branch `claude/unified-ingestion-parity-miss-58e98f`, ΟΧΙ στο
+- **LIVE cutover — ΑΔΡΑΝΗΣ υποδομή (2026-10-14). Branch `feature/live-cutover-dormant`, ΟΧΙ στο `main`, κανένα
+  deploy, καμία εντολή ή εγγραφή σε production. `GEMI_LIVE_SIGNALS_ENABLED=0`, `GEMI_LIVE_OPPORTUNITIES_VISIBLE=0`
+  (προεπιλογές). Cadence ingestion αμετάβλητο (30′), legacy importer, digests, hydration, billing, mirror
+  CustomerRadar → OrganizationRadar, `GEMI_TRANSITION_LEGACY_ACCESS=1`: αμετάβλητα. Καμία προώθηση/αλλαγή SHADOW
+  γραμμών.** Τεκμήριο production που έφερε ο χρήστης: 2026-10-09 → 10-13 κάθε ημέρα parity OK, 0 legacy-only, 0
+  failed-to-store, 0 write_failed, 0 anomalies, 0 ανοιχτά alerts, η same-day lane ανέκτησε 5 (10-12) και 2 (10-13)
+  κενά της frontier. **Το LIVE δεν ενεργοποιείται πριν κλείσει το 14ήμερο G4 (~2026-10-22) και πριν
+  `report_live_cutover_readiness` = READY.**
+  - **Δύο ανεξάρτητοι διακόπτες (`gemiapp/live_cutover.py`):** `GEMI_LIVE_SIGNALS_ENABLED` = ο κύκλος ingestion
+    δημιουργεί τα NEW_COMPANY σήματα LIVE και το pipeline επιτρέπεται να επεξεργαστεί LIVE·
+    `GEMI_LIVE_OPPORTUNITIES_VISIBLE` = ο πελάτης βλέπει/ενεργεί σε LIVE ευκαιρίες. Η ορατότητα **δεν** εξαρτάται
+    από τη μόνιμη κατάσταση.
+  - **Μόνιμη κατάσταση = `LiveSignalPeriod` (migration `0059`, ένα `CreateModel`, κενός πίνακας):** append-only
+    εξουσιοδοτημένες LIVE περίοδοι (`opened_at`, `opened_by_cycle_at`, `closed_at`, `closed_by_cycle_at`,
+    `is_open`). Το πολύ μία ανοιχτή (partial unique)· CHECKs συνέπειας· `delete()` αρνείται· admin μόνο ανάγνωσης.
+    Ανοίγει ο **πρώτος πραγματικός κύκλος** με flag 1, κλείνει ο πρώτος με flag 0, re-enable = **νέα** γραμμή.
+    LIVE σήμα με `created_at` μέσα σε περίοδο = νόμιμο ιστορικό· έξω από κάθε περίοδο = **unauthorized**.
+  - **Όριο = χρόνος δημιουργίας σήματος, mode ανά κύκλο:** `current_signal_mode()` διαβάζεται **μία φορά, μέσα
+    στο mutex**· πρώτα `record_cycle_signal_mode` (αν αποτύχει → φάση `live_cutover` failed, **καμία**
+    αίτηση/εγγραφή), μετά όλα τα NEW_COMPANY του κύκλου με αυτό το mode (`materialize_new_company_signals(mode=...)`).
+    Το mode γράφεται στο report/log και στο `GemiDiscoveryRun.policy["signal_mode"]` και των δύο λωρίδων → ο πρώτος
+    LIVE κύκλος είναι queryable. Dry run: καμία περίοδος. Snapshot/change producers και η εντολή
+    `materialize_new_company_signals`: πάντα SHADOW.
+  - **Pipeline:** SHADOW πάντα· LIVE μόνο με flag 1 **και** σήμα μέσα σε εξουσιοδοτημένη περίοδο (αλλιώς
+    `live_not_enabled` / `live_not_authorized`, τίποτα δεν γράφεται). SHADOW σήμα δεν ξαναγράφει ποτέ LIVE-backed
+    ευκαιρία· LIVE σήμα ξαναγράφει SHADOW-backed ευκαιρία **στη θέση της** (ίδιο unique key, κρατά `first_signal`,
+    status/DNC, ανάθεση, σημειώσεις, εργασίες). Κανένα νέο constraint, καμία αλλαγή στο scoring ή στο C8.
+    `process_shadow_signals` μένει SHADOW-only (κοινό `gemiapp/signal_replay.py`, ίδια έξοδος)· νέο αδρανές
+    `process_live_signals` (αρνείται με flag 0, bounded, **δεν έχει τρέξει**).
+  - **Preflight (κοινό, `g4_shadow_cycle.preflight(certification=...)`):** αφαιρέθηκε το «κάθε LIVE σήμα σταματά
+    το ingestion». Αρνείται: unauthorized LIVE σήμα· pipeline modes που δεν ταιριάζουν με το flag. Ο χειροκίνητος
+    G4 κύκλος (`certification=True`) αρνείται επιπλέον όσο `GEMI_LIVE_SIGNALS_ENABLED=1`. Εξουσιοδοτημένο LIVE
+    ιστορικό μόνο αναφέρεται· ανοιχτή περίοδος με flag 0 αναφέρεται («κλείνει στον επόμενο κύκλο»).
+  - **Ορατότητα (μία πηγή: `live_cutover.customer_visible` / `customer_visible_signal_mode`):** όλα τα scopes του
+    `organization_access` (D29, Save/Assign/Status/Notes/Tasks/DNC, audit, notifications, dashboard, feed, Saved,
+    Tasks, μετρήσεις Radars) και το TASK_DUE. Με 0: κενά/404/άρνηση ακόμη κι αν υπάρχουν LIVE γραμμές· το TASK_DUE
+    σιωπά. Με 1: όλα μαζί, μόνο LIVE-backed. Staff/superuser: καμία παράκαμψη.
+  - **Συνύπαρξη legacy:** η ομάδα Signals/Leads μένει. Με visibility 0 το κείμενο είναι το σημερινό («until
+    opportunities go live»)· με 1 γίνεται «PREVIOUS SERVICE · Signals / Leads» και φεύγουν τα pointers «Μέχρι να
+    ενεργοποιηθούν…». Το `GEMI_TRANSITION_LEGACY_ACCESS` ελέγχει και το mirror Radars, άρα μένει 1· η αφαίρεση της
+    legacy πλοήγησης θέλει πρώτα split του flag (ξεχωριστή εργασία).
+  - **Readiness (`manage.py report_live_cutover_readiness [--replay-hours 168]`, `gemiapp/live_cutover_readiness.py`):**
+    μόνο ανάγνωση (μία συναλλαγή που κάνει πάντα rollback, dry runs, κανένα αίτημα ΓΕΜΗ). Γραμμές
+    `[PASS|BLOCKED|INFO] <check>: <detail>`, τέλος `READINESS: READY|BLOCKED`, non-zero σε BLOCKED. BLOCKED:
+    unauthorized LIVE, legacy flag 0, schedule ≠ ακριβώς μία γραμμή `13,43 * * * *`, οποιαδήποτε άρνηση preflight,
+    διπλότυπα Opportunity/OpportunitySignal, ασυμφωνίες Radar/Organization και Company/first/latest signal,
+    latest_signal εκτός ιστορικού, ≠5 score components, **NEW_COMPANY `signals_would_create` > 0** και **SHADOW
+    replay dry run με created/updated/errors > 0** (backlogs που αλλιώς θα γίνονταν LIVE μετά το όριο). INFO:
+    flags, cutover state, σήματα ανά mode/type, ευκαιρίες ανά mode/status, entitled/total, inactive Radars,
+    tombstones, μη entitled, pending_no_company.
+  - **Rollback:** R1 visibility 0 → κρύβει αμέσως· R2 signals 0 → ο επόμενος κύκλος κλείνει την περίοδο, νέα
+    σήματα SHADOW, το ingestion συνεχίζει, το LIVE ιστορικό μένει νόμιμο· R3 και τα δύο 0. Ποτέ
+    διαγραφή/υποβιβασμός.
+  - 37 νέα tests (`gemiapp/test_live_cutover.py`)· τα D29–D37 test modules τρέχουν πλέον με visibility 1 ανά module
+    (μοντελοποιούν τη μετά-cutover συμπεριφορά)· mutation check: 15 μεταλλάξεις πιάνονται, 4 ισοδύναμες (διπλά
+    στρώματα)· **2.480 tests OK**· `check`, `makemigrations --check` καθαρά· κύκλος 0058 → 0059 → 0058 → 0059 σε
+    αντίγραφο της dev βάσης (86 → 87 πίνακες, όλοι οι υπόλοιποι ίδιοι, `migrate --check` καθαρό).
+
+- **Same-day discovery lane (2026-10-09). Σήμερα στο `main` και ενεργή σε production (αναφορά χρήστη: parity OK
+  2026-10-09 → 10-13). Αρχική σημείωση: ΑΔΡΑΝΗΣ, branch `claude/unified-ingestion-parity-miss-58e98f`, ΟΧΙ στο
   `main`, κανένα deploy, καμία εντολή ή εγγραφή σε production. `GEMI_DISCOVERY_SAMEDAY_LANE_ENABLED` = 0
   (προεπιλογή). Το production schedule της frontier lane (`13,43 * * * *`, ανά 30′) μένει αμετάβλητο.**
   - **G4: η τρέχουσα περίοδος περιέχει ΕΠΙΒΕΒΑΙΩΜΕΝΟ MISS και ΝΕΟ παράθυρο πιστοποίησης ΔΕΝ έχει ξεκινήσει.**
@@ -2260,11 +2319,24 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Same-day lane — επόμενα βήματα (όλα με ρητή έγκριση):** (1) merge και deploy με flag 0 (καμία migration)·
-  (2) σε production, σε ώρα αιχμής,
-  `GEMI_DISCOVERY_SAMEDAY_LANE_ENABLED=1 python manage.py run_gemi_sameday_discovery --dry-run`: σύγκριση του
-  σημερινού συνόλου με του legacy και πραγματικό πλήθος σελίδων/αιτημάτων· (3) ενεργοποίηση του flag στο Render →
-  **εκεί ξεκινά το νέο 14ήμερο G4**· (4) καθημερινά `report_gemi_ingestion_parity`. **Ανοιχτά:** (α) ιστορικό
+- **LIVE cutover — επόμενα βήματα (όλα με ρητή έγκριση, ένα τη φορά):** (A) review/merge του
+  `feature/live-cutover-dormant` και deploy με **και τα δύο flags 0** (η `0059` εφαρμόζεται από το
+  `preDeployCommand`· συμπεριφορά ίδια με σήμερα) → έλεγχος ότι οι κύκλοι μένουν OK με `signal_mode=shadow`·
+  (B) `python manage.py report_live_cutover_readiness` σε production· αν BLOCKED λόγω backlog:
+  `materialize_new_company_signals` (SHADOW) και `process_shadow_signals --since-hours 168 --limit 1000`
+  (σελιδοποίηση με `--after-id`), ξανά readiness μέχρι READY· (C) **καμία** προώθηση/backfill SHADOW· (D) μετά το
+  14ήμερο G4 (~2026-10-22) και με READY: `GEMI_LIVE_SIGNALS_ENABLED=1`, visibility 0, «dark LIVE» 2–3 ημέρες
+  (LIVE ευκαιρίες μόνο για entitled, 0 errors, parity OK, κανένα email)· (E) `GEMI_LIVE_OPPORTUNITIES_VISIBLE=1`
+  πρωί καθημερινής μετά από καλό κύκλο, smoke test ανά ρόλο / Free / staff· (F) συνύπαρξη με Signals/Leads ≥14
+  ημέρες, μέτρηση απόκλισης Leads vs Opportunities· (G) split του `GEMI_TRANSITION_LEGACY_ACCESS` (πλοήγηση vs
+  mirror) πριν αφαιρεθεί η legacy πλοήγηση. Χωριστά, αργότερα: cadence 10′· απόσυρση legacy importer (θέλει
+  πρώτα digests/Leads πάνω σε opportunities, intraday refresh υπαρχουσών εταιρειών και `ImportRun` για Superadmin).
+  **Ανοιχτά:** (α) ευκαιρίες ανενεργών Radars μένουν ορατές ως ιστορικό (απόφαση προϊόντος)· (β) ένα LIVE σήμα
+  γραμμένο εκτός κύκλου ανάμεσα σε flag 0 και τον επόμενο κύκλο θα μετρούσε εξουσιοδοτημένο (δεν υπάρχει τέτοιος
+  writer)· (γ) τα εσωτερικά `get_authorized_opportunity*` / `get_authorized_opportunity_feed` του G5 (όχι σε views)
+  δεν περνούν από τον visibility helper.
+
+- **Same-day lane — ανοιχτά (η λωρίδα τρέχει σε production):** (α) ιστορικό
   backfill των επτά (και όσων χάθηκαν από την ενεργοποίηση του schedule): μόνο με πραγματική παρατήρηση ΓΕΜΗ και
   `trigger=operator_backfill`, ποτέ observations φτιαγμένα από `Company`· (β) budget αιτημάτων: εκτίμηση 3–5
   αιτήματα/κύκλο, μη μετρημένη· (γ) ενιαίο query χωρίς `isActive` (πιθανώς πληρέστερο κατά ~129 εταιρείες) μόνο
@@ -2496,6 +2568,18 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-10-14 — LIVE cutover: αδρανής υποδομή (εγκεκριμένο σχέδιο με δύο διορθώσεις).** Νέα:
+  `gemiapp/live_cutover.py`, `gemiapp/live_cutover_readiness.py`, `gemiapp/signal_replay.py`, `LiveSignalPeriod` +
+  migration `0059_live_signal_period`, εντολές `report_live_cutover_readiness` και `process_live_signals`,
+  `gemiapp/test_live_cutover.py`. Αλλαγές: `ingestion_cycle.py` (mode μία φορά μέσα στο mutex, περίοδος, stamp),
+  `new_company_signals.py` (`mode`, προεπιλογή SHADOW), `opportunity_pipeline.py` (LIVE μόνο εξουσιοδοτημένο, σωστή
+  προστασία), `g4_shadow_cycle.py` (preflight `certification`), `organization_access.py` + `notifications.py` (ένας
+  visibility helper), `organization_views.py` + τρία templates (κείμενο συνύπαρξης), `process_shadow_signals`
+  (κοινό replay, ίδια έξοδος), `admin.py`, `config/settings.py`, `.env.example`, pins/guards και module-level
+  visibility σε test modules. Επαλήθευση: 37 focused, 769 affected, mutation check, `check`, `makemigrations
+  --check`, **2.480 tests OK**, κύκλος migration σε αντίγραφο dev βάσης, readiness στο αντίγραφο (σωστά BLOCKED:
+  χωρίς schedule/cursor· καμία εγγραφή). Κανένα deploy, καμία production εντολή, flags 0.
 
 - **2026-10-09 — Same-day lane: χρονικός φραγμός στο newness.** `Company` χωρίς discovery evidence είναι εύρημα
   `already_local` μόνο όταν το `imported_at` (τοπική ημερομηνία) είναι μέσα στο παράθυρο· αλλιώς `known`, χωρίς

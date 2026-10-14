@@ -36,6 +36,21 @@ from .test_gemi_validation import CONTACT_SENTINEL, PERSON_SENTINEL, PHONE_SENTI
 from .test_opportunity_scoring import FRESH
 from .test_organization_access import AccessTestCase
 from .test_organization_radar_matching import T0, new_company_signal, snapshot
+from django.test import override_settings
+
+
+# These tests exercise the customer surfaces as they behave after the LIVE cutover, so customers see LIVE-backed
+# opportunities for the whole module. The dormant default (GEMI_LIVE_OPPORTUNITIES_VISIBLE off) is covered by
+# gemiapp.test_live_cutover.
+_LIVE_VISIBLE = override_settings(GEMI_LIVE_OPPORTUNITIES_VISIBLE=True)
+
+
+def setUpModule():
+    _LIVE_VISIBLE.enable()
+
+
+def tearDownModule():
+    _LIVE_VISIBLE.disable()
 
 STREET = "ΟΔΟΣ ΜΥΣΤΙΚΗ 77"
 VAT = "099977777"
@@ -338,9 +353,11 @@ class SafetyTests(PageTestCase):
     def test_the_route_reaches_tenant_data_only_through_the_authorization_layer(self):
         source = inspect.getsource(organization_views).split('"""', 2)[2]
         # The only project imports are the authorization layer (D30 added its Save entry point to the same import)
-        # and, since customer Radar editing, the Radar form -- which reads platform GEMI reference data only.
+        # and, since customer Radar editing, the Radar form -- which reads platform GEMI reference data only. The LIVE
+        # cutover adds the visibility flag reader, for the navigation copy only (it reads no tenant data).
         self.assertEqual([line for line in source.splitlines() if line.startswith(("from .", "import ."))],
                          ["from .organization_access import (",
+                          "from .live_cutover import live_opportunities_visible",
                           "from .organization_radar_form import initial_radar_form, parse_radar_form, "
                           "radar_error_message, radar_form_choices"])
         form_code = pathlib.Path("gemiapp/organization_radar_form.py").read_text(encoding="utf-8").split('"""', 2)[2]
@@ -441,7 +458,7 @@ class SafetyTests(PageTestCase):
                           or "Task" in m.__name__ and m.__name__ != "OpportunityTask"])
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0058_discovery_observation_ingest_outcome")
+                         "0059_live_signal_period")
 
     def test_the_legacy_product_billing_and_phone_are_untouched(self):
         legacy_user = entitled_user("legacy-d29@example.com")

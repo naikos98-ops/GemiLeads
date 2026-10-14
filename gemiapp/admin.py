@@ -9,6 +9,7 @@ from .models import (
     CompanyMonitoringReason,
     CompanyOutreach,
     CompanySignal,
+    LiveSignalPeriod,
     CompanySignalDiscoveryEvidence,
     CompanySignalSnapshotEvidence,
     CompanySnapshot,
@@ -361,6 +362,23 @@ class CompanySnapshotAdmin(admin.ModelAdmin):
         return False
 
     def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(LiveSignalPeriod)
+class LiveSignalPeriodAdmin(admin.ModelAdmin):
+    """Read-only: periods are written by the ingestion cycle only (gemiapp.live_cutover)."""
+
+    list_display = ("id", "opened_at", "opened_by_cycle_at", "closed_at", "closed_by_cycle_at", "is_open")
+    readonly_fields = list_display + ("created_at",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
         return False
 
 

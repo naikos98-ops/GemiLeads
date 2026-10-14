@@ -25,9 +25,11 @@ bounded by a window and a limit, and skips the signals this cycle just processed
 
 Safety
 ------
-Shadow only, and the precheck fails closed: the discovery shadow flag on, the pipeline's modes still
-SHADOW-only, no LIVE signal in the database, the 2.0 tables present, the discovery cursor initialised, and the
-GEMI collector configured. Company ingest (``GEMI_DISCOVERY_V2_ENABLED``) may be on -- it is reported, not
+Shadow only, and the precheck fails closed: the discovery shadow flag on, LIVE processing off
+(``GEMI_LIVE_SIGNALS_ENABLED``: a certification cycle must not run beside LIVE), the pipeline's modes consistent
+with that flag, no *unauthorized* LIVE signal (one created outside every authorized LIVE period), the 2.0 tables
+present, the discovery cursor initialised, and the GEMI collector configured. Historical LIVE signals created
+inside an authorized period are reported, never refused: a rollback deliberately leaves them in place. Company ingest (``GEMI_DISCOVERY_V2_ENABLED``) may be on -- it is reported, not
 refused: it concerns who may create ``Company`` rows (``gemiapp.ingestion_cycle``), never signal mode, and this
 cycle still runs Discovery in shadow mode and ingests nothing itself. Nothing here enables LIVE, changes a
 signal's mode, registers a schedule, ingests a company or writes a customer-visible row. No credential, host or environment name is
@@ -80,6 +82,7 @@ from .ingestion.discovery import (
     shadow_only,
 )
 from .new_company_signals import MaterialisationReport, eligible_observations, materialize_new_company_signals
+from .live_cutover import live_signals_enabled, open_period, supported_pipeline_modes, unauthorized_live_signals
 from .opportunity_pipeline import FAILED, PIPELINE_MODES, collect_pipeline_runs, process_company_signal
 
 logger = logging.getLogger(__name__)
@@ -106,7 +109,7 @@ PIPELINE_COUNTERS = ("considered", "entitled_considered", "skipped_not_entitled"
 # The 2.0 tables this cycle reads or writes; absent means the migrations are not applied here.
 REQUIRED_MODELS = ("GemiDiscoveryCursor", "GemiDiscoveryRun", "GemiDiscoveryObservation", "CompanySignal",
                    "CompanySignalDiscoveryEvidence", "CompanySnapshot", "OrganizationRadar", "Opportunity",
-                   "OpportunitySignal")
+                   "OpportunitySignal", "LiveSignalPeriod")
 
 
 class ShadowCycleRefused(RuntimeError):
@@ -293,9 +296,13 @@ class CycleReport:
 
 # --- phase A -----------------------------------------------------------------------------------------------
 
-def preflight() -> Precheck:
+def preflight(*, certification: bool = True) -> Precheck:
     """Every reason to refuse, checked before any write and before any GEMI request. Reads configuration and
-    schema only: no credential, host or environment name is hard-coded here."""
+    schema only: no credential, host or environment name is hard-coded here.
+
+    ``certification=True`` is this module's SHADOW certification cycle: it also refuses while LIVE processing is
+    enabled. The scheduled ingestion cycle passes ``False`` and runs in either mode. Both refuse an unauthorized
+    LIVE signal and a pipeline whose modes disagree with the LIVE flag; neither refuses authorized LIVE history."""
     check = Precheck(
         environment=str(getattr(settings, "GEMI_LEADS_ENVIRONMENT", "")),
         database_vendor=connection.vendor,
@@ -311,9 +318,18 @@ def preflight() -> Precheck:
         check.checks.append(("discovery ingest is off", True, ""))
     check.checks.append(("discovery shadow flag is on", shadow_only(),
                          "" if shadow_only() else "GEMI_DISCOVERY_V2_SHADOW is off"))
-    shadow_pipeline = tuple(PIPELINE_MODES) == (SHADOW,)
-    check.checks.append(("opportunity pipeline is shadow only", shadow_pipeline,
-                         "" if shadow_pipeline else f"the pipeline accepts {PIPELINE_MODES}"))
+    live_on = live_signals_enabled()
+    modes = tuple(supported_pipeline_modes())
+    consistent = tuple(PIPELINE_MODES) == (SHADOW,) and modes == ((SHADOW, LIVE) if live_on else (SHADOW,))
+    check.checks.append(("opportunity pipeline modes match the LIVE flag", consistent,
+                         f"accepts {modes}" if consistent else
+                         f"the pipeline accepts {modes} with GEMI_LIVE_SIGNALS_ENABLED={int(live_on)}"))
+    if certification:
+        check.checks.append(("LIVE processing is off (SHADOW certification cycle)", not live_on,
+                             "" if not live_on else "GEMI_LIVE_SIGNALS_ENABLED is on: this is not a SHADOW "
+                             "certification cycle"))
+    else:
+        check.checks.append((f"new signals will be {LIVE if live_on else SHADOW}", True, ""))
     check.checks.append(("GEMI collector is configured", bool(getattr(settings, "GEMI_COLLECTOR_ENABLED", False)),
                          "" if getattr(settings, "GEMI_COLLECTOR_ENABLED", False)
                          else "every GEMI request would be refused unsent (no key for this deployment)"))
@@ -325,9 +341,17 @@ def preflight() -> Precheck:
     if missing:
         return check   # every check below needs those tables
 
+    unauthorized = unauthorized_live_signals().count()
+    check.checks.append(("no unauthorized LIVE signal", not unauthorized,
+                         "" if not unauthorized else f"{unauthorized} LIVE signal(s) created outside every authorized "
+                         "LIVE period"))
     live = _model("CompanySignal").objects.filter(mode=LIVE).count()
-    check.checks.append(("no LIVE signal exists", not live,
-                         "" if not live else f"{live} LIVE signals: the shadow cycle is for the pre-cutover period"))
+    if live:
+        check.checks.append((f"historical authorized LIVE signals: {live - unauthorized}", True, "kept as evidence"))
+    current = open_period()
+    if current is not None and not live_on:
+        check.checks.append(("a LIVE period is still open", True,
+                             "the flag is off: the next real ingestion cycle closes it"))
     cursor = get_cursor()
     ready = cursor.high_water_mark_value is not None
     check.checks.append(("the discovery cursor is initialised", ready,

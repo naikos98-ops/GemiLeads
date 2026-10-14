@@ -194,8 +194,17 @@ LOGIN_REDIRECT_URL = "product_home"
 
 # G4 transition: while customer opportunities are SHADOW-only (so the Opportunities page is empty), the organization
 # navigation keeps a separate "current service" group with the existing Signals and Leads pages, and the empty
-# states point to Leads. Turn off after the LIVE cutover; the legacy URLs keep resolving for rollback either way.
+# states point to Leads. It also keeps the CustomerRadar -> OrganizationRadar mirror running (gemiapp.legacy_radar_sync),
+# so it stays 1 through the LIVE cutover; removing the legacy navigation needs this flag split first.
 GEMI_TRANSITION_LEGACY_ACCESS = os.environ.get("GEMI_TRANSITION_LEGACY_ACCESS", "1") == "1"
+
+# LIVE cutover (gemiapp.live_cutover), both dormant. Independent on purpose:
+# - GEMI_LIVE_SIGNALS_ENABLED: the scheduled ingestion cycle creates its NEW_COMPANY signals LIVE and the
+#   opportunity pipeline may process LIVE signals. Each cycle records the authorized LIVE period it acts on.
+# - GEMI_LIVE_OPPORTUNITIES_VISIBLE: customers see and act on LIVE-backed opportunity rows; off hides every
+#   customer surface again (rollback R1) without touching a row.
+GEMI_LIVE_SIGNALS_ENABLED = os.environ.get("GEMI_LIVE_SIGNALS_ENABLED", "0") == "1"
+GEMI_LIVE_OPPORTUNITIES_VISIBLE = os.environ.get("GEMI_LIVE_OPPORTUNITIES_VISIBLE", "0") == "1"
 LOGOUT_REDIRECT_URL = "home"
 LOGIN_URL = "login"
 

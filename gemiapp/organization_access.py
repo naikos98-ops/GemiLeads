@@ -92,6 +92,7 @@ from .contact_suppressions import (  # the canonical D35 identity and lookup, re
 )
 from .opportunities import get_opportunity_score_breakdown
 from .company_signals import LIVE
+from .live_cutover import customer_visible, customer_visible_signal_mode
 from .opportunity_feed import (
     DEFAULT_PAGE_SIZE, FEED_ORDER, MAX_PAGE_SIZE, FeedError, FeedFilters, OpportunityFeedPage, get_opportunity_feed,
 )
@@ -342,8 +343,8 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
     organization = _organization_by_id(organization_id)
     context = get_organization_access_context(user, organization)
     rows = list(
-        organization_opportunities_for(context)
-        .filter(company_id=_object_id(company_id), latest_signal__mode=LIVE)
+        customer_visible(organization_opportunities_for(context))
+        .filter(company_id=_object_id(company_id))
         .select_related("radar", "latest_signal", "company", "assigned_to__user").only(*_PAGE_FIELDS)
         .order_by(*FEED_ORDER)
     )
@@ -440,8 +441,8 @@ def save_authorized_opportunity(user, organization_id, opportunity_id) -> SaveOp
     organization = _organization_by_id(organization_id)
     context = require(get_organization_access_context(user, organization), Capability.MANAGE_OPPORTUNITY_WORKFLOW)
     with _mutation():
-        row = (organization_opportunities_for(context)
-               .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
+        row = (customer_visible(organization_opportunities_for(context))
+               .filter(pk=_object_id(opportunity_id))
                .select_for_update(of=("self",)).only("pk", "organization_id", "company_id", "status").first())
         if row is None:
             raise OrganizationAccessDenied()
@@ -551,8 +552,8 @@ def assign_authorized_opportunity(user, organization_id, opportunity_id, assigne
     organization = _organization_by_id(organization_id)
     context = require(get_organization_access_context(user, organization), Capability.ASSIGN_OPPORTUNITIES)
     with _mutation():
-        row = (organization_opportunities_for(context)
-               .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
+        row = (customer_visible(organization_opportunities_for(context))
+               .filter(pk=_object_id(opportunity_id))
                .select_for_update(of=("self",))
                .only("pk", "organization_id", "company_id", "status", "assigned_to_id", "assigned_at").first())
         if row is None:
@@ -657,8 +658,8 @@ def set_authorized_opportunity_status(user, organization_id, opportunity_id, tar
     organization = _organization_by_id(organization_id)
     context = require(get_organization_access_context(user, organization), Capability.UPDATE_OPPORTUNITY_STATUS)
     with _mutation():
-        row = (organization_opportunities_for(context)
-               .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
+        row = (customer_visible(organization_opportunities_for(context))
+               .filter(pk=_object_id(opportunity_id))
                .select_for_update(of=("self",)).only("pk", "organization_id", "company_id", "status").first())
         if row is None:
             raise OrganizationAccessDenied()
@@ -760,8 +761,8 @@ def add_authorized_opportunity_note(user, organization_id, opportunity_id, body)
     context = require(get_organization_access_context(user, organization), Capability.ADD_OPPORTUNITY_NOTE)
     try:
         with transaction.atomic():
-            row = (organization_opportunities_for(context)
-                   .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
+            row = (customer_visible(organization_opportunities_for(context))
+                   .filter(pk=_object_id(opportunity_id))
                    .select_for_update(of=("self",)).only("pk", "organization_id", "company_id").first())
             if row is None or row.organization_id != context.organization_id:
                 raise OrganizationAccessDenied()
@@ -921,8 +922,8 @@ def _lock_memberships(context: OrganizationAccessContext, ids):
 
 
 def _task_opportunity(context: OrganizationAccessContext, opportunity_id):
-    row = (organization_opportunities_for(context)
-           .filter(pk=_object_id(opportunity_id), latest_signal__mode=LIVE)
+    row = (customer_visible(organization_opportunities_for(context))
+           .filter(pk=_object_id(opportunity_id))
            .select_for_update(of=("self",)).only("pk", "organization_id", "company_id", "assigned_to_id").first())
     if row is None or row.organization_id != context.organization_id:
         raise OrganizationAccessDenied()
@@ -1165,7 +1166,8 @@ def apply_authorized_company_do_not_contact(user, organization_id, company_id, r
             rows = list(organization_opportunities_for(context).filter(company_id=company_pk)
                         .select_for_update(of=("self",)).order_by("pk")
                         .values_list("pk", "status", "latest_signal__mode", "company__gemi_number"))
-            if not any(mode == LIVE for _, _, mode, _ in rows):
+            visible_mode = customer_visible_signal_mode()
+            if visible_mode is None or not any(mode == visible_mode for _, _, mode, _ in rows):
                 raise OrganizationAccessDenied()  # the entry point must be a customer-visible LIVE opportunity
             _lock_memberships(context, (context.membership_id,))
 
@@ -1316,7 +1318,7 @@ def get_authorized_company_audit_events(user, organization_id, company_id, *, li
     organization = _organization_by_id(organization_id)
     context = get_organization_access_context(user, organization)
     company_pk = _object_id(company_id)
-    visible = organization_opportunities_for(context).filter(company_id=company_pk, latest_signal__mode=LIVE)
+    visible = customer_visible(organization_opportunities_for(context)).filter(company_id=company_pk)
     if not visible.exists():
         raise OrganizationAccessDenied()
     rows = (_model("OrganizationAuditEvent").objects
@@ -1429,8 +1431,8 @@ def _notification_entries(context: OrganizationAccessContext, limit: int) -> tup
     opportunity_ids = {row[5] for row in rows if row[5] is not None}
     visible = set()
     if opportunity_ids:
-        visible = set(organization_opportunities_for(context)
-                      .filter(pk__in=opportunity_ids, latest_signal__mode=LIVE).values_list("pk", flat=True))
+        visible = set(customer_visible(organization_opportunities_for(context))
+                      .filter(pk__in=opportunity_ids).values_list("pk", flat=True))
     entries = []
     for pk, kind, created_at, read_at, due_on, opportunity_id, company_id, company_name, radar_name, title in rows:
         available = opportunity_id in visible
@@ -1637,7 +1639,7 @@ def _workspace_entry(user, organization_id):
 
 def _live_opportunities(context: OrganizationAccessContext):
     """The opportunities this membership may see whose current capture rests on a LIVE signal (the D29 rule)."""
-    return organization_opportunities_for(context).filter(latest_signal__mode=LIVE)
+    return customer_visible(organization_opportunities_for(context))
 
 
 def _open_tasks(context: OrganizationAccessContext):
@@ -1668,8 +1670,11 @@ def _workspace_opportunities(context: OrganizationAccessContext, organization, f
     opportunity's assignee. A malformed cursor or filter is refused like everything else."""
     from .company_opportunity_page import REASON_LABELS, SCORE_CLASS_LABELS, SIGNAL_LABELS, STATUS_LABELS
 
+    visible_mode = customer_visible_signal_mode()
+    if visible_mode is None:
+        return (), None
     try:
-        page = _feed_for(context, organization, filters, limit=limit, cursor=cursor, latest_signal_mode=LIVE)
+        page = _feed_for(context, organization, filters, limit=limit, cursor=cursor, latest_signal_mode=visible_mode)
     except FeedError:
         raise OrganizationAccessDenied() from None
     if not page.cards:

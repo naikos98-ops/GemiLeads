@@ -227,13 +227,16 @@ class ShadowSafetyTests(TestCase):
         self.assertEqual(set(CompanySignal.objects.values_list("mode", flat=True)), {SHADOW})
         self.assertEqual(CompanySignal.objects.filter(mode=LIVE).count(), 0)
 
-    def test_no_option_can_ask_for_live(self):
+    def test_shadow_is_the_default_and_the_command_has_no_live_option(self):
         import inspect
 
         from . import new_company_signals
 
+        # LIVE cutover: only the ingestion cycle passes a mode (fixed once per cycle); the default stays SHADOW.
         for function in (new_company_signals.produce_new_company_signal, new_company_signals.materialize_new_company_signals):
-            self.assertNotIn("mode", inspect.signature(function).parameters, function.__name__)
+            self.assertEqual(inspect.signature(function).parameters["mode"].default, SHADOW, function.__name__)
+        with self.assertRaises(ValueError):
+            new_company_signals.materialize_new_company_signals(mode="bogus")
         out = StringIO()
         with self.assertRaises(CommandError):
             call_command("materialize_new_company_signals", "--live", stdout=out)
@@ -314,7 +317,7 @@ class BatchTests(TestCase):
         call_command("materialize_new_company_signals", "--dry-run", "--batch-size", "2", stdout=out)
         text = out.getvalue()
         self.assertIn("[dry-run] signals would create=5", text)
-        self.assertIn("mode=shadow (always)", text)
+        self.assertIn("mode=shadow", text)
         self.assertNotIn("ΕΤΑΙΡΕΙΑ", text)
         call_command("materialize_new_company_signals", stdout=StringIO())
         self.assertEqual(CompanySignal.objects.count(), 5)

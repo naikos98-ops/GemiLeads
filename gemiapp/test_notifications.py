@@ -42,9 +42,24 @@ from .services import company_matches_radar, eligible_radars, send_digests
 from .test_audit_log import AuditTestCase
 from .test_gemi_company_activities import entitled_user, radar_for
 from .test_organization_radar_matching import T0, snapshot
+from django.test import override_settings
 
 Notification = OrganizationNotification
 
+
+
+# These tests exercise the customer surfaces as they behave after the LIVE cutover, so customers see LIVE-backed
+# opportunities for the whole module. The dormant default (GEMI_LIVE_OPPORTUNITIES_VISIBLE off) is covered by
+# gemiapp.test_live_cutover.
+_LIVE_VISIBLE = override_settings(GEMI_LIVE_OPPORTUNITIES_VISIBLE=True)
+
+
+def setUpModule():
+    _LIVE_VISIBLE.enable()
+
+
+def tearDownModule():
+    _LIVE_VISIBLE.disable()
 
 class NotificationTestCase(AuditTestCase):
     def assign(self, member, row=None, actor=None):
@@ -100,7 +115,7 @@ class SchemaTests(NotificationTestCase):
     def test_the_migration_is_one_additive_create_model_without_backfill(self):
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0058_discovery_observation_ingest_outcome")
+                         "0059_live_signal_period")
         migration = loader.disk_migrations[("gemiapp", "0054_organization_notification")]
         self.assertEqual(migration.dependencies, [("gemiapp", "0053_organization_audit_event")])
         self.assertEqual([(type(op).__name__, op.name) for op in migration.operations],

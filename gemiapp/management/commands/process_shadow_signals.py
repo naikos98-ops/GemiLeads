@@ -9,18 +9,10 @@ idempotent. It never touches a LIVE signal, never changes a signal's mode, and n
 every customer surface reads LIVE-backed opportunities only. ``--dry-run`` matches and scores but writes nothing.
 """
 
-from datetime import timedelta
-
 from django.core.management.base import BaseCommand, CommandError
-from django.utils import timezone
 
 from gemiapp.company_signals import SHADOW
-from gemiapp.models import CompanySignal
-from gemiapp.opportunity_pipeline import process_company_signal
-
-MAX_LIMIT = 1000
-COUNTERS = ("considered", "entitled_considered", "skipped_not_entitled", "matched", "insufficient_state", "no_match",
-            "created", "updated", "unchanged", "below_threshold", "skipped_live_backed")
+from gemiapp.signal_replay import MAX_LIMIT, replay_signals
 
 
 class Command(BaseCommand):
@@ -39,32 +31,30 @@ class Command(BaseCommand):
             raise CommandError("--since-hours must be at least 1.")
         if not 1 <= limit <= MAX_LIMIT:
             raise CommandError(f"--limit must be from 1 to {MAX_LIMIT}.")
-        as_of = timezone.now()
-        signals = list(CompanySignal.objects.filter(mode=SHADOW, detected_at__gte=as_of - timedelta(hours=since_hours),
-                                                    detected_at__lte=as_of, pk__gt=options["after_id"])
-                       .order_by("pk")[:limit])
-        totals = dict.fromkeys(COUNTERS, 0)
-        processed = failed = errors = 0
-        for signal in signals:
-            run = process_company_signal(signal, as_of=as_of, dry_run=options["dry_run"])
-            processed += int(run.processed)
-            failed += int(bool(run.skipped_reason))
-            errors += len(run.errors)
-            for name in COUNTERS:
-                totals[name] += getattr(run, name)
-            if options["verbose_runs"] or run.errors:
-                self.stdout.write(run.line())
-        prefix = "[dry-run] " if options["dry_run"] else ""
-        last = signals[-1].pk if signals else None
-        self.stdout.write(self.style.SUCCESS(
-            f"{prefix}shadow signals selected={len(signals)} processed={processed} failed={failed} errors={errors} "
-            f"(window {since_hours}h, limit {limit}, after id {options['after_id']}, last id {last or '-'})"))
-        self.stdout.write(f"{prefix}radars considered={totals['considered']} entitled={totals['entitled_considered']} "
-                          f"skipped_not_entitled={totals['skipped_not_entitled']} matched={totals['matched']} "
-                          f"insufficient_state={totals['insufficient_state']} no_match={totals['no_match']}")
-        self.stdout.write(f"{prefix}opportunities created={totals['created']} updated={totals['updated']} "
-                          f"unchanged={totals['unchanged']} below_threshold={totals['below_threshold']} "
-                          f"skipped_live_backed={totals['skipped_live_backed']}")
+        # SHADOW only, always: this command never selects or processes a LIVE signal.
+        totals = replay_signals(mode=SHADOW, since_hours=since_hours, limit=limit, after_id=options["after_id"],
+                                dry_run=options["dry_run"])
+        write_replay(self, totals, since_hours=since_hours, limit=limit, after_id=options["after_id"],
+                     verbose=options["verbose_runs"])
         self.stdout.write("SHADOW only: no signal mode changed; nothing is visible to customers (LIVE-only surfaces).")
-        if len(signals) == limit:
-            self.stdout.write(f"More may remain: rerun with --after-id {last}.")
+        if totals.selected == limit:
+            self.stdout.write(f"More may remain: rerun with --after-id {totals.last_id}.")
+
+
+def write_replay(command, totals, *, since_hours, limit, after_id, verbose):
+    for run in totals.runs:
+        if verbose or run.errors:
+            command.stdout.write(run.line())
+    prefix = "[dry-run] " if totals.dry_run else ""
+    counters = totals.counters
+    command.stdout.write(command.style.SUCCESS(
+        f"{prefix}{totals.mode} signals selected={totals.selected} processed={totals.processed} "
+        f"failed={totals.failed} errors={totals.errors} "
+        f"(window {since_hours}h, limit {limit}, after id {after_id}, last id {totals.last_id or '-'})"))
+    command.stdout.write(f"{prefix}radars considered={counters['considered']} "
+                         f"entitled={counters['entitled_considered']} "
+                         f"skipped_not_entitled={counters['skipped_not_entitled']} matched={counters['matched']} "
+                         f"insufficient_state={counters['insufficient_state']} no_match={counters['no_match']}")
+    command.stdout.write(f"{prefix}opportunities created={counters['created']} updated={counters['updated']} "
+                         f"unchanged={counters['unchanged']} below_threshold={counters['below_threshold']} "
+                         f"skipped_live_backed={counters['skipped_live_backed']}")
