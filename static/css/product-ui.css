@@ -4024,3 +4024,13 @@ body.product-body textarea {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Free vs paid, stated right under the campaign CTA. */
+.public-cta-note {
+  margin: 14px 0 0;
+  max-width: 70ch;
+  font-size: var(--type-small);
+  line-height: 1.6;
+  color: var(--product-muted);
+}
+.public-cta-note b { color: var(--product-ink); }

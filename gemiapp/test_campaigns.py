@@ -188,3 +188,29 @@ class ConsentWithdrawalTests(TestCase):
     @override_settings(GA_MEASUREMENT_ID="")
     def test_no_consent_control_when_analytics_is_off(self):
         self.assertNotContains(self.client.get(reverse("privacy")), "data-cookie-settings")
+
+
+class AccuracyGuardTests(TestCase):
+    def test_free_vs_paid_is_stated_next_to_the_cta_and_claims_stay_accurate(self):
+        for name in ("landing_horeca", "landing_insurance"):
+            content = self.client.get(reverse(name)).content.decode()
+            self.assertIn('class="public-cta-note"', content)
+            self.assertIn("Με συνδρομή:", content)
+            for wrong in ("ανοίγουν", "και υποκωδικοί", "Κάθε νέα εταιρεία", "Κάθε νέο εστιατόριο"):
+                self.assertNotIn(wrong, content, (name, wrong))
+        self.assertIn("δεν περιλαμβάνει αυτόματα τους υποκωδικούς", self.client.get(reverse("landing_horeca")).content.decode())
+
+    def test_every_internal_link_on_both_pages_resolves(self):
+        for name in ("landing_horeca", "landing_insurance"):
+            content = self.client.get(reverse(name)).content.decode()
+            for href in set(re.findall(r'href="(/[^"#]*)', content)):
+                if href.startswith("/static/"):
+                    continue
+                status = self.client.get(href.replace("&amp;", "&")).status_code
+                self.assertIn(status, (200, 302), (name, href, status))
+
+    @override_settings(GA_MEASUREMENT_ID="G-TEST123")
+    def test_ga_is_never_loaded_by_markup_only_by_consent_script(self):
+        content = self.client.get(reverse("landing_horeca")).content.decode()
+        self.assertNotIn('<script async src="https://www.googletagmanager.com', content)
+        self.assertIn("if (value === 'granted') { loadAnalytics(); sendPageEvents(); }", content)

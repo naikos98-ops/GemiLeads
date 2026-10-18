@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% block title %}Νέες επιχειρήσεις εστίασης για προμηθευτές HoReCa · Gemi Leads{% endblock %}
 {% block og_title %}Βρες νέες επιχειρήσεις που μπορεί να γίνουν πελάτες σου · Gemi Leads για HoReCa{% endblock %}
-{% block og_description %}Νέα εστιατόρια, καφέ, μπαρ, καταλύματα και catering από τις δημοσιευμένες συστάσεις του ΓΕΜΗ, φιλτραρισμένα ανά ΚΑΔ και περιοχή που εξυπηρετείς.{% endblock %}
+{% block og_description %}Νέες εγγραφές επιχειρήσεων εστίασης και φιλοξενίας από τις δημοσιευμένες συστάσεις του ΓΕΜΗ, φιλτραρισμένα ανά ΚΑΔ και περιοχή που εξυπηρετείς.{% endblock %}
 {% block meta_description %}Για προμηθευτές καφέ, τροφίμων, ποτών, συσκευασίας και εξοπλισμού: δες τις νέες επιχειρήσεις εστίασης και φιλοξενίας που δημοσιεύονται στο ΓΕΜΗ, ανά ΚΑΔ και νομό.{% endblock %}
 
 {% block content %}
@@ -15,12 +15,12 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
 <!-- ============================ HERO ============================ -->
 <section class="public-section">
   <div class="public-inner public-hero">
-    <p class="product-eyebrow">ΓΙΑ ΠΡΟΜΗΘΕΥΤΕΣ HORECA</p>
+    <p class="product-eyebrow">ΓΙΑ ΠΡΟΜΗΘΕΥΤΕΣ HORECA · ΚΑΦΕΣ · ΤΡΟΦΙΜΑ · ΠΟΤΑ · ΣΥΣΚΕΥΑΣΙΑ · ΕΞΟΠΛΙΣΜΟΣ</p>
     <h1>Βρες νέες επιχειρήσεις που μπορεί να γίνουν πελάτες σου.</h1>
     <p class="public-hero-copy">
-      Κάθε νέο εστιατόριο, καφέ, μπαρ, κατάλυμα ή catering που συστήνεται ως επιχείρηση δημοσιεύεται
-      στο ΓΕΜΗ. Το Gemi Leads σου δείχνει ποιες από αυτές τις νέες εγγραφές έχουν τους ΚΑΔ που
-      πουλάς και έδρα στις περιοχές όπου διανέμεις. Με ένα Ραντάρ, τις λαμβάνεις κάθε πρωί στο email σου.
+      Δες τις νέες επιχειρήσεις με ΚΑΔ εστίασης και φιλοξενίας που καταχωρίζονται στο ΓΕΜΗ, με έδρα
+      στους νομούς όπου διανέμεις — και συστήσου νωρίς. Η καταχώριση δεν σημαίνει ότι το κατάστημα
+      λειτουργεί ήδη· είναι το δημόσιο σήμα ότι μια νέα επιχείρηση ξεκινά.
     </p>
 
     <div class="public-hero-cta">
@@ -28,6 +28,7 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
          data-analytics="landing_cta_click" data-analytics-audience="horeca" data-analytics-cta-location="hero">ΞΕΚΙΝΑ ΔΩΡΕΑΝ</a>
       <a href="#radar-example" class="product-text-button">ΔΕΣ ΕΝΑ ΠΑΡΑΔΕΙΓΜΑ ΡΑΝΤΑΡ →</a>
     </div>
+    <p class="public-cta-note"><b>Δωρεάν:</b> όλες οι νέες εγγραφές ΓΕΜΗ με φίλτρα ΚΑΔ, νομού και νομικής μορφής, και ημερήσιο email με τις νέες εγγραφές της ημέρας.<br><b>Με συνδρομή:</b> Ραντάρ, στοιχεία επικοινωνίας όπου δημοσιεύονται, κατάσταση lead, σημειώσεις και CSV. <a href="{% url 'pricing' %}" data-analytics="landing_cta_click" data-analytics-audience="horeca" data-analytics-cta-location="hero_pricing">Τιμές →</a></p>
 
     <div class="public-meta">
       <div>
@@ -35,7 +36,7 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
         <b>Δημοσιευμένες συστάσεις ΓΕΜΗ</b>
       </div>
       <div>
-        <span>Ενδεικτικοί ΚΑΔ</span>
+        <span>Ενδεικτικές ομάδες ΚΑΔ</span>
         <b>56.11 · 56.30 · 56.21 · 55.10</b>
       </div>
       <div>
@@ -54,8 +55,8 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
         <span class="product-match-stroke"></span>
         <span class="product-signal-copy">
           <b>ΚΟΚΚΟΣ ΚΑΦΕ ΑΓΟΡΑΣ Ι.Κ.Ε.</b>
-          <small>ΚΑΔ 56.30 · Υπηρεσίες παροχής ποτών · Αττική</small>
-          <em>Ταίριαξε: ΚΑΔ 56.30 · Νομός Αττικής</em>
+          <small>ΚΑΔ 56.30.00.03 · Αναψυκτήριο · Αττική</small>
+          <em>Ταίριαξε: ΚΑΔ 56.30.00.03 · Νομός Αττικής</em>
         </span>
         <span class="state"><i></i><b>MATCH</b><small>16/10/2026</small></span>
       </div>
@@ -64,8 +65,8 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
         <span class="product-match-stroke"></span>
         <span class="product-signal-copy">
           <b>ΠΑΡΑΛΙΑΚΟ ΜΠΙΣΤΡΟ Ο.Ε.</b>
-          <small>ΚΑΔ 56.11 · Δραστηριότητες εστιατορίων · Αττική</small>
-          <em>Ταίριαξε: ΚΑΔ 56.11 · Νομός Αττικής</em>
+          <small>ΚΑΔ 56.11.01.00 · Παροχή γευμάτων με πλήρη εξυπηρέτηση · Αττική</small>
+          <em>Ταίριαξε: ΚΑΔ 56.11.01.00 · Νομός Αττικής</em>
         </span>
         <span class="state"><i></i><b>MATCH</b><small>16/10/2026</small></span>
       </div>
@@ -74,7 +75,7 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
         <span class="product-match-stroke empty"></span>
         <span class="product-signal-copy">
           <b>ΑΥΛΗ ΦΙΛΟΞΕΝΙΑΣ ΜΟΝ. Ι.Κ.Ε.</b>
-          <small>ΚΑΔ 55.10 · Ξενοδοχειακές υπηρεσίες · Χανιά</small>
+          <small>ΚΑΔ 55.10.00.01 · Ξενοδοχείο ύπνου · Χανιά</small>
           <em class="quiet">Εκτός περιοχής του Ραντάρ — δεν έγινε match</em>
         </span>
         <span class="state"><i></i><b>SIGNAL</b><small>15/10/2026</small></span>
@@ -87,8 +88,9 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
 <section class="public-section" id="how-it-works">
   <div class="public-inner">
     <div class="public-section-head">
-      <p class="product-eyebrow">ΠΩΣ ΤΟ ΣΤΗΝΕΙ ΕΝΑΣ ΠΡΟΜΗΘΕΥΤΗΣ</p>
-      <h2>Ορίζεις μία φορά τι πουλάς και πού. Τα υπόλοιπα έρχονται κάθε πρωί.</h2>
+      <p class="product-eyebrow">ΠΩΣ ΤΟ ΣΤΗΝΕΙ ΕΝΑΣ ΠΡΟΜΗΘΕΥΤΗΣ · ΡΑΝΤΑΡ ΜΕ ΣΥΝΔΡΟΜΗ</p>
+      <h2>Ορίζεις μία φορά τι πουλάς και πού. Τα matches έρχονται κάθε πρωί.</h2>
+      <p>Με τον δωρεάν λογαριασμό κάνεις την ίδια αναζήτηση χειροκίνητα, με τα φίλτρα της λίστας νέων εγγραφών.</p>
     </div>
   </div>
   <div class="public-chain">
@@ -102,7 +104,7 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
       <i></i>
       <span>02 · ΚΑΔ</span>
       <b>Οι δραστηριότητες που αγοράζουν από εσένα</b>
-      <p>Ψάχνεις με λέξη — «εστιατόριο», «ποτών», «τροφοδοσίας» — και επιλέγεις έως 25 κωδικούς ΚΑΔ.</p>
+      <p>Ψάχνεις με λέξη ή αριθμό — «εστιατόριο», «56.30» — και επιλέγεις έναν-έναν έως 25 ακριβείς κωδικούς ΚΑΔ.</p>
     </div>
     <div>
       <i></i>
@@ -113,7 +115,7 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
     <div>
       <i></i>
       <span>04 · ΠΑΡΑΚΟΛΟΥΘΗΣΗ</span>
-      <b>Από το match στην επαφή</b>
+      <b>Από το match στην επαφή (με συνδρομή)</b>
       <p>Κάθε match γίνεται lead με κατάσταση και ιδιωτικές σημειώσεις, ώστε να ξέρεις ποιον έχεις ήδη προσεγγίσει.</p>
     </div>
   </div>
@@ -126,8 +128,9 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
       <p class="product-eyebrow">ΑΠΟ ΤΗ ΓΡΑΜΜΗ ΠΡΟΪΟΝΤΩΝ ΣΤΟΥΣ ΚΑΔ</p>
       <h2>Ποιες νέες επιχειρήσεις αφορούν τι πουλάς.</h2>
       <p>
-        Ενδεικτικές αφετηρίες από τον κατάλογο ΚΑΔ. Εσύ αποφασίζεις ποιοι κωδικοί σε αφορούν — το
-        Gemi Leads ταιριάζει τον ακριβή κωδικό που επιλέγεις, χωρίς εικασίες.
+        Ενδεικτικές ομάδες ΚΑΔ για να ξεκινήσεις την αναζήτηση. Κάθε ομάδα έχει υποκωδικούς (π.χ.
+        56.11.01.00, 56.30.00.03). Η αντιστοίχιση γίνεται στον <b>ακριβή</b> κωδικό: η επιλογή του
+        56.11.00.00 δεν περιλαμβάνει αυτόματα τους υποκωδικούς του — τους επιλέγεις έναν-έναν, έως 25.
       </p>
     </div>
     <div class="public-list" style="margin-bottom: 40px;">
@@ -172,7 +175,7 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
           <small>Παράδειγμα</small>
         </div>
         <div class="product-criteria">
-          <p><b>ΚΑΔ:</b> 56.30 και υποκωδικοί που επιλέγεις</p>
+          <p><b>ΚΑΔ:</b> κωδικοί της ομάδας 56.30 που επιλέγεις</p>
           <p><b>ΠΕΡΙΟΧΕΣ:</b> Νομός Αττικής</p>
           <p><b>ΜΟΡΦΕΣ:</b> Όλες οι μορφές</p>
         </div>
@@ -181,11 +184,11 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
       <article class="product-radar-row">
         <div>
           <span class="product-radar-state on">● ΕΝΕΡΓΟ · ΗΜΕΡΗΣΙΑ</span>
-          <h2>Νέα εστιατόρια — Θεσσαλονίκη</h2>
+          <h2>Νέες εγγραφές εστιατορίων — Θεσσαλονίκη</h2>
           <small>Παράδειγμα</small>
         </div>
         <div class="product-criteria">
-          <p><b>ΚΑΔ:</b> 56.11 και υποκωδικοί που επιλέγεις</p>
+          <p><b>ΚΑΔ:</b> κωδικοί της ομάδας 56.11 που επιλέγεις</p>
           <p><b>ΠΕΡΙΟΧΕΣ:</b> Νομός Θεσσαλονίκης</p>
           <p><b>ΜΟΡΦΕΣ:</b> Ι.Κ.Ε., Ο.Ε., Ε.Ε.</p>
         </div>
@@ -208,8 +211,8 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
         <ul>
           <li>Επωνυμία, αριθμός ΓΕΜΗ, ΑΦΜ, ημερομηνία σύστασης, νομική μορφή, έδρα και ΚΑΔ.</li>
           <li>Τηλέφωνο και email, όταν η επιχείρηση τα έχει δηλώσει στο ΓΕΜΗ (με πληρωμένο πλάνο).</li>
-          <li>Κατάσταση lead και ιδιωτικές σημειώσεις για κάθε επιχείρηση που ταίριαξε σε Ραντάρ.</li>
-          <li>Εξαγωγή CSV για το CRM ή το πρόγραμμα των πωλητών σου.</li>
+          <li>Κατάσταση lead και ιδιωτικές σημειώσεις (με πληρωμένο πλάνο).</li>
+          <li>Εξαγωγή CSV για το CRM σου (με πληρωμένο πλάνο).</li>
         </ul>
       </div>
       <div class="not">
@@ -235,7 +238,7 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
     <div class="public-list" style="margin-bottom: 24px;">
       <div>
         <b>Free</b>
-        <p>Όλες οι νέες εγγραφές του ΓΕΜΗ, φίλτρα ανά ΚΑΔ, νομό και νομική μορφή, και ημερήσιο email στις 09:00.</p>
+        <p>Όλες οι νέες εγγραφές του ΓΕΜΗ, φίλτρα ανά ΚΑΔ, νομό και νομική μορφή, και ημερήσιο email στις 09:00 με τις νέες εγγραφές της ημέρας (χωρίς τα δικά σου φίλτρα).</p>
       </div>
       <div>
         <b>Πληρωμένα πλάνα</b>
@@ -269,11 +272,11 @@ sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup 
   <div class="public-inner" style="padding-top: 40px; padding-bottom: 48px;">
     <p class="product-eyebrow">ΞΕΚΙΝΑ</p>
     <h2 style="margin: 0 0 12px; font-size: var(--type-h1); font-weight: 700; letter-spacing: -.025em;">
-      Δες ποια νέα καταστήματα εστίασης ανοίγουν στις περιοχές σου.
+      Δες ποιες νέες επιχειρήσεις εστίασης καταχωρίζονται στους νομούς σου.
     </h2>
     <p style="margin: 0 0 24px; max-width: 58ch; font-size: var(--type-body); line-height: 1.6; color: var(--product-muted);">
-      Δημιουργείς λογαριασμό, φιλτράρεις τις νέες εγγραφές με τους ΚΑΔ εστίασης και λαμβάνεις το
-      πρώτο ημερήσιο email το επόμενο πρωί.
+      Ο δωρεάν λογαριασμός σου δίνει αμέσως τις νέες εγγραφές με φίλτρα ΚΑΔ και νομού. Τα Ραντάρ, τα
+      στοιχεία επικοινωνίας και η εξαγωγή CSV έρχονται με συνδρομή.
     </p>
     <div class="public-hero-cta" style="margin: 0;">
       <a href="{% url 'signup' %}{{ signup_query }}" class="product-ink-button"

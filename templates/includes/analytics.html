@@ -57,18 +57,25 @@ dependency, and no layout shift because it is fixed to the viewport bottom.
     function choose(value) {
       try { localStorage.setItem(KEY, value); } catch (e) {}
       if (banner) banner.hidden = true;
-      if (value === 'granted') loadAnalytics();
+      if (value === 'granted') { loadAnalytics(); sendPageEvents(); }
     }
 
     // Conversion events the server handed this page (gemiapp.campaigns). Sent only when gtag
     // exists -- i.e. only with consent; otherwise they are dropped, never stored for later.
-    ['gemiPageEvents', 'gemiQueuedEvents'].forEach(function (id) {
-      var node = document.getElementById(id);
-      if (!node || typeof window.gtag !== 'function') return;
-      try {
-        JSON.parse(node.textContent).forEach(function (e) { window.gtag('event', e.name, e.params || {}); });
-      } catch (err) {}
-    });
+    // Also sent if the visitor accepts on this very page (choose below); never twice, never without consent.
+    var eventsSent = false;
+    function sendPageEvents() {
+      if (eventsSent || typeof window.gtag !== 'function') return;
+      eventsSent = true;
+      ['gemiPageEvents', 'gemiQueuedEvents'].forEach(function (id) {
+        var node = document.getElementById(id);
+        if (!node) return;
+        try {
+          JSON.parse(node.textContent).forEach(function (e) { window.gtag('event', e.name, e.params || {}); });
+        } catch (err) {}
+      });
+    }
+    sendPageEvents();
 
     // Withdrawing consent must be as easy as giving it: forget the choice, drop the GA cookies this
     // site set, and reload so gtag is no longer on the page. The banner then asks again.

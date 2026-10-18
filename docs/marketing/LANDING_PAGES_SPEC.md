@@ -20,6 +20,13 @@ Implemented: `templates/campaigns/horeca.html`, `templates/campaigns/insurance.h
 - Sample rows are fictional, labelled «ΕΙΚΟΝΙΚΟ ΔΕΙΓΜΑ». ΚΑΔ codes used exist in `gemiapp/data/kad_2025.json`.
 - Prices are **not** hard-coded on these pages (link to /pricing/), so a price change cannot leave them wrong.
 - One ink (primary) button per screen; secondary actions are text buttons.
+- **Free vs paid** is stated directly under the hero CTA (`.public-cta-note`): Free = new registrations + ΚΑΔ/νομός/
+  legal-form filters + daily email of the day's registrations (unfiltered); paid = Radars, contact data where GEMI
+  publishes it, lead status, notes, CSV. «ΞΕΚΙΝΑ ΔΩΡΕΑΝ» never promises a paid feature.
+- **ΚΑΔ:** examples use real 8-digit codes from the catalogue; groups (56.11, 56.30 …) are called «ομάδες»; the page
+  states that matching is exact-code, a parent code does not include its sub-codes, and the limit is 25.
+- **Registration ≠ open business:** copy says «καταχωρίζονται / νέες εγγραφές», never «ανοίγουν» or «νέα καταστήματα»,
+  and the HoReCa hero states that a registration does not mean the shop is operating.
 - Every signup link is `{% url 'signup' %}{{ signup_query }}` — **required** for attribution.
 - CTAs carry `data-analytics="landing_cta_click" data-analytics-audience=… data-analytics-cta-location=…`.
 - Mobile: same document order; no element wider than 375px (verified: `scrollWidth == innerWidth`).

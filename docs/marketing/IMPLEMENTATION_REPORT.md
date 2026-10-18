@@ -46,3 +46,20 @@ Not changed: authentication logic, verification, billing/Stripe, entitlements, d
 2. Merge the branch to `main` → Render deploy (no migration; `preDeployCommand` is a no-op for this change).
 3. Run the analytics QA checklist on production with a test UTM link, then configure GA4 key events.
 4. Start ads with `utm_campaign=gl_horeca|gl_insurance` and `utm_content=gl004…gl007`.
+
+## Pre-merge review pass (2026-10-18, second commit)
+
+- **Free vs paid**: a note under each hero CTA (`.public-cta-note`) states what Free includes and what needs a
+  subscription. The Radar workflow is marked «με συνδρομή». Status, notes and CSV are labelled paid.
+- **ΚΑΔ**: sample rows now use real 8-digit codes. 56.11/56.30 … are called «ομάδες». The HoReCa page states that
+  matching is exact-code, that a parent code does not include its sub-codes, and that the limit is 25.
+- **Registration ≠ open business**: no more «ανοίγουν», «νέα καταστήματα» or «κάθε νέα εταιρεία». The HoReCa hero
+  says a registration does not mean the shop is operating.
+- **Conversion**: the eyebrows name the sub-audiences; the hero copy is shorter and action-led.
+- **Analytics**: events on the page where consent is first given are now sent at acceptance. The tracking plan
+  §3b traces email signup, verification, Google sign-in and Stripe redirects, and states what cannot be measured.
+  GA4 unwanted referrals were added to the admin checklist.
+- Tests: 2.511 OK (27 campaign tests, including a link check across both pages). Desktop and 375px reviewed on a
+  local server with a throwaway SQLite database.
+- **Still not verified:** anything in the production GA4 property, Google sign-in attribution in practice, and the
+  production deploy itself.
