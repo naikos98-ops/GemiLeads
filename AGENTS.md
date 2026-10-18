@@ -159,6 +159,24 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Campaign landing pages & consent-safe attribution (2026-10-18). Branch `claude/gemi-leads-audit-campaign-016e37`,
+  ΟΧΙ στο `main`, κανένα deploy, καμία migration.** Πηγή αλήθειας για κάθε μελλοντικό marketing:
+  `docs/marketing/PRODUCT_AUDIT.md` (VERIFIED / PARTIALLY / NOT AVAILABLE ανά λειτουργία), `BRAND_GUIDELINES.md`,
+  `LANDING_PAGES_SPEC.md`, `ANALYTICS_TRACKING_PLAN.md`, `CONVERSION_OPTIMIZATION_PLAN.md`, `IMPLEMENTATION_REPORT.md`.
+  - **Σελίδες:** `/for/horeca/` (`landing_horeca`, campaign `gl_horeca`) και `/for/insurance/` (`landing_insurance`,
+    `gl_insurance`), `templates/campaigns/`, view `campaign_landing`, μόνο public primitives του `product-ui.css` (+ νέα
+    `.public-radar-sample`, `.public-fit`). Δείγματα εικονικά και σημασμένα, καμία τιμή hard-coded, sitemap +
+    `Allow: /for/`. Η σελίδα ασφαλιστών δηλώνει ρητά ότι μια σύσταση δεν είναι ασφαλιστική ανάγκη.
+  - **Attribution χωρίς αποθήκευση (`gemiapp/campaigns.py`):** τα UTM (μόνο `[A-Za-z0-9._-]{1,64}`) μεταφέρονται στο
+    URL του `/signup/`, ποτέ σε cookie/session/βάση· ανώνυμη επίσκεψη δεν δημιουργεί session.
+  - **Events (μόνο με consent, whitelisted, χωρίς PII):** `landing_cta_click`, `sign_up_start`, `sign_up` (email +
+    Google/Apple), `email_verified`, `product_search` (μόνο ποια είδη φίλτρων), `radar_created`· το
+    `pricing_cta_click` αμετάβλητο. Server-side events = one-shot στο session, εκπέμπονται από το
+    `includes/analytics.html` μόνο αν υπάρχει gtag. `purchase` **δεν** υλοποιήθηκε (πρόταση: Measurement Protocol).
+  - **Ανάκληση συγκατάθεσης:** «ΡΥΘΜΙΣΕΙΣ COOKIES» στο footer και στην πολιτική απορρήτου (σβήνει επιλογή + `_ga*`).
+  - 24 tests (`gemiapp/test_campaigns.py`)· **2.508 tests OK**· `check`, `makemigrations --check` καθαρά·
+    οπτικός έλεγχος desktop + 375px σε τοπικό server με αναλώσιμη SQLite.
+
 - **LIVE cutover — ΑΔΡΑΝΗΣ υποδομή (2026-10-14). Branch `feature/live-cutover-dormant`, ΟΧΙ στο `main`, κανένα
   deploy, καμία εντολή ή εγγραφή σε production. `GEMI_LIVE_SIGNALS_ENABLED=0`, `GEMI_LIVE_OPPORTUNITIES_VISIBLE=0`
   (προεπιλογές). Cadence ingestion αμετάβλητο (30′), legacy importer, digests, hydration, billing, mirror
@@ -2320,6 +2338,10 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Campaign rollout:** έγκριση κειμένων → merge/deploy → QA checklist του `ANALYTICS_TRACKING_PLAN.md` σε
+  production → GA4 admin (custom dimensions, key events `sign_up`/`email_verified`/`radar_created`, funnel). Ανοιχτά:
+  `purchase` tracking, διορθώσεις copy home/privacy (`PRODUCT_AUDIT.md` §4), προτάσεις 🟡/🔴 του CRO plan.
+
 - **LIVE cutover — επόμενα βήματα (όλα με ρητή έγκριση, ένα τη φορά):** (A) review/merge του
   `feature/live-cutover-dormant` και deploy με **και τα δύο flags 0** (η `0059` εφαρμόζεται από το
   `preDeployCommand`· συμπεριφορά ίδια με σήμερα) → έλεγχος ότι οι κύκλοι μένουν OK με `signal_mode=shadow`·
@@ -2569,6 +2591,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-10-18 — Product audit, campaign landing pages, consent-safe attribution.** Νέα: `gemiapp/campaigns.py`,
+  `templates/campaigns/{horeca,insurance}.html`, `gemiapp/test_campaigns.py`, `docs/marketing/*`. Αλλαγές: `views.py`,
+  `urls.py`, `seo.py`, `adapters.py`, `context_processors.py`, `static/js/app.js`, `product-ui.css`, `base.html`,
+  `home.html`, `includes/analytics.html`, `legal/privacy.html`, `registration/signup.html`. 2.508 tests OK, καμία
+  migration, κανένα deploy.
 - **2026-10-14 — LIVE cutover: και οι εσωτερικοί G5 helpers πίσω από την πύλη ορατότητας.** Οι
   `get_authorized_opportunity`, `get_authorized_opportunity_score_breakdown` (μέσω του πρώτου) και
   `get_authorized_opportunity_feed` (μέσω του `_feed_for`, που πλέον εφαρμόζει μόνο του την πύλη για κάθε feed)

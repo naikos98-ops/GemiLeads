@@ -1,0 +1,243 @@
+{% extends 'base.html' %}
+{% block title %}Νέες επιχειρήσεις για ασφαλιστικούς συμβούλους · Gemi Leads{% endblock %}
+{% block og_title %}Ανακάλυψε νέες επιχειρήσεις για πιθανές ασφαλιστικές συνεργασίες · Gemi Leads{% endblock %}
+{% block og_description %}Οι νέες εταιρείες της περιοχής σου από τις δημοσιευμένες συστάσεις του ΓΕΜΗ, ανά νομική μορφή, νομό και κλάδο — με κατάσταση και σημειώσεις για κάθε επαφή.{% endblock %}
+{% block meta_description %}Για ασφαλιστικούς συμβούλους, μεσίτες και γραφεία: δες κάθε πρωί τις νέες επιχειρήσεις της περιοχής σου από το ΓΕΜΗ, ανά νομική μορφή και ΚΑΔ, και οργάνωσε τις επαφές σου.{% endblock %}
+
+{% block content %}
+{% comment %}
+Campaign landing page -- insurance advisors (campaign id gl_insurance). Spec: LANDING_PAGES_SPEC.md.
+Deliberately a different page from /for/horeca/, not a re-skin: the supplier page is organised around
+product lines -> ΚΑΔ; this one around legal form + region (who is a company client) and the follow-up
+pipeline (the lead statuses that exist in UserCompanyLead.STATUSES). It never implies that a new
+registration has an insurance need. Register rows are fictional and say so.
+{% endcomment %}
+
+<!-- ============================ HERO ============================ -->
+<section class="public-section">
+  <div class="public-inner public-hero">
+    <p class="product-eyebrow">ΓΙΑ ΑΣΦΑΛΙΣΤΙΚΟΥΣ ΣΥΜΒΟΥΛΟΥΣ &amp; ΓΡΑΦΕΙΑ</p>
+    <h1>Ανακάλυψε νέες επιχειρήσεις για πιθανές ασφαλιστικές συνεργασίες.</h1>
+    <p class="public-hero-copy">
+      Κάθε νέα εταιρεία που συστήνεται στην περιοχή σου δημοσιεύεται στο ΓΕΜΗ. Το Gemi Leads σου
+      τη δείχνει με νομική μορφή, έδρα και κλάδο δραστηριότητας, ώστε να αποφασίσεις εσύ αν αξίζει
+      μια πρώτη επαφή — και να παρακολουθείς κάθε επαφή μέχρι το αποτέλεσμα.
+    </p>
+
+    <div class="public-hero-cta">
+      <a href="{% url 'signup' %}{{ signup_query }}" class="product-ink-button"
+         data-analytics="landing_cta_click" data-analytics-audience="insurance" data-analytics-cta-location="hero">ΞΕΚΙΝΑ ΔΩΡΕΑΝ</a>
+      <a href="#segments" class="product-text-button">ΔΕΣ ΠΩΣ ΣΤΟΧΕΥΕΙΣ →</a>
+    </div>
+
+    <div class="public-notice" style="margin-top: 28px;">
+      <b>Χωρίς υποσχέσεις</b>
+      <p>
+        Μια νέα σύσταση είναι δημόσιο γεγονός, όχι ένδειξη ασφαλιστικής ανάγκης ή πρόθεσης αγοράς.
+        Το Gemi Leads σου δίνει το πότε και το ποιος — η αξιολόγηση και η προσέγγιση είναι δική σου.
+      </p>
+    </div>
+
+    <div class="public-intake">
+      <header>
+        <span>ΝΕΕΣ ΕΤΑΙΡΕΙΕΣ · <b>ΕΙΚΟΝΙΚΟ ΔΕΙΓΜΑ</b></span>
+        <span>ΡΑΝΤΑΡ: ΝΕΕΣ Ι.Κ.Ε. &amp; Α.Ε. · ΑΤΤΙΚΗ</span>
+      </header>
+      <div class="product-signal is-new selected">
+        <time>16/10</time>
+        <span class="product-match-stroke"></span>
+        <span class="product-signal-copy">
+          <b>ΔΟΜΙΚΗ ΣΥΝΘΕΣΗ ΤΕΧΝΙΚΗ Ι.Κ.Ε.</b>
+          <small>Ι.Κ.Ε. · ΚΑΔ 43.21 · Αττική</small>
+          <em>Ταίριαξε: Νομική μορφή Ι.Κ.Ε. · Νομός Αττικής</em>
+        </span>
+        <span class="state"><i></i><b>MATCH</b><small>16/10/2026</small></span>
+      </div>
+      <div class="product-signal is-signal">
+        <time>16/10</time>
+        <span class="product-match-stroke"></span>
+        <span class="product-signal-copy">
+          <b>ΝΟΤΙΑ ΛΙΑΝΙΚΗ ΤΡΟΦΙΜΩΝ Α.Ε.</b>
+          <small>Α.Ε. · ΚΑΔ 47.11 · Αττική</small>
+          <em>Ταίριαξε: Νομική μορφή Α.Ε. · Νομός Αττικής</em>
+        </span>
+        <span class="state"><i></i><b>MATCH</b><small>16/10/2026</small></span>
+      </div>
+      <div class="product-signal is-signal">
+        <time>15/10</time>
+        <span class="product-match-stroke empty"></span>
+        <span class="product-signal-copy">
+          <b>ΑΤΟΜΙΚΗ ΕΠΙΧΕΙΡΗΣΗ — ΕΚΤΟΣ ΚΡΙΤΗΡΙΩΝ</b>
+          <small>Ατομική · ΚΑΔ 56.11 · Αττική</small>
+          <em class="quiet">Η νομική μορφή δεν είναι στο Ραντάρ — δεν έγινε match</em>
+        </span>
+        <span class="state"><i></i><b>SIGNAL</b><small>15/10/2026</small></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== SEGMENTS ====================== -->
+<section class="public-section" id="segments">
+  <div class="public-inner">
+    <div class="public-section-head">
+      <p class="product-eyebrow">ΣΤΟΧΕΥΣΗ</p>
+      <h2>Ορίζεις τον εταιρικό πελάτη που εξυπηρετείς.</h2>
+      <p>
+        Τρία κριτήρια, όπως δημοσιεύονται στο μητρώο: νομική μορφή, νομός έδρας και ΚΑΔ. Τα
+        συνδυάζεις σε Ραντάρ — ένα για κάθε τμήμα της αγοράς που δουλεύεις.
+      </p>
+    </div>
+    <div class="public-radar-sample">
+      <header><span>Ραντάρ</span><span>Κριτήρια</span><span>Γιατί έτσι</span></header>
+      <article class="product-radar-row featured">
+        <div>
+          <span class="product-radar-state on">● ΕΝΕΡΓΟ · ΗΜΕΡΗΣΙΑ</span>
+          <h2>Νέες Ι.Κ.Ε. &amp; Α.Ε. — Αττική</h2>
+          <small>Παράδειγμα</small>
+        </div>
+        <div class="product-criteria">
+          <p><b>ΚΑΔ:</b> Όλοι οι ΚΑΔ</p>
+          <p><b>ΠΕΡΙΟΧΕΣ:</b> Νομός Αττικής</p>
+          <p><b>ΜΟΡΦΕΣ:</b> Ι.Κ.Ε., Α.Ε.</p>
+        </div>
+        <div class="radar-note">Μόνο κεφαλαιουχικές εταιρείες με έδρα εκεί όπου έχεις γραφείο.</div>
+      </article>
+      <article class="product-radar-row">
+        <div>
+          <span class="product-radar-state on">● ΕΝΕΡΓΟ · ΗΜΕΡΗΣΙΑ</span>
+          <h2>Τεχνικές εταιρείες — Θεσσαλονίκη</h2>
+          <small>Παράδειγμα</small>
+        </div>
+        <div class="product-criteria">
+          <p><b>ΚΑΔ:</b> 43.21 και άλλοι κωδικοί που επιλέγεις</p>
+          <p><b>ΠΕΡΙΟΧΕΣ:</b> Νομός Θεσσαλονίκης</p>
+          <p><b>ΜΟΡΦΕΣ:</b> Όλες οι μορφές</p>
+        </div>
+        <div class="radar-note">Ένας κλάδος που γνωρίζεις καλά, σε μία περιοχή.</div>
+      </article>
+      <article class="product-radar-row">
+        <div>
+          <span class="product-radar-state on">● ΕΝΕΡΓΟ · ΗΜΕΡΗΣΙΑ</span>
+          <h2>Νέα καταστήματα λιανικής — Κρήτη</h2>
+          <small>Παράδειγμα</small>
+        </div>
+        <div class="product-criteria">
+          <p><b>ΚΑΔ:</b> 47.11 και άλλοι κωδικοί λιανικής</p>
+          <p><b>ΠΕΡΙΟΧΕΣ:</b> Ηρακλείου, Χανίων</p>
+          <p><b>ΜΟΡΦΕΣ:</b> Όλες οι μορφές</p>
+        </div>
+        <div class="radar-note">Πολλοί νομοί σε ένα Ραντάρ, για γραφείο με ευρύτερη κάλυψη.</div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== FOLLOW-UP PIPELINE ====================== -->
+<section class="public-section">
+  <div class="public-inner">
+    <div class="public-section-head">
+      <p class="product-eyebrow">ΟΡΓΑΝΩΣΗ ΕΠΑΦΩΝ</p>
+      <h2>Κάθε επιχείρηση που ταίριαξε έχει τη δική της κατάσταση.</h2>
+      <p>
+        Το prospecting κρίνεται στη συνέπεια. Κάθε match γίνεται lead με κατάσταση και ιδιωτικές
+        σημειώσεις, ώστε να ξέρεις ποιον προσέγγισες, πότε και τι ειπώθηκε.
+      </p>
+    </div>
+  </div>
+  <div class="public-chain">
+    <div><i></i><span>ΚΑΤΑΣΤΑΣΗ</span><b>Νέο</b><p>Μόλις ταίριαξε σε Ραντάρ σου.</p></div>
+    <div><i></i><span>ΚΑΤΑΣΤΑΣΗ</span><b>Προβλήθηκε</b><p>Άνοιξες την καρτέλα και είδες τα στοιχεία της.</p></div>
+    <div><i></i><span>ΚΑΤΑΣΤΑΣΗ</span><b>Επικοινώνησα</b><p>Έγινε η πρώτη επαφή· η σημείωση κρατά τι ειπώθηκε.</p></div>
+    <div><i></i><span>ΚΑΤΑΣΤΑΣΗ</span><b>Ενδιαφέρεται</b><p>Υπάρχει συνέχεια — ή «Δεν ενδιαφέρεται» και «Αρχείο» για να κλείσει.</p></div>
+  </div>
+</section>
+
+<!-- ====================== PREPARATION / LIMITS ====================== -->
+<section class="public-section">
+  <div class="public-inner">
+    <div class="public-section-head">
+      <p class="product-eyebrow">ΠΡΙΝ ΤΗΝ ΠΡΩΤΗ ΕΠΑΦΗ</p>
+      <h2>Ξέρεις με ποιον μιλάς πριν σηκώσεις το τηλέφωνο.</h2>
+    </div>
+    <div class="public-fit">
+      <div>
+        <h3>Τι βλέπεις</h3>
+        <ul>
+          <li>Επωνυμία, νομική μορφή, ημερομηνία σύστασης, έδρα, ΑΦΜ και αριθμός ΓΕΜΗ.</li>
+          <li>Οι δραστηριότητες ΚΑΔ της εταιρείας, όπως δηλώθηκαν στο μητρώο.</li>
+          <li>Διαχειριστές και εταίροι, τηλέφωνο και email όταν δημοσιεύονται στο ΓΕΜΗ (με πληρωμένο πλάνο).</li>
+          <li>Ποιο Ραντάρ και ποιο κριτήριο έφερε κάθε επιχείρηση στη λίστα σου.</li>
+        </ul>
+      </div>
+      <div class="not">
+        <h3>Τι δεν κάνει</h3>
+        <ul>
+          <li>Δεν εκτιμά ασφαλιστικές ανάγκες, κινδύνους ή μέγεθος εταιρείας.</li>
+          <li>Δεν δίνει στοιχεία επικοινωνίας που το ΓΕΜΗ δεν δημοσιεύει.</li>
+          <li>Δεν στέλνει μηνύματα και δεν καλεί εκ μέρους σου.</li>
+          <li>Δεν βαθμολογεί επιχειρήσεις.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== PLANS ====================== -->
+<section class="public-section">
+  <div class="public-inner">
+    <div class="public-section-head">
+      <p class="product-eyebrow">ΠΛΑΝΑ</p>
+      <h2>Ξεκινάς δωρεάν με το ημερήσιο email. Ραντάρ και οργάνωση επαφών με συνδρομή.</h2>
+    </div>
+    <div class="public-list" style="margin-bottom: 24px;">
+      <div>
+        <b>Free</b>
+        <p>Όλες οι νέες εγγραφές του ΓΕΜΗ, φίλτρα ανά νομό, νομική μορφή και ΚΑΔ, και ημερήσιο email στις 09:00.</p>
+      </div>
+      <div>
+        <b>Πληρωμένα πλάνα</b>
+        <p>Ραντάρ, κατάσταση lead και σημειώσεις, διαχειριστές και στοιχεία επικοινωνίας όπου δημοσιεύονται, εξαγωγή CSV.</p>
+      </div>
+    </div>
+    <div class="public-hero-cta" style="margin: 0 0 40px;">
+      <a href="{% url 'pricing' %}" class="product-text-button"
+         data-analytics="landing_cta_click" data-analytics-audience="insurance" data-analytics-cta-location="plans_pricing">ΔΕΣ ΤΙΣ ΤΙΜΕΣ →</a>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== RESPONSIBLE CONTACT ====================== -->
+<section class="public-section">
+  <div class="public-inner" style="padding-top: 28px; padding-bottom: 28px;">
+    <div class="public-notice">
+      <b>Υπεύθυνη επικοινωνία</b>
+      <p>
+        Τα στοιχεία προέρχονται από δημόσιες εγγραφές, όμως η επικοινωνία με μια επιχείρηση πρέπει να
+        γίνεται σύμφωνα με τη νομοθεσία για την προστασία δεδομένων, την απευθείας εμπορική προώθηση
+        και τους κανόνες της ασφαλιστικής διανομής. Οι ατομικές επιχειρήσεις και οι διαχειριστές
+        είναι φυσικά πρόσωπα.
+        <a href="{% url 'terms' %}">Όροι Χρήσης</a>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== FINAL CTA ====================== -->
+<section class="public-section">
+  <div class="public-inner" style="padding-top: 40px; padding-bottom: 48px;">
+    <p class="product-eyebrow">ΞΕΚΙΝΑ</p>
+    <h2 style="margin: 0 0 12px; font-size: var(--type-h1); font-weight: 700; letter-spacing: -.025em;">
+      Δες ποιες εταιρείες συστήθηκαν αυτή την εβδομάδα στην περιοχή σου.
+    </h2>
+    <p style="margin: 0 0 24px; max-width: 58ch; font-size: var(--type-body); line-height: 1.6; color: var(--product-muted);">
+      Δημιουργείς λογαριασμό και φιλτράρεις αμέσως τις νέες εγγραφές ανά νομό και νομική μορφή.
+    </p>
+    <div class="public-hero-cta" style="margin: 0;">
+      <a href="{% url 'signup' %}{{ signup_query }}" class="product-ink-button"
+         data-analytics="landing_cta_click" data-analytics-audience="insurance" data-analytics-cta-location="final">ΔΗΜΙΟΥΡΓΙΑ ΔΩΡΕΑΝ ΛΟΓΑΡΙΑΣΜΟΥ</a>
+      <a href="{% url 'login' %}" class="product-text-button">ΕΧΩ ΗΔΗ ΛΟΓΑΡΙΑΣΜΟ →</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

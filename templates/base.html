@@ -155,6 +155,7 @@
         <a href="{% url 'pricing' %}">ΣΥΝΔΡΟΜΕΣ &amp; ΠΛΑΝΑ</a><br>
         <a href="{% url 'privacy' %}">ΠΟΛΙΤΙΚΗ ΑΠΟΡΡΗΤΟΥ</a><br>
         <a href="{% url 'terms' %}">ΟΡΟΙ ΧΡΗΣΗΣ</a>
+        {% if ga_measurement_id %}<br><button type="button" class="cookie-settings-link" data-cookie-settings>ΡΥΘΜΙΣΕΙΣ COOKIES</button>{% endif %}
       </p>
       <p style="margin:0;max-width:44ch;">
         Το Gemi Leads είναι ανεξάρτητο εμπορικό προϊόν και δεν αποτελεί επίσημη υπηρεσία του ΓΕΜΗ, ούτε συνδέεται με αυτό.

@@ -7,6 +7,9 @@ from . import organization_views
 urlpatterns = [
     path("", views.home, name="home"),
     path("signup/", views.signup, name="signup"),
+    # Campaign landing pages: one per audience, each with its own template and copy.
+    path("for/horeca/", views.campaign_landing, {"audience": "horeca"}, name="landing_horeca"),
+    path("for/insurance/", views.campaign_landing, {"audience": "insurance"}, name="landing_insurance"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("settings/", views.settings_view, name="settings"),
     path("radars/", views.radar_list, name="radar_list"),

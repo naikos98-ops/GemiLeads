@@ -96,4 +96,8 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         DigestPreference.objects.get_or_create(user=user)
         if not CustomerRadar.objects.filter(user=user).exists():
             CustomerRadar.objects.create(user=user, name="Όλες οι νέες επιχειρήσεις")
+        # save_user runs only for a brand-new social account, so this is a sign-up, not a login.
+        from .campaigns import queue_analytics_event
+
+        queue_analytics_event(request, "sign_up", {"method": sociallogin.account.provider})
         return user

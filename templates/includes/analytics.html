@@ -9,6 +9,8 @@ The banner is plain HTML/CSS with a small inline script: no consent-management v
 dependency, and no layout shift because it is fixed to the viewport bottom.
 {% endcomment %}
 {% if ga_measurement_id %}
+{% if page_analytics_events %}{{ page_analytics_events|json_script:"gemiPageEvents" }}{% endif %}
+{% if queued_analytics_events %}{{ queued_analytics_events|json_script:"gemiQueuedEvents" }}{% endif %}
 <div id="cookieBanner" hidden class="cookie-banner">
   <div>
     <p>
@@ -57,6 +59,35 @@ dependency, and no layout shift because it is fixed to the viewport bottom.
       if (banner) banner.hidden = true;
       if (value === 'granted') loadAnalytics();
     }
+
+    // Conversion events the server handed this page (gemiapp.campaigns). Sent only when gtag
+    // exists -- i.e. only with consent; otherwise they are dropped, never stored for later.
+    ['gemiPageEvents', 'gemiQueuedEvents'].forEach(function (id) {
+      var node = document.getElementById(id);
+      if (!node || typeof window.gtag !== 'function') return;
+      try {
+        JSON.parse(node.textContent).forEach(function (e) { window.gtag('event', e.name, e.params || {}); });
+      } catch (err) {}
+    });
+
+    // Withdrawing consent must be as easy as giving it: forget the choice, drop the GA cookies this
+    // site set, and reload so gtag is no longer on the page. The banner then asks again.
+    document.querySelectorAll('[data-cookie-settings]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        try { localStorage.removeItem(KEY); } catch (e) {}
+        document.cookie.split(';').forEach(function (c) {
+          var name = c.split('=')[0].trim();
+          if (name.indexOf('_ga') !== 0) return;
+          var host = location.hostname.split('.');
+          for (var i = 0; i < host.length - 1; i++) {
+            var domain = host.slice(i).join('.');
+            document.cookie = name + '=; Max-Age=0; path=/; domain=.' + domain;
+          }
+          document.cookie = name + '=; Max-Age=0; path=/';
+        });
+        if (window.__gemiAnalyticsLoaded) { location.reload(); } else if (banner) { banner.hidden = false; }
+      });
+    });
 
     banner?.querySelector('[data-cookie-accept]')?.addEventListener('click', function () { choose('granted'); });
     banner?.querySelector('[data-cookie-decline]')?.addEventListener('click', function () { choose('denied'); });
