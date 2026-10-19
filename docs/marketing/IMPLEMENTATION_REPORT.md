@@ -63,3 +63,23 @@ Not changed: authentication logic, verification, billing/Stripe, entitlements, d
   local server with a throwaway SQLite database.
 - **Still not verified:** anything in the production GA4 property, Google sign-in attribution in practice, and the
   production deploy itself.
+
+## Final pre-deployment cleanup (2026-10-19, third commit)
+
+- **Home page:**
+  - The ΚΑΔ row now states exact-code matching, no automatic sub-codes, and the limit of 25 per Radar.
+  - The «Ασφαλιστές» row no longer says new companies «χρειάζονται κάλυψη».
+- **Topbar «Ξεκίνα τώρα»** (desktop and mobile menu) now carries the campaign UTMs. It used to drop them, so a
+  visitor who signed up from the topbar lost the campaign. The query is empty on every non-campaign page.
+- **Privacy:** wording for the Supabase database host and GA4 pseudonymous identifiers is in
+  `PRIVACY_WORDING_PROPOSAL.md`. **Not applied — needs owner/legal approval.**
+- **Browser check on a local server** (throwaway SQLite, fake GA id, billing flag on, no Stripe keys):
+  - The consent banner appears and no GA script loads before a choice.
+  - Decline stores `denied`; «ΡΥΘΜΙΣΕΙΣ COOKIES» clears the choice and shows the banner again.
+  - Every signup link on both campaign pages carries the UTMs.
+  - Email signup renders `sign_up` with `utm_campaign`/`utm_content` and no email address.
+  - The verification link activates the account and emits `email_verified` once.
+  - A filtered dashboard emits `product_search` with presence flags only.
+  - /pricing/ renders the three checkout forms tagged with their tier.
+  - Not clicked through to Stripe and not tested with a real GA property.
+- **Tests:** 2.512 OK, including 85 billing/checkout/pricing/signup/cookie tests run separately.

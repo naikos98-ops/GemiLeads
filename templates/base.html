@@ -128,7 +128,7 @@
     </nav>
     <div class="public-actions">
       <a href="{% url 'login' %}" class="product-text-button">Σύνδεση</a>
-      <a href="{% url 'signup' %}" class="product-ink-button">Ξεκίνα τώρα</a>
+      <a href="{% url 'signup' %}{{ signup_query }}" class="product-ink-button">Ξεκίνα τώρα</a>
     </div>
     <button id="menuButton" class="public-menu-toggle" aria-label="Μενού">
       <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -142,7 +142,7 @@
     <a href="{% url 'home' %}#how-it-works">Πώς λειτουργεί</a>
     <a href="{% url 'pricing' %}">Τιμές</a>
     <a href="{% url 'login' %}">Σύνδεση</a>
-    <a href="{% url 'signup' %}" data-menu-cta class="public-menu-cta">Ξεκίνα τώρα →</a>
+    <a href="{% url 'signup' %}{{ signup_query }}" data-menu-cta class="public-menu-cta">Ξεκίνα τώρα →</a>
   </div>
   {% endif %}
   {% if messages %}<div class="fixed right-5 top-24 z-50 space-y-2">{% for message in messages %}<div data-toast class="ledger-toast">{{ message }}</div>{% endfor %}</div>{% endif %}

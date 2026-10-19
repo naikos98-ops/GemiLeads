@@ -89,6 +89,8 @@ class LandingPageTests(TestCase):
         content = response.content.decode()
         self.assertIn("/signup/?utm_source=facebook&amp;utm_campaign=gl_horeca&amp;utm_content=gl004", content)
         self.assertNotIn("example.com", content)
+        # Every signup link on the page -- hero, final CTA and the topbar/menu -- keeps the campaign.
+        self.assertNotIn('href="/signup/"', content)
 
     def test_without_utms_signup_links_are_plain(self):
         response = self.client.get(reverse("landing_insurance"))
@@ -214,3 +216,11 @@ class AccuracyGuardTests(TestCase):
         content = self.client.get(reverse("landing_horeca")).content.decode()
         self.assertNotIn('<script async src="https://www.googletagmanager.com', content)
         self.assertIn("if (value === 'granted') { loadAnalytics(); sendPageEvents(); }", content)
+
+
+class HomepageAccuracyTests(TestCase):
+    def test_home_states_exact_kad_matching_and_implies_no_insurance_need(self):
+        content = self.client.get(reverse("home")).content.decode()
+        self.assertNotIn("ολόκληρο κλάδο", content)
+        self.assertIn("δεν περιλαμβάνει αυτόματα τους υποκωδικούς", content)
+        self.assertNotIn("που χρειάζονται κάλυψη", content)

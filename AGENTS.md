@@ -175,7 +175,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     `includes/analytics.html` μόνο αν υπάρχει gtag. `purchase` **δεν** υλοποιήθηκε (πρόταση: Measurement Protocol).
   - **Ανάκληση συγκατάθεσης:** «ΡΥΘΜΙΣΕΙΣ COOKIES» στο footer και στην πολιτική απορρήτου (σβήνει επιλογή + `_ga*`).
   - Pre-merge pass: free/paid σημείωση κάτω από το CTA, ακριβείς 8ψήφιοι ΚΑΔ (exact-code, όχι υποκωδικοί, έως 25), «καταχώριση ≠ λειτουργία καταστήματος», events και στη σελίδα όπου δίνεται η συγκατάθεση, `ANALYTICS_TRACKING_PLAN.md` §3b (τι μετριέται/τι όχι· `purchase` όχι).
-  - 27 tests (`gemiapp/test_campaigns.py`)· **2.511 tests OK**· `check`, `makemigrations --check` καθαρά·
+  - Final cleanup: home ΚΑΔ (exact-code, έως 25) και ασφαλιστές (καμία υπονοούμενη ανάγκη), topbar «Ξεκίνα τώρα» με UTMs, πρόταση διατύπωσης απορρήτου (Supabase, GA4 ψευδωνυμοποιημένα) στο `docs/marketing/PRIVACY_WORDING_PROPOSAL.md` — **δεν** εφαρμόστηκε, θέλει έγκριση.
+  - 28 tests (`gemiapp/test_campaigns.py`)· **2.512 tests OK**· `check`, `makemigrations --check` καθαρά·
     οπτικός έλεγχος desktop + 375px σε τοπικό server με αναλώσιμη SQLite.
 
 - **LIVE cutover — ΑΔΡΑΝΗΣ υποδομή (2026-10-14). Branch `feature/live-cutover-dormant`, ΟΧΙ στο `main`, κανένα
