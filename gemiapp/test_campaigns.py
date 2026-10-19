@@ -224,3 +224,12 @@ class HomepageAccuracyTests(TestCase):
         self.assertNotIn("ολόκληρο κλάδο", content)
         self.assertIn("δεν περιλαμβάνει αυτόματα τους υποκωδικούς", content)
         self.assertNotIn("που χρειάζονται κάλυψη", content)
+
+
+class GeographyClaimTests(TestCase):
+    def test_public_pages_claim_prefecture_level_filtering_only(self):
+        # The customer Radar form and the dashboard filter by νομός only (CustomerRadarForm.prefectures).
+        for name in ("home", "pricing", "landing_horeca", "landing_insurance"):
+            content = self.client.get(reverse(name)).content.decode()
+            for claim in ("πόλεις", "πόλη", "δήμο", "Δήμο"):
+                self.assertNotIn(claim, content, (name, claim))

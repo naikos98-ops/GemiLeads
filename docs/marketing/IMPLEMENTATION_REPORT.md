@@ -83,3 +83,16 @@ Not changed: authentication logic, verification, billing/Stripe, entitlements, d
   - /pricing/ renders the three checkout forms tagged with their tier.
   - Not clicked through to Stripe and not tested with a real GA property.
 - **Tests:** 2.512 OK, including 85 billing/checkout/pricing/signup/cookie tests run separately.
+
+## Release-readiness correction (2026-10-19, fourth commit)
+
+- **Geography:** home («νομούς ή τις πόλεις») and the four pricing rows («Νομοί & πόλεις») now say νομοί only. The
+  customer Radar form and the dashboard filter by prefecture only (`CustomerRadarForm.prefectures`). A test guards
+  home, pricing and both landing pages against «πόλεις/πόλη/δήμο».
+- **Sitemap:** `lastmod` for home and pricing bumped to 2026-10-19, as `gemiapp/seo.py` requires for visible
+  content changes.
+- **`PRIVACY_WORDING_PROPOSAL.md`** rewritten as confirmed facts (with evidence) vs items for the owner to verify.
+  - Not guessed: Render and Supabase regions, DPAs, GA4 admin settings.
+  - The Supabase account connected to the session does not contain the Gemi Leads project.
+- **Scope:** landing pages, signup, consent and analytics code unchanged in this commit.
+- **Tests:** 2.513 OK.

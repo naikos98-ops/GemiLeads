@@ -24,8 +24,8 @@ class StaticViewSitemap(Sitemap):
     protocol = "https"
 
     LAST_MODIFIED = {
-        "home": date(2026, 9, 1),      # redesign: product-led hero, Features + trust strip removed
-        "pricing": date(2026, 9, 1),   # headline rewrite, dark-mode + radius pass
+        "home": date(2026, 10, 19),    # ΚΑΔ/geography/insurance copy accuracy, links to /for/ pages
+        "pricing": date(2026, 10, 19),  # ΠΕΡΙΟΧΗ: νομοί only (no city filter exists)
         "signup": date(2026, 9, 1),    # headline rewrite, dark-mode fix on the help panel
         "login": date(2026, 9, 1),     # password-row markup fix
         "landing_horeca": date(2026, 10, 18),     # new: campaign landing page for HoReCa suppliers
