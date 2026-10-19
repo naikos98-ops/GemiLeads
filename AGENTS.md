@@ -159,6 +159,17 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Sites record από το BASE_URL (2026-10-19). Branch `claude/fix-sitemap-site-domain`, ΟΧΙ στο `main`, κανένα
+  deploy, καμία migration.** Αιτία: το `django.contrib.sites` (μπήκε 2026-09-04 για το allauth, `SITE_ID=1`) κρατούσε
+  το placeholder `example.com`. Το διάβαζαν: το sitemap (`<loc>` = `https://example.com/...`), το **link του password
+  reset** (`{{ protocol }}://{{ domain }}` στα `registration/password_reset_email.*`) και το subject prefix των email
+  του allauth. **Όχι** το social login: οι Google/Apple apps ορίζονται στα settings και το callback χτίζεται από το
+  request. Διόρθωση: `SITE_DOMAIN` = host ενός **ρητού** `BASE_URL` (`config/settings.site_domain_from_base_url`),
+  `SITE_NAME = "Gemi Leads"`· `gemiapp/site_identity.sync_site_from_settings` (post_migrate του gemiapp) γράφει το
+  Site(SITE_ID) σε κάθε `migrate` (= Render pre-deploy). Χωρίς `BASE_URL` ή με placeholder: καμία αλλαγή. Το id δεν
+  αλλάζει ποτέ. 13 tests (`gemiapp/test_site_identity.py`)· **2.526 tests OK**· `check`, `check --deploy`,
+  `makemigrations --check` καθαρά.
+
 - **Campaign landing pages & consent-safe attribution (2026-10-18). Branch `claude/gemi-leads-audit-campaign-016e37`,
   ΟΧΙ στο `main`, κανένα deploy, καμία migration.** Πηγή αλήθειας για κάθε μελλοντικό marketing:
   `docs/marketing/PRODUCT_AUDIT.md` (VERIFIED / PARTIALLY / NOT AVAILABLE ανά λειτουργία), `BRAND_GUIDELINES.md`,
@@ -2340,6 +2351,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Sitemap/Site fix:** έγκριση → merge → deploy (το `migrate` του pre-deploy γράφει το Site) → έλεγχος
+  `https://gemileads.gr/sitemap.xml` και ενός password-reset email → υποβολή sitemap στο Search Console.
+
 - **Campaign rollout:** έγκριση κειμένων → merge/deploy → QA checklist του `ANALYTICS_TRACKING_PLAN.md` σε
   production → GA4 admin (custom dimensions, key events `sign_up`/`email_verified`/`radar_created`, funnel). Ανοιχτά:
   `purchase` tracking, διορθώσεις copy home/privacy (`PRODUCT_AUDIT.md` §4), προτάσεις 🟡/🔴 του CRO plan.
@@ -2593,6 +2607,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-10-19 — Sites record από το BASE_URL (sitemap/password-reset domain).** Νέα: `gemiapp/site_identity.py`,
+  `gemiapp/test_site_identity.py`. Αλλαγές: `config/settings.py` (`SITE_DOMAIN`, `SITE_NAME`), `gemiapp/apps.py`
+  (post_migrate). 2.526 tests OK, καμία migration, κανένα deploy.
 - **2026-10-18 — Product audit, campaign landing pages, consent-safe attribution.** Νέα: `gemiapp/campaigns.py`,
   `templates/campaigns/{horeca,insurance}.html`, `gemiapp/test_campaigns.py`, `docs/marketing/*`. Αλλαγές: `views.py`,
   `urls.py`, `seo.py`, `adapters.py`, `context_processors.py`, `static/js/app.js`, `product-ui.css`, `base.html`,
