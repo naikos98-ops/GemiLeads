@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import sys
+from urllib.parse import urlsplit
 import dj_database_url
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
@@ -38,6 +39,23 @@ _render_host = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "").strip()
 if _render_host and _render_host not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(_render_host)
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")
+
+
+def site_domain_from_base_url(value):
+    """The bare host[:port] of an explicitly configured BASE_URL, or "" when there is none to trust."""
+    parts = urlsplit((value or "").strip())
+    if parts.scheme not in ("http", "https") or not parts.netloc or parts.path.strip("/"):
+        return ""
+    return parts.netloc.lower()
+
+
+# The public host of this deployment, for the django.contrib.sites record (SITE_ID). Django and allauth read
+# that record, not BASE_URL: the sitemap's <loc> URLs, the password-reset link (the {{ domain }} of
+# registration/password_reset_email.*) and allauth's email subject prefix. gemiapp.site_identity copies this
+# value into the record on every migrate, so each environment (production, staging, dev) names itself.
+# Derived only from an *explicit* BASE_URL: the localhost default above must never overwrite a real record.
+SITE_DOMAIN = site_domain_from_base_url(os.environ.get("BASE_URL", ""))
+SITE_NAME = "Gemi Leads"
 
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()

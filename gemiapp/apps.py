@@ -118,3 +118,6 @@ class GemiappConfig(AppConfig):
 
     def ready(self):
         post_migrate.connect(setup_daily_pipeline_schedule, sender=self)
+        from .site_identity import sync_site_from_settings
+
+        post_migrate.connect(sync_site_from_settings, sender=self, dispatch_uid="gemiapp.sync_site_from_settings")
