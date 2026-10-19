@@ -3927,3 +3927,110 @@ body.product-body textarea {
     font-size: var(--type-control-touch) !important;
   }
 }
+
+/* ======================================================================================
+   CAMPAIGN LANDING PAGES (/for/horeca/, /for/insurance/)
+   Derived from the Radars register: a campaign page shows the visitor the Radar they would
+   define, in the product's own row grammar. Everything else on those pages reuses the public
+   primitives above (.public-hero, .public-chain, .public-list, .public-intake, .public-notice).
+   ====================================================================================== */
+.public-radar-sample {
+  margin: 0 0 40px;
+  border: 1px solid var(--product-ink);
+  background: var(--product-white);
+}
+
+.public-radar-sample > header,
+.public-radar-sample .product-radar-row {
+  grid-template-columns: 1.05fr 1.7fr .75fr;
+}
+
+.public-radar-sample > header {
+  display: grid;
+  gap: 24px;
+  padding: 12px 13px;
+  border-bottom: 1px solid var(--product-ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 600;
+  letter-spacing: .09em;
+  color: var(--product-muted);
+  text-transform: uppercase;
+}
+
+.public-radar-sample .product-radar-row:last-child { border-bottom: 0; }
+.public-radar-sample .product-radar-row.featured { box-shadow: inset 3px 0 var(--product-amber); }
+.public-radar-sample .product-criteria b { width: 74px; }
+
+.public-radar-sample .radar-note {
+  font-size: var(--type-secondary);
+  line-height: 1.55;
+  color: var(--product-muted);
+}
+
+/* Two honest columns: what the product does for this audience / what it does not promise. */
+.public-fit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--product-ink);
+  margin: 0 0 40px;
+}
+
+.public-fit > div { padding: 18px 20px 20px 0; }
+.public-fit > div + div { padding-left: 20px; border-left: 1px solid var(--product-line); }
+
+.public-fit h3 {
+  margin: 0 0 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-meta);
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--product-ink);
+}
+
+.public-fit ul { margin: 0; padding: 0; list-style: none; }
+
+.public-fit li {
+  position: relative;
+  margin: 0 0 8px;
+  padding-left: 16px;
+  font-size: var(--type-secondary);
+  line-height: 1.55;
+  color: var(--product-ink);
+}
+
+.public-fit li::before { content: "✓"; position: absolute; left: 0; color: var(--product-green); font-weight: 700; }
+.public-fit .not li { color: var(--product-muted); }
+.public-fit .not li::before { content: "—"; color: var(--product-muted); }
+
+@media (max-width: 900px) {
+  .public-radar-sample > header { display: none; }
+  .public-radar-sample .product-radar-row { grid-template-columns: 1fr; gap: 10px; }
+  .public-radar-sample .product-radar-row > div { order: 0; grid-column: auto; text-align: left; }
+  .public-fit { grid-template-columns: 1fr; }
+  .public-fit > div { padding: 16px 0; }
+  .public-fit > div + div { padding-left: 0; border-left: 0; border-top: 1px solid var(--product-line); }
+}
+
+/* Footer / privacy-page control that reopens the analytics consent choice (includes/analytics.html). */
+.cookie-settings-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Free vs paid, stated right under the campaign CTA. */
+.public-cta-note {
+  margin: 14px 0 0;
+  max-width: 70ch;
+  font-size: var(--type-small);
+  line-height: 1.6;
+  color: var(--product-muted);
+}
+.public-cta-note b { color: var(--product-ink); }

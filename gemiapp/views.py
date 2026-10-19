@@ -43,6 +43,10 @@ from .models import (
     get_user_radar_limit,
 )
 from .billing import PENDING_TIER_SESSION_KEY
+from .campaigns import (
+    CAMPAIGNS, analytics_event, attribution_query, clean_attribution, queue_analytics_event,
+    search_event_params,
+)
 from .services import filter_companies_for_radar
 
 logger = logging.getLogger(__name__)
@@ -120,6 +124,20 @@ def home(request):
     return render(request, "home.html", {"sample_leads": SAMPLE_LEADS})
 
 
+def campaign_landing(request, audience):
+    """An audience-specific landing page (/for/horeca/, /for/insurance/).
+
+    The incoming UTM parameters are carried, sanitised, onto every signup link on the page and
+    nowhere else -- see gemiapp.campaigns for why attribution lives in the URL, not in storage.
+    """
+    campaign = CAMPAIGNS[audience]
+    return render(request, campaign["template"], {
+        "audience": audience,
+        "campaign_id": campaign["campaign_id"],
+        "signup_query": attribution_query(request.GET),
+    })
+
+
 @method_decorator(ratelimit(key="ip", rate="5/m", block=True), name="dispatch")
 class RateLimitedLoginView(LoginView):
     pass
@@ -154,10 +172,19 @@ def signup(request):
     if request.user.is_authenticated:
         return redirect("dashboard")
     form = SignupForm(request.POST or None)
+    # The form posts back to its own URL, query string included, so campaign UTMs survive the POST.
+    attribution = clean_attribution(request.GET)
     if request.method == "POST" and form.is_valid():
         user = form.save()
         send_verification_email(request, user)
-        return render(request, "registration/verify_pending.html", {"email": user.email})
+        # Rendered (not redirected), so this page is the one place the new account can be reported.
+        sign_up = analytics_event("sign_up", {
+            "method": "email",
+            **{key: attribution[key] for key in ("utm_campaign", "utm_content") if key in attribution},
+        })
+        return render(request, "registration/verify_pending.html", {
+            "email": user.email, "page_analytics_events": [sign_up],
+        })
     return render(request, "registration/signup.html", {"form": form})
 
 
@@ -221,6 +248,7 @@ def verify_email(request, uidb64, token):
         user.is_active = True
         user.save()
         login(request, user, backend=PASSWORD_BACKEND)
+        queue_analytics_event(request, "email_verified")
         messages.success(request, "Το email σου επιβεβαιώθηκε! Καλώς ήρθες στο Gemi Leads.")
         # login() cycles the session key but preserves its data, so a plan chosen before
         # signing up survives and the checkout can pick up where the user left off.
@@ -507,6 +535,8 @@ def dashboard(request):
         "is_realtime_tier": is_realtime_tier,
         "last_intraday_run": last_intraday_run,
     }
+    if context["filters_active"]:
+        context["page_analytics_events"] = [analytics_event("product_search", search_event_params(request))]
     return render(request, "dashboard.html", context)
 
 
@@ -573,6 +603,8 @@ def _save_radar(request, radar=None):
             except Exception:
                 messages.error(request, RADAR_SAVE_FAILED)
                 return redirect("radar_list")
+            if radar is None:
+                queue_analytics_event(request, "radar_created", {"kad_count": len(selected_kads)})
             messages.success(request, "Το Radar αποθηκεύτηκε και θα παρακολουθεί τις επόμενες εισαγωγές.")
             return redirect("radar_detail", pk=saved_radar.pk)
     return render(request, "radars/form.html", {

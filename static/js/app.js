@@ -294,9 +294,20 @@
   document.addEventListener('click', event => {
     const el = event.target.closest('[data-analytics]');
     if (!el || typeof window.gtag !== 'function') return;
+    // Every data-analytics-<name> attribute becomes a <name> parameter (data-analytics-tier ->
+    // tier, data-analytics-cta-location -> cta_location). Values are fixed in the templates.
     const params = {};
-    if (el.dataset.analyticsTier) params.tier = el.dataset.analyticsTier;
+    for (const [key, value] of Object.entries(el.dataset)) {
+      if (key === 'analytics' || !key.startsWith('analytics')) continue;
+      params[key.slice(9).replace(/^./, c => c.toLowerCase()).replace(/[A-Z]/g, c => '_' + c.toLowerCase())] = value;
+    }
     window.gtag('event', el.dataset.analytics, params);
+  });
+  // Registration start: the first time a visitor focuses a field of a tagged form (once per page).
+  document.querySelectorAll('[data-analytics-form-start]').forEach(form => {
+    form.addEventListener('focusin', () => {
+      if (typeof window.gtag === 'function') window.gtag('event', form.dataset.analyticsFormStart, {});
+    }, { once: true });
   });
   // UX-only double-submit guard for checkout forms (pricing.html can render several, one per
   // tier): disables just the submitted button so a double-click can't fire a second POST. The

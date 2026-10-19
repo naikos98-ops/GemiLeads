@@ -1,0 +1,288 @@
+{% extends 'base.html' %}
+{% block title %}Νέες επιχειρήσεις εστίασης για προμηθευτές HoReCa · Gemi Leads{% endblock %}
+{% block og_title %}Βρες νέες επιχειρήσεις που μπορεί να γίνουν πελάτες σου · Gemi Leads για HoReCa{% endblock %}
+{% block og_description %}Νέες εγγραφές επιχειρήσεων εστίασης και φιλοξενίας από τις δημοσιευμένες συστάσεις του ΓΕΜΗ, φιλτραρισμένα ανά ΚΑΔ και περιοχή που εξυπηρετείς.{% endblock %}
+{% block meta_description %}Για προμηθευτές καφέ, τροφίμων, ποτών, συσκευασίας και εξοπλισμού: δες τις νέες επιχειρήσεις εστίασης και φιλοξενίας που δημοσιεύονται στο ΓΕΜΗ, ανά ΚΑΔ και νομό.{% endblock %}
+
+{% block content %}
+{% comment %}
+Campaign landing page -- HoReCa suppliers (campaign id gl_horeca). Spec: LANDING_PAGES_SPEC.md.
+Every capability named here is classified VERIFIED in PRODUCT_AUDIT.md; change the audit first if
+the product changes. The register rows are fictional and say so. signup_query carries the visitor's
+sanitised UTM parameters to the signup page (gemiapp.campaigns) -- every signup link must use it.
+{% endcomment %}
+
+<!-- ============================ HERO ============================ -->
+<section class="public-section">
+  <div class="public-inner public-hero">
+    <p class="product-eyebrow">ΓΙΑ ΠΡΟΜΗΘΕΥΤΕΣ HORECA · ΚΑΦΕΣ · ΤΡΟΦΙΜΑ · ΠΟΤΑ · ΣΥΣΚΕΥΑΣΙΑ · ΕΞΟΠΛΙΣΜΟΣ</p>
+    <h1>Βρες νέες επιχειρήσεις που μπορεί να γίνουν πελάτες σου.</h1>
+    <p class="public-hero-copy">
+      Δες τις νέες επιχειρήσεις με ΚΑΔ εστίασης και φιλοξενίας που καταχωρίζονται στο ΓΕΜΗ, με έδρα
+      στους νομούς όπου διανέμεις — και συστήσου νωρίς. Η καταχώριση δεν σημαίνει ότι το κατάστημα
+      λειτουργεί ήδη· είναι το δημόσιο σήμα ότι μια νέα επιχείρηση ξεκινά.
+    </p>
+
+    <div class="public-hero-cta">
+      <a href="{% url 'signup' %}{{ signup_query }}" class="product-ink-button"
+         data-analytics="landing_cta_click" data-analytics-audience="horeca" data-analytics-cta-location="hero">ΞΕΚΙΝΑ ΔΩΡΕΑΝ</a>
+      <a href="#radar-example" class="product-text-button">ΔΕΣ ΕΝΑ ΠΑΡΑΔΕΙΓΜΑ ΡΑΝΤΑΡ →</a>
+    </div>
+    <p class="public-cta-note"><b>Δωρεάν:</b> όλες οι νέες εγγραφές ΓΕΜΗ με φίλτρα ΚΑΔ, νομού και νομικής μορφής, και ημερήσιο email με τις νέες εγγραφές της ημέρας.<br><b>Με συνδρομή:</b> Ραντάρ, στοιχεία επικοινωνίας όπου δημοσιεύονται, κατάσταση lead, σημειώσεις και CSV. <a href="{% url 'pricing' %}" data-analytics="landing_cta_click" data-analytics-audience="horeca" data-analytics-cta-location="hero_pricing">Τιμές →</a></p>
+
+    <div class="public-meta">
+      <div>
+        <span>Πηγή</span>
+        <b>Δημοσιευμένες συστάσεις ΓΕΜΗ</b>
+      </div>
+      <div>
+        <span>Ενδεικτικές ομάδες ΚΑΔ</span>
+        <b>56.11 · 56.30 · 56.21 · 55.10</b>
+      </div>
+      <div>
+        <span>Παράδοση</span>
+        <b>Ημερήσιο email · 09:00</b>
+      </div>
+    </div>
+
+    <div class="public-intake">
+      <header>
+        <span>ΝΕΕΣ ΕΓΓΡΑΦΕΣ ΕΣΤΙΑΣΗΣ · <b>ΕΙΚΟΝΙΚΟ ΔΕΙΓΜΑ</b></span>
+        <span>ΡΑΝΤΑΡ: ΚΑΦΕ &amp; ΜΠΑΡ</span>
+      </header>
+      <div class="product-signal is-new selected">
+        <time>16/10</time>
+        <span class="product-match-stroke"></span>
+        <span class="product-signal-copy">
+          <b>ΚΟΚΚΟΣ ΚΑΦΕ ΑΓΟΡΑΣ Ι.Κ.Ε.</b>
+          <small>ΚΑΔ 56.30.00.03 · Αναψυκτήριο · Αττική</small>
+          <em>Ταίριαξε: ΚΑΔ 56.30.00.03 · Νομός Αττικής</em>
+        </span>
+        <span class="state"><i></i><b>MATCH</b><small>16/10/2026</small></span>
+      </div>
+      <div class="product-signal is-signal">
+        <time>16/10</time>
+        <span class="product-match-stroke"></span>
+        <span class="product-signal-copy">
+          <b>ΠΑΡΑΛΙΑΚΟ ΜΠΙΣΤΡΟ Ο.Ε.</b>
+          <small>ΚΑΔ 56.11.01.00 · Παροχή γευμάτων με πλήρη εξυπηρέτηση · Αττική</small>
+          <em>Ταίριαξε: ΚΑΔ 56.11.01.00 · Νομός Αττικής</em>
+        </span>
+        <span class="state"><i></i><b>MATCH</b><small>16/10/2026</small></span>
+      </div>
+      <div class="product-signal is-signal">
+        <time>15/10</time>
+        <span class="product-match-stroke empty"></span>
+        <span class="product-signal-copy">
+          <b>ΑΥΛΗ ΦΙΛΟΞΕΝΙΑΣ ΜΟΝ. Ι.Κ.Ε.</b>
+          <small>ΚΑΔ 55.10.00.01 · Ξενοδοχείο ύπνου · Χανιά</small>
+          <em class="quiet">Εκτός περιοχής του Ραντάρ — δεν έγινε match</em>
+        </span>
+        <span class="state"><i></i><b>SIGNAL</b><small>15/10/2026</small></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== HOW A SUPPLIER SETS IT UP ====================== -->
+<section class="public-section" id="how-it-works">
+  <div class="public-inner">
+    <div class="public-section-head">
+      <p class="product-eyebrow">ΠΩΣ ΤΟ ΣΤΗΝΕΙ ΕΝΑΣ ΠΡΟΜΗΘΕΥΤΗΣ · ΡΑΝΤΑΡ ΜΕ ΣΥΝΔΡΟΜΗ</p>
+      <h2>Ορίζεις μία φορά τι πουλάς και πού. Τα matches έρχονται κάθε πρωί.</h2>
+      <p>Με τον δωρεάν λογαριασμό κάνεις την ίδια αναζήτηση χειροκίνητα, με τα φίλτρα της λίστας νέων εγγραφών.</p>
+    </div>
+  </div>
+  <div class="public-chain">
+    <div>
+      <i></i>
+      <span>01 · ΠΕΡΙΟΧΗ</span>
+      <b>Οι νομοί που εξυπηρετείς</b>
+      <p>Επιλέγεις μόνο τους νομούς όπου φτάνει το δίκτυο διανομής ή ο πωλητής σου.</p>
+    </div>
+    <div>
+      <i></i>
+      <span>02 · ΚΑΔ</span>
+      <b>Οι δραστηριότητες που αγοράζουν από εσένα</b>
+      <p>Ψάχνεις με λέξη ή αριθμό — «εστιατόριο», «56.30» — και επιλέγεις έναν-έναν έως 25 ακριβείς κωδικούς ΚΑΔ.</p>
+    </div>
+    <div>
+      <i></i>
+      <span>03 · ΚΑΘΕ ΠΡΩΙ</span>
+      <b>Οι νέες εγγραφές που ταίριαξαν στο Ραντάρ</b>
+      <p>Στις 09:00 λαμβάνεις email με όσες νέες επιχειρήσεις πέρασαν τα κριτήριά σου και ποιο κριτήριο ταίριαξε.</p>
+    </div>
+    <div>
+      <i></i>
+      <span>04 · ΠΑΡΑΚΟΛΟΥΘΗΣΗ</span>
+      <b>Από το match στην επαφή (με συνδρομή)</b>
+      <p>Κάθε match γίνεται lead με κατάσταση και ιδιωτικές σημειώσεις, ώστε να ξέρεις ποιον έχεις ήδη προσεγγίσει.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== PRODUCT LINE -> ΚΑΔ ====================== -->
+<section class="public-section">
+  <div class="public-inner">
+    <div class="public-section-head">
+      <p class="product-eyebrow">ΑΠΟ ΤΗ ΓΡΑΜΜΗ ΠΡΟΪΟΝΤΩΝ ΣΤΟΥΣ ΚΑΔ</p>
+      <h2>Ποιες νέες επιχειρήσεις αφορούν τι πουλάς.</h2>
+      <p>
+        Ενδεικτικές ομάδες ΚΑΔ για να ξεκινήσεις την αναζήτηση. Κάθε ομάδα έχει υποκωδικούς (π.χ.
+        56.11.01.00, 56.30.00.03). Η αντιστοίχιση γίνεται στον <b>ακριβή</b> κωδικό: η επιλογή του
+        56.11.00.00 δεν περιλαμβάνει αυτόματα τους υποκωδικούς του — τους επιλέγεις έναν-έναν, έως 25.
+      </p>
+    </div>
+    <div class="public-list" style="margin-bottom: 40px;">
+      <div>
+        <b>Καφές</b>
+        <p>56.30 Υπηρεσίες παροχής ποτών · 56.11 Δραστηριότητες εστιατορίων · 55.10 Ξενοδοχειακές υπηρεσίες</p>
+      </div>
+      <div>
+        <b>Τρόφιμα χονδρικής</b>
+        <p>56.11 Δραστηριότητες εστιατορίων · 56.21 Τροφοδοσία για εκδηλώσεις · 56.22 Τροφοδοσία επί συμβάσει · 55.10 Ξενοδοχειακές υπηρεσίες</p>
+      </div>
+      <div>
+        <b>Ποτά</b>
+        <p>56.30 Υπηρεσίες παροχής ποτών · 56.11 Δραστηριότητες εστιατορίων · 55.10 Ξενοδοχειακές υπηρεσίες · 55.20 Καταλύματα διακοπών</p>
+      </div>
+      <div>
+        <b>Συσκευασία</b>
+        <p>56.11 Δραστηριότητες εστιατορίων · 56.12 Κινητές μονάδες εστίασης · 56.21 Τροφοδοσία για εκδηλώσεις</p>
+      </div>
+      <div>
+        <b>Επαγγελματικός εξοπλισμός</b>
+        <p>56.11 Δραστηριότητες εστιατορίων · 56.30 Υπηρεσίες παροχής ποτών · 55.10 Ξενοδοχειακές υπηρεσίες · 56.22 Τροφοδοσία επί συμβάσει</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== RADAR EXAMPLE ====================== -->
+<section class="public-section" id="radar-example">
+  <div class="public-inner">
+    <div class="public-section-head">
+      <p class="product-eyebrow">ΠΑΡΑΔΕΙΓΜΑ ΡΑΝΤΑΡ</p>
+      <h2>Δύο Ραντάρ ενός προμηθευτή καφέ με διανομή σε Αττική και Θεσσαλονίκη.</h2>
+      <p>Έτσι εμφανίζονται τα Ραντάρ μέσα στην εφαρμογή. Κάθε Ραντάρ ελέγχει κάθε νέα εγγραφή απέναντι στα κριτήριά του.</p>
+    </div>
+    <div class="public-radar-sample">
+      <header><span>Ραντάρ</span><span>Κριτήρια</span><span>Παράδοση</span></header>
+      <article class="product-radar-row featured">
+        <div>
+          <span class="product-radar-state on">● ΕΝΕΡΓΟ · ΗΜΕΡΗΣΙΑ</span>
+          <h2>Καφέ &amp; μπαρ — Αττική</h2>
+          <small>Παράδειγμα</small>
+        </div>
+        <div class="product-criteria">
+          <p><b>ΚΑΔ:</b> κωδικοί της ομάδας 56.30 που επιλέγεις</p>
+          <p><b>ΠΕΡΙΟΧΕΣ:</b> Νομός Αττικής</p>
+          <p><b>ΜΟΡΦΕΣ:</b> Όλες οι μορφές</p>
+        </div>
+        <div class="radar-note">Email 09:00 με τα νέα matches της ημέρας.</div>
+      </article>
+      <article class="product-radar-row">
+        <div>
+          <span class="product-radar-state on">● ΕΝΕΡΓΟ · ΗΜΕΡΗΣΙΑ</span>
+          <h2>Νέες εγγραφές εστιατορίων — Θεσσαλονίκη</h2>
+          <small>Παράδειγμα</small>
+        </div>
+        <div class="product-criteria">
+          <p><b>ΚΑΔ:</b> κωδικοί της ομάδας 56.11 που επιλέγεις</p>
+          <p><b>ΠΕΡΙΟΧΕΣ:</b> Νομός Θεσσαλονίκης</p>
+          <p><b>ΜΟΡΦΕΣ:</b> Ι.Κ.Ε., Ο.Ε., Ε.Ε.</p>
+        </div>
+        <div class="radar-note">Κάθε match δείχνει ποιο κριτήριο ταίριαξε.</div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== WHAT EACH LEAD CONTAINS ====================== -->
+<section class="public-section">
+  <div class="public-inner">
+    <div class="public-section-head">
+      <p class="product-eyebrow">ΤΙ ΒΛΕΠΕΙΣ ΓΙΑ ΚΑΘΕ ΝΕΑ ΕΠΙΧΕΙΡΗΣΗ</p>
+      <h2>Ό,τι δημοσιεύει το ΓΕΜΗ, σε μία καρτέλα.</h2>
+    </div>
+    <div class="public-fit">
+      <div>
+        <h3>Τι κάνει για εσένα</h3>
+        <ul>
+          <li>Επωνυμία, αριθμός ΓΕΜΗ, ΑΦΜ, ημερομηνία σύστασης, νομική μορφή, έδρα και ΚΑΔ.</li>
+          <li>Τηλέφωνο και email, όταν η επιχείρηση τα έχει δηλώσει στο ΓΕΜΗ (με πληρωμένο πλάνο).</li>
+          <li>Κατάσταση lead και ιδιωτικές σημειώσεις (με πληρωμένο πλάνο).</li>
+          <li>Εξαγωγή CSV για το CRM σου (με πληρωμένο πλάνο).</li>
+        </ul>
+      </div>
+      <div class="not">
+        <h3>Τι δεν υπόσχεται</h3>
+        <ul>
+          <li>Μια νέα σύσταση δεν σημαίνει ότι το κατάστημα λειτουργεί ήδη ή ότι αναζητά προμηθευτή.</li>
+          <li>Δεν συμπληρώνουμε στοιχεία επικοινωνίας που το ΓΕΜΗ δεν δημοσιεύει.</li>
+          <li>Δεν βαθμολογούμε επιχειρήσεις και δεν προβλέπουμε αγορές.</li>
+          <li>Δεν επικοινωνούμε με τις επιχειρήσεις για λογαριασμό σου.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== PLANS ====================== -->
+<section class="public-section">
+  <div class="public-inner">
+    <div class="public-section-head">
+      <p class="product-eyebrow">ΠΛΑΝΑ</p>
+      <h2>Ξεκινάς δωρεάν. Τα Ραντάρ έρχονται με το πρώτο πληρωμένο πλάνο.</h2>
+    </div>
+    <div class="public-list" style="margin-bottom: 24px;">
+      <div>
+        <b>Free</b>
+        <p>Όλες οι νέες εγγραφές του ΓΕΜΗ, φίλτρα ανά ΚΑΔ, νομό και νομική μορφή, και ημερήσιο email στις 09:00 με τις νέες εγγραφές της ημέρας (χωρίς τα δικά σου φίλτρα).</p>
+      </div>
+      <div>
+        <b>Πληρωμένα πλάνα</b>
+        <p>Ραντάρ με αποθηκευμένα κριτήρια, τηλέφωνο και email όπου δημοσιεύονται, κατάσταση lead, σημειώσεις και εξαγωγή CSV.</p>
+      </div>
+    </div>
+    <div class="public-hero-cta" style="margin: 0 0 40px;">
+      <a href="{% url 'pricing' %}" class="product-text-button"
+         data-analytics="landing_cta_click" data-analytics-audience="horeca" data-analytics-cta-location="plans_pricing">ΔΕΣ ΤΙΣ ΤΙΜΕΣ →</a>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== RESPONSIBLE CONTACT ====================== -->
+<section class="public-section">
+  <div class="public-inner" style="padding-top: 28px; padding-bottom: 28px;">
+    <div class="public-notice">
+      <b>Υπεύθυνη επικοινωνία</b>
+      <p>
+        Τα στοιχεία προέρχονται από δημόσιες εγγραφές, όμως η επικοινωνία με μια επιχείρηση πρέπει να
+        γίνεται σύμφωνα με τη νομοθεσία για την προστασία δεδομένων και την απευθείας εμπορική
+        προώθηση. Οι ατομικές επιχειρήσεις είναι φυσικά πρόσωπα.
+        <a href="{% url 'terms' %}">Όροι Χρήσης</a>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== FINAL CTA ====================== -->
+<section class="public-section">
+  <div class="public-inner" style="padding-top: 40px; padding-bottom: 48px;">
+    <p class="product-eyebrow">ΞΕΚΙΝΑ</p>
+    <h2 style="margin: 0 0 12px; font-size: var(--type-h1); font-weight: 700; letter-spacing: -.025em;">
+      Δες ποιες νέες επιχειρήσεις εστίασης καταχωρίζονται στους νομούς σου.
+    </h2>
+    <p style="margin: 0 0 24px; max-width: 58ch; font-size: var(--type-body); line-height: 1.6; color: var(--product-muted);">
+      Ο δωρεάν λογαριασμός σου δίνει αμέσως τις νέες εγγραφές με φίλτρα ΚΑΔ και νομού. Τα Ραντάρ, τα
+      στοιχεία επικοινωνίας και η εξαγωγή CSV έρχονται με συνδρομή.
+    </p>
+    <div class="public-hero-cta" style="margin: 0;">
+      <a href="{% url 'signup' %}{{ signup_query }}" class="product-ink-button"
+         data-analytics="landing_cta_click" data-analytics-audience="horeca" data-analytics-cta-location="final">ΔΗΜΙΟΥΡΓΙΑ ΔΩΡΕΑΝ ΛΟΓΑΡΙΑΣΜΟΥ</a>
+      <a href="{% url 'login' %}" class="product-text-button">ΕΧΩ ΗΔΗ ΛΟΓΑΡΙΑΣΜΟ →</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

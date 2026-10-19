@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.cache import cache
 from django.db.utils import OperationalError
+from .campaigns import pop_queued_analytics_events
 from .models import Company
 
 
@@ -20,6 +21,9 @@ def global_stats(request):
         # takes effect on redeploy without touching a template.
         "beta_mode": settings.BETA_MODE,
         "billing_active": settings.LEGAL_BILLING_ACTIVE,
+        # One-shot conversion events queued by a server-side action (gemiapp.campaigns). Emitted by
+        # includes/analytics.html only when gtag exists, i.e. only with analytics consent.
+        "queued_analytics_events": pop_queued_analytics_events(request) if settings.GA_MEASUREMENT_ID else [],
     }
 
 
