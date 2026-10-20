@@ -559,6 +559,10 @@ SITE_ID = 1
 # allauth's parallel account flows are switched off rather than left to compete with them.
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_ADAPTER = "gemiapp.adapters.NoLocalSignupAdapter"
+ACCOUNT_FORMS = {
+    "change_password": "gemiapp.forms.AuthenticatedPasswordChangeForm",
+    "set_password": "gemiapp.forms.AuthenticatedPasswordSetForm",
+}
 SOCIALACCOUNT_ADAPTER = "gemiapp.adapters.SocialAccountAdapter"
 # Google and Apple both verify the address before handing it over, so a returning user is
 # matched to their existing password account instead of being shown a signup form.

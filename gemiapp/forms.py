@@ -1,11 +1,43 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
+from allauth.account.forms import ChangePasswordForm, SetPasswordForm
 from .models import Company, CustomerRadar, DigestPreference, UserCompanyLead
 
 
 INPUT = "w-full rounded-2xl border border-navy-900/10 bg-white/70 px-4 py-3 text-navy-950 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
 MULTI_INPUT = f"{INPUT} min-h-36"
+
+
+class AuthenticatedPasswordChangeForm(ChangePasswordForm):
+    """Greek presentation over allauth's authenticated password-change contract."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        labels = {
+            "oldpassword": "Τρέχων κωδικός",
+            "password1": "Νέος κωδικός",
+            "password2": "Επιβεβαίωση νέου κωδικού",
+        }
+        for name, label in labels.items():
+            field = self.fields[name]
+            field.label = label
+            field.widget.attrs["placeholder"] = ""
+
+
+class AuthenticatedPasswordSetForm(SetPasswordForm):
+    """Greek presentation for allauth's secure social-account set-password flow."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        labels = {
+            "password1": "Νέος κωδικός",
+            "password2": "Επιβεβαίωση νέου κωδικού",
+        }
+        for name, label in labels.items():
+            field = self.fields[name]
+            field.label = label
+            field.widget.attrs["placeholder"] = ""
 
 
 class SignupForm(UserCreationForm):

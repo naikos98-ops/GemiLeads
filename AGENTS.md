@@ -159,6 +159,15 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Authenticated password change (2026-10-21):** Settings → ΑΣΦΑΛΕΙΑ → Αλλαγή/Ορισμός κωδικού.
+  Επαναχρησιμοποιούνται οι allauth PasswordChangeView/PasswordSetView και οι αντίστοιχες forms, με ελληνική
+  παρουσίαση και επιστροφή στα Settings. Current password απαιτείται μόνο όταν υπάρχει usable password.
+  Το allauth διατηρεί τη συνεδρία με update_session_auth_hash· social links και password-reset flow αμετάβλητα.
+  19 focused tests και 17 υπάρχοντες auth/reset tests OK· πλήρης suite 2.550 tests OK (56s), check και
+  makemigrations --check καθαρά. Η πλήρης suite απαιτεί production-shaped test environment, τοπική SQLite,
+  fixture-only GEMI key και δικαίωμα εγγραφής στα temporary backup αρχεία· καμία αλλαγή στο .env.
+  Ο χρήστης επιβεβαίωσε λειτουργικό smoke και ενέκρινε production δημοσίευση στις 2026-10-21.
+
 - **Sites record από το BASE_URL (2026-10-19). Branch `claude/fix-sitemap-site-domain`, ΟΧΙ στο `main`, κανένα
   deploy, καμία migration.** Αιτία: το `django.contrib.sites` (μπήκε 2026-09-04 για το allauth, `SITE_ID=1`) κρατούσε
   το placeholder `example.com`. Το διάβαζαν: το sitemap (`<loc>` = `https://example.com/...`), το **link του password
@@ -2404,6 +2413,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Authenticated password change:** επιβεβαίωση ολοκλήρωσης Render deployment μετά το push στο main.
+
 - **Sitemap/Site fix:** έγκριση → merge → deploy (το `migrate` του pre-deploy γράφει το Site) → έλεγχος
   `https://gemileads.gr/sitemap.xml` και ενός password-reset email → υποβολή sitemap στο Search Console.
 
@@ -2680,6 +2691,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-10-21 — Production release password change:** user acceptance («Λειτουργεί τέλεια») και ρητή
+  έγκριση παραγωγικής δημοσίευσης. Main συγχρονισμένο με origin πριν το release· χωρίς migration ή αλλαγή env.
+
+- **2026-10-21 — Authenticated password change/set:** product templates και security section στα Settings,
+  ελληνικές allauth forms/messages, adapter redirect στα Settings, 19 security/behavior tests.
+  19 focused + 17 υπάρχοντες auth/reset tests και πλήρης suite 2.550 tests OK· check/migration check καθαρά.
+  Δεν αλλάχθηκαν reset URLs/templates/emails, social linking, οργανισμοί, billing ή επιχειρησιακό pipeline.
 
 - **2026-10-19 — Sites record από το BASE_URL (sitemap/password-reset domain).** Νέα: `gemiapp/site_identity.py`,
   `gemiapp/test_site_identity.py`. Αλλαγές: `config/settings.py` (`SITE_DOMAIN`, `SITE_NAME`), `gemiapp/apps.py`

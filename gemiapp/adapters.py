@@ -11,6 +11,7 @@ import logging
 from allauth.account.adapter import DefaultAccountAdapter
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from django.contrib.auth.models import User
+from django.urls import reverse
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,10 @@ class NoLocalSignupAdapter(DefaultAccountAdapter):
 
     def is_open_for_signup(self, request):
         return False
+
+    def get_password_change_redirect_url(self, request):
+        """Return authenticated password changes to the account settings surface."""
+        return reverse("settings")
 
     def send_mail(self, template_prefix, email, context):
         """allauth's own mail (its password reset is still reachable at /accounts/password/reset/)

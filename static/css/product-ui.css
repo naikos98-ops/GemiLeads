@@ -4339,3 +4339,53 @@ body.product-body textarea {
   color: var(--product-muted);
 }
 .public-cta-note b { color: var(--product-ink); }
+
+/* Authenticated account security. Same square ledger grammar as Settings and the product forms. */
+.product-settings-panel {
+  margin-bottom: 24px;
+  padding: 24px;
+  border: 1px solid var(--product-ink);
+  background: var(--product-white);
+}
+
+.product-settings-label {
+  margin: 0 0 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--product-muted);
+}
+
+.product-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.product-settings-row h2 { margin: 0; font-size: var(--type-lead); color: var(--product-ink); }
+.product-settings-row p { margin: 6px 0 0; max-width: 62ch; font-size: var(--type-secondary); line-height: 1.55; color: var(--product-muted); }
+.product-settings-row .product-ink-button { flex: 0 0 auto; }
+
+.product-password-page { max-width: 620px; margin: 0 auto; padding: 44px 28px 72px; }
+.product-password-head { padding-bottom: 18px; border-bottom: 1px solid var(--product-ink); }
+.product-password-head h1 { margin: 5px 0 0; font-size: var(--type-display); line-height: 1.1; color: var(--product-ink); }
+.product-password-head > p:last-child { margin: 12px 0 0; font-size: var(--type-secondary); line-height: 1.6; color: var(--product-muted); }
+.product-password-form { margin: 0; }
+.product-password-actions { display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding-top: 22px; }
+.product-form-error,
+.product-field-errors { border-left: 3px solid var(--product-red); color: var(--product-ink); font-size: var(--type-secondary); }
+.product-form-error { margin-top: 18px; padding: 10px 12px; background: var(--product-white); border-top: 1px solid var(--product-line); border-right: 1px solid var(--product-line); border-bottom: 1px solid var(--product-line); }
+.product-field-errors { margin-top: 8px; padding-left: 10px; }
+.product-form-error ul,
+.product-field-errors ul { margin: 0; padding: 0; list-style: none; }
+
+@media (max-width: 600px) {
+  .product-settings-row { align-items: stretch; flex-direction: column; }
+  .product-settings-row .product-ink-button { width: 100%; }
+  .product-password-page { padding: 28px 18px 56px; }
+  .product-password-actions { align-items: stretch; flex-direction: column-reverse; }
+  .product-password-actions .product-ink-button,
+  .product-password-actions .product-text-button { width: 100%; text-align: center; }
+}

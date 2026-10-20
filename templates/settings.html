@@ -135,8 +135,27 @@
     </div>
     {% endwith %}
 
+    <section class="product-settings-panel" aria-labelledby="security-title">
+      <p class="product-settings-label">ΑΣΦΑΛΕΙΑ</p>
+      <div class="product-settings-row">
+        <div>
+          <h2 id="security-title">Κωδικός πρόσβασης</h2>
+          {% if user.has_usable_password %}
+          <p>Άλλαξε τον κωδικό που χρησιμοποιείς για σύνδεση στο Gemi Leads.</p>
+          {% else %}
+          <p>Δεν έχεις ορίσει κωδικό πρόσβασης. Μπορείς να ορίσεις έναν χωρίς να επηρεαστεί η σύνδεσή σου μέσω Google ή άλλου παρόχου.</p>
+          {% endif %}
+        </div>
+        {% if user.has_usable_password %}
+        <a href="{% url 'account_change_password' %}" class="product-ink-button">Αλλαγή κωδικού</a>
+        {% else %}
+        <a href="{% url 'account_set_password' %}" class="product-ink-button">Ορισμός κωδικού</a>
+        {% endif %}
+      </div>
+    </section>
+
     <!-- Digest Preferences Form -->
-    <div style="background: var(--product-white); border: 1px solid var(--product-ink); padding: 24px;">
+    <div class="product-settings-panel">
       <p style="font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 700; color: var(--product-muted); letter-spacing: .08em; margin: 0 0 12px;">
         ΠΡΟΤΙΜΗΣΕΙΣ EMAIL DIGEST
       </p>
