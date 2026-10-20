@@ -216,7 +216,8 @@ class FrozenAndCurrentTests(PageTestCase):
             after = self.page()
         self.assertEqual((after.score, after.score_class, after.scored_as_of), (100, "priority", FRESH))
         self.assertEqual(after.breakdown, before.breakdown)
-        self.assertIn("ΚΑΔ 62010000 · kad_2026", after.breakdown[0].evidence[0])
+        self.assertIn("ΚΑΔ 62010000", after.breakdown[0].evidence[0])
+        self.assertNotIn("kad_2026", after.breakdown[0].evidence[0])
         self.assertEqual([(a.code, a.kad_version) for a in after.current.activities], [("47191002", "kad_2026")])
         self.assertEqual((after.current.prefecture.source_id, after.current.legal_form.source_id), ("61190", "3"))
         self.assertIsNone(after.current.municipality)
@@ -257,7 +258,7 @@ class FrozenAndCurrentTests(PageTestCase):
         html = self.get(self.owner).content.decode()
         self.assertNotIn("99999999", html)
         self.assertIn("62010000", html)
-        self.assertIn("kad_2026", html)
+        self.assertNotIn("kad_2026", html)
 
 
 # --- several Radars --------------------------------------------------------------------------------
@@ -277,6 +278,13 @@ class MultiRadarTests(PageTestCase):
         self.assertEqual([o.is_primary for o in page.opportunities], [True, False])
         html = self.get(self.owner).content.decode()
         self.assertEqual(html.count("data-opportunity="), 2)
+        self.assertEqual(html.count('<dialog class="product-action-modal'), 4)
+        self.assertIn('id="why-this-company"', html)
+        self.assertIn("ΓΙΑΤΙ ΑΥΤΗ Η ΕΤΑΙΡΕΙΑ", html)
+        self.assertIn('data-modal-open="action-menu-modal"', html)
+        self.assertIn(f'data-modal-open="opportunity-modal-{high.pk}"', html)
+        self.assertIn(f'id="opportunity-modal-{high.pk}" data-opportunity="{high.pk}"', html)
+        self.assertIn(f'id="opportunity-modal-{low.pk}" data-opportunity="{low.pk}"', html)
         self.assertIn("Radar Α", html)
         self.assertIn("Radar Β", html)
 
@@ -284,9 +292,10 @@ class MultiRadarTests(PageTestCase):
 # --- privacy, XSS, efficiency, safety --------------------------------------------------------------
 
 class SafetyTests(PageTestCase):
-    def test_no_contact_person_street_vat_or_payload_is_rendered(self):
+    def test_company_contact_is_rendered_but_people_vat_and_unrelated_payload_are_not(self):
         company = Company.objects.create(
             gemi_number="700300", name="Καθαρή Επωνυμία ΑΕ", incorporation_date=date(2026, 9, 1), address=STREET,
+            postal_code="14561", city="ΚΗΦΙΣΙΑ", municipality="ΚΗΦΙΣΙΑΣ", prefecture="ΑΤΤΙΚΗΣ",
             email=CONTACT_SENTINEL, vat_number=VAT, website="https://sentinel.example.invalid",
             raw_data={"phone": PHONE_SENTINEL, "email": CONTACT_SENTINEL,
                       "persons": [{"personName": PERSON_SENTINEL}], "street": STREET,
@@ -296,10 +305,49 @@ class SafetyTests(PageTestCase):
         self.live_opportunity(self.full_radar(), company=company)
         html = self.get(self.owner, company=company).content.decode()
         self.assertIn("Καθαρή Επωνυμία ΑΕ", html)
-        for secret in (PHONE_SENTINEL, CONTACT_SENTINEL, PERSON_SENTINEL, STREET, VAT, "sentinel.example.invalid",
-                       "raw-payload-marker", "tel:", "mailto:", "14561"):
+        for visible in ("ΣΤΟΙΧΕΙΑ ΕΠΙΚΟΙΝΩΝΙΑΣ", PHONE_SENTINEL, CONTACT_SENTINEL, STREET, "14561",
+                        "ΚΗΦΙΣΙΑ", "ΑΤΤΙΚΗΣ", "sentinel.example.invalid", "tel:", "mailto:"):
+            self.assertIn(visible, html, visible)
+        for secret in (PERSON_SENTINEL, VAT, "raw-payload-marker"):
             self.assertNotIn(secret, html, secret)
-        self.assertTrue(company.gemi_phones)  # the phone exists -- and stays Dossier-only
+
+    def test_empty_contact_values_render_neither_section_nor_placeholder_rows(self):
+        Company.objects.filter(pk=self.company.pk).update(
+            email="", website="", address="", postal_code="", city="", municipality="", prefecture="", raw_data={},
+        )
+        snapshot(self.company, T0)
+        self.live_opportunity(self.full_radar())
+        html = self.get(self.owner).content.decode()
+        self.assertNotIn('id="contact-information"', html)
+        self.assertNotIn("ΣΤΟΙΧΕΙΑ ΕΠΙΚΟΙΝΩΝΙΑΣ", html)
+
+    def test_internal_kad_versions_never_reach_customer_facing_html(self):
+        snapshot(self.company, T0)
+        self.live_opportunity(self.full_radar())
+        html = self.get(self.owner).content.decode()
+        self.assertIn("62010000", html)
+        self.assertNotIn("kad_2026", html)
+        self.assertNotIn("kad_2008", html)
+
+    def test_sidebar_forms_have_visible_labels_placeholders_and_product_controls(self):
+        snapshot(self.company, T0)
+        opportunity = self.live_opportunity(self.full_radar())
+        html = self.get(self.owner).content.decode()
+        identifier = opportunity.pk
+        for expected in (
+            f'for="opportunity-{identifier}-status"',
+            f'for="opportunity-{identifier}-note"',
+            f'for="opportunity-{identifier}-task"',
+            f'for="opportunity-{identifier}-due"',
+            "Γράψε μια εσωτερική σημείωση για αυτή την ευκαιρία…",
+            "π.χ. Επικοινωνία με την εταιρεία",
+            "Ημερομηνία λήξης",
+            'class="product-ink-button">Δημιουργία εργασίας',
+            '<dialog class="product-action-modal"',
+            'data-modal-close aria-label="Κλείσιμο"',
+            'class="product-modal-back" data-modal-open="action-menu-modal" aria-label="Πίσω στις ενέργειες"',
+        ):
+            self.assertIn(expected, html)
 
     def test_source_text_is_escaped(self):
         company = Company.objects.create(gemi_number="700400", name="<script>alert('x')</script> ΑΕ",
@@ -396,7 +444,7 @@ class SafetyTests(PageTestCase):
 
         self.assertFalse(re.findall(r"objects[^\n]*\.(?:update|delete|create|get_or_create)\(", page_code))
         for forbidden in (".save(", "bulk_", "SHADOW", "ALL_MODES",
-                          "raw_data", "gemi_phones", "email", "address", "vat_number", "persons", "is_active",
+                          "raw_data", "gemi_phones", "vat_number", "persons", "is_active",
                           "organization_radar_matching", "opportunity_scoring", "build_opportunity_score_breakdown",
                           "get_gemi_client", "requests", "urllib"):
             self.assertNotIn(forbidden, page_code, forbidden)
@@ -449,7 +497,7 @@ class SafetyTests(PageTestCase):
         # status (D32), a note (D33), a task's create and complete (D34) -- and the one company-level Do Not Contact.
         html_template = pathlib.Path("templates/organizations/company_opportunity.html").read_text(encoding="utf-8")
         self.assertEqual(html_template.count("<form"), 7)
-        self.assertEqual(html_template.count("<button"), 7)
+        self.assertEqual(html_template.count('type="submit"'), 7)
         for route in ("organization_save_opportunity", "organization_assign_opportunity", "organization_opportunity_status",
                       "organization_add_opportunity_note", "organization_create_opportunity_task"):
             self.assertIn("{% url '" + route + "' page.organization_id opportunity.opportunity_id %}", html_template)

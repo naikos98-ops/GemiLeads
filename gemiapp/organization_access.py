@@ -333,7 +333,8 @@ _PAGE_FIELDS = (
     "pk", "organization_id", "radar_id", "company_id", "score", "score_class", "status", "primary_reason_code",
     "scored_as_of", "score_rule_version", "match_rule_version", "latest_signal_id", "radar__name",
     "latest_signal__signal_type", "latest_signal__detected_at", "latest_signal__mode", "company__gemi_number",
-    "company__name", "company__trade_names", "assigned_to_id", "assigned_at", "assigned_to__user__first_name",
+    "company__name", "company__trade_names",
+    "assigned_to_id", "assigned_at", "assigned_to__user__first_name",
     "assigned_to__user__last_name", "assigned_to__role", "assigned_to__user__is_active",
 )
 
@@ -347,6 +348,7 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
     survive -- SHADOW validation data never reaches a customer -- and the primary is chosen in the C9 feed order
     among the survivors. The company's other data are loaded only once access is established.
     """
+    from .company_contact import company_contact_model_fields
     from .company_opportunity_page import build_company_opportunity_page
 
     organization = _organization_by_id(organization_id)
@@ -354,7 +356,8 @@ def get_authorized_company_opportunity_page(user, organization_id, company_id):
     rows = list(
         customer_visible(organization_opportunities_for(context))
         .filter(company_id=_object_id(company_id))
-        .select_related("radar", "latest_signal", "company", "assigned_to__user").only(*_PAGE_FIELDS)
+        .select_related("radar", "latest_signal", "company", "assigned_to__user")
+        .only(*_PAGE_FIELDS, *company_contact_model_fields("company__"))
         .order_by(*FEED_ORDER)
     )
     if not rows:

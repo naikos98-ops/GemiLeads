@@ -1443,6 +1443,7 @@ body.product-body {
 .product-dossier-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 380px;
+  min-height: calc(100vh - 240px);
 }
 
 .product-public-record {
@@ -1555,6 +1556,7 @@ body.product-body {
 
 .product-lead-work {
   background: var(--product-white);
+  align-self: stretch;
 }
 
 .product-lead-work > section {
@@ -1659,6 +1661,308 @@ body.product-body {
 .product-history dd {
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Opportunity detail workbench: restrained, explicit controls inside the established Dossier grammar. */
+.product-contact dd,
+.product-contact a {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.product-opportunity-work {
+  border-bottom: 1px solid var(--product-ink);
+}
+
+.product-opportunity-work {
+  padding: 22px;
+}
+
+.product-opportunity-work > p {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 600;
+  color: var(--product-muted);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.product-opportunity-work > p {
+  margin: 0 0 8px;
+}
+
+.product-opportunity-launchers {
+  border-top: 1px solid var(--product-line);
+}
+
+.product-action-launch {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid var(--product-line);
+  background: transparent;
+  color: var(--product-ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.product-action-launch span {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  color: var(--product-muted);
+  text-transform: uppercase;
+}
+
+.product-action-launch strong {
+  font-size: var(--type-body);
+}
+
+.product-action-launch.selected {
+  box-shadow: inset 3px 0 var(--product-amber);
+  padding-left: 12px;
+}
+
+.product-action-launch:focus-visible,
+.product-modal-close:focus-visible,
+.product-modal-back:focus-visible {
+  outline: 2px solid var(--product-amber);
+  outline-offset: -2px;
+}
+
+.product-action-modal {
+  width: min(620px, calc(100vw - 32px));
+  max-width: none;
+  max-height: min(820px, calc(100vh - 32px));
+  padding: 0;
+  border: 1px solid var(--product-ink);
+  border-radius: 0;
+  background: var(--product-white);
+  color: var(--product-ink);
+  box-shadow: 0 18px 60px rgba(18, 32, 30, .22);
+}
+
+.product-action-modal::backdrop {
+  background: rgba(18, 32, 30, .56);
+}
+
+.product-action-modal-head {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--product-ink);
+  background: var(--product-white);
+}
+
+.product-action-modal-head > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.product-action-modal-head span {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 600;
+  color: var(--product-muted);
+  letter-spacing: .08em;
+}
+
+.product-action-modal-head h2 {
+  margin: 4px 0 0;
+  font-size: var(--type-h5);
+}
+
+.product-modal-close,
+.product-modal-back {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--product-ink);
+  background: transparent;
+  color: var(--product-ink);
+  font: 400 22px/1 sans-serif;
+  cursor: pointer;
+}
+
+.product-modal-back {
+  flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 18px;
+}
+
+.product-action-modal-body {
+  max-height: calc(100vh - 112px);
+  padding: 20px 22px 26px;
+  overflow-y: auto;
+}
+
+.product-opportunity-panel-body {
+  min-width: 0;
+}
+
+.product-opportunity-meta {
+  margin: 0;
+  color: var(--product-muted);
+  font-size: var(--type-small);
+  line-height: 1.55;
+}
+
+.product-company-action-body {
+  min-width: 0;
+}
+
+.product-action-section {
+  margin-top: 18px;
+  padding-top: 16px !important;
+  border-top: 1px solid var(--product-line) !important;
+}
+
+.product-action-section h3,
+.product-action-form > label:not(.product-check) {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--product-muted);
+}
+
+.product-action-section h3 {
+  margin-bottom: 10px;
+  color: var(--product-ink);
+}
+
+.product-action-form {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+  min-width: 0;
+}
+
+.product-action-form input:not([type="checkbox"]),
+.product-action-form select,
+.product-action-form textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid #98a19d;
+  border-radius: 2px;
+  background: var(--product-paper);
+  color: var(--product-ink);
+  padding: 10px 11px;
+  font: inherit;
+  line-height: 1.35;
+}
+
+.product-action-form select {
+  cursor: pointer;
+}
+
+.product-action-form textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.product-action-form input::placeholder,
+.product-action-form textarea::placeholder {
+  color: var(--product-muted);
+  opacity: 1;
+}
+
+.product-action-form input:focus-visible,
+.product-action-form select:focus-visible,
+.product-action-form textarea:focus-visible,
+.product-action-form button:focus-visible,
+.product-inline-action button:focus-visible,
+.product-text-button:focus-visible {
+  outline: 2px solid var(--product-amber);
+  outline-offset: 2px;
+}
+
+.product-action-form input:disabled,
+.product-action-form select:disabled,
+.product-action-form textarea:disabled,
+.product-action-form button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.product-check {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  font-family: inherit;
+  font-size: var(--type-small);
+  color: var(--product-ink);
+  cursor: pointer;
+}
+
+.product-check input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--product-green);
+}
+
+.product-inline-action {
+  margin-top: 10px;
+}
+
+.product-secondary-button {
+  width: fit-content;
+  max-width: 100%;
+  border: 1px solid var(--product-ink);
+  border-radius: 2px;
+  background: var(--product-white);
+  color: var(--product-ink);
+  padding: 9px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-meta);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.product-secondary-button:hover {
+  background: var(--product-paper);
+}
+
+.product-task-form .product-ink-button {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.product-action-section [data-task] {
+  padding: 9px 0 !important;
+  border-top: 1px solid var(--product-line) !important;
+}
+
+.product-action-section [data-task] > p {
+  margin: 0 0 3px;
+}
+
+.product-action-section [data-task-state="overdue"] {
+  box-shadow: inset 3px 0 var(--product-amber);
+  padding-left: 10px !important;
+}
+
+.product-action-section [data-task-state="completed"] {
+  opacity: .75;
+}
+
+@media (min-width: 901px) and (max-width: 1120px) {
+  .product-dossier-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 36%);
+  }
 }
 
 /* RESPONSIVE LAYOUT RULES */
@@ -1889,6 +2193,7 @@ body.product-body {
   .product-dossier-grid {
     display: flex;
     flex-direction: column;
+    min-height: 0;
   }
 
   .product-lead-work {

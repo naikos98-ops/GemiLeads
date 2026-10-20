@@ -420,13 +420,14 @@ class IsolationTests(NotificationTestCase):
 # --- page, boundaries, privacy, parity -----------------------------------------------------------------
 
 class BoundaryTests(NotificationTestCase):
-    def test_the_d29_page_shows_the_members_own_unread_count_and_the_legacy_nav_does_not(self):
+    def test_the_d29_page_uses_the_primary_inbox_link_without_a_duplicate_local_counter(self):
         self.assign(self.maria)
         self.put_assigned(self.maria)
         html = self.get(self.maria_user).content.decode()
         self.assertIn(self.list_url(), html)
-        self.assertIn('data-unread-notifications>1<', html)
-        self.assertNotIn("data-unread-notifications", self.get(self.owner).content.decode())  # the owner has none
+        self.assertNotIn("data-unread-notifications", html)
+        self.assertNotIn("data-notifications-link", html)
+        self.assertNotIn("data-unread-notifications", self.get(self.owner).content.decode())
         # The product navigation links to Notifications -- but only for users whose navigation resolves an
         # organization (organizations/_primary_nav.html, included by base.html); it never shows an unread count, and
         # a user without a membership sees no link at all.

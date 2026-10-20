@@ -69,7 +69,7 @@
         {% for activity in page.current.activities %}
         <div class="product-activity">
           <b>{{ activity.code }}</b>
-          <div><p style="font-size: var(--type-secondary);">{{ activity.description|default:'Χωρίς περιγραφή' }} · {{ activity.kad_version|default:'—' }}</p></div>
+          <div><p style="font-size: var(--type-secondary);">{{ activity.description|default:'Χωρίς περιγραφή' }}</p></div>
           <span>{{ activity.activity_type }}</span>
         </div>
         {% empty %}
@@ -82,6 +82,38 @@
         <p style="font-size: var(--type-secondary); color: var(--product-muted);" id="current-unavailable">Τα τρέχοντα κανονικοποιημένα στοιχεία ΓΕΜΗ δεν είναι ακόμη διαθέσιμα για αυτή την εταιρεία.</p>
         {% endif %}
       </div>
+
+      {% if page.company.contact.available %}
+      <div class="product-record-section product-contact" id="contact-information">
+        <h3>ΣΤΟΙΧΕΙΑ ΕΠΙΚΟΙΝΩΝΙΑΣ</h3>
+        <dl class="product-record-fields">
+          {% if page.company.contact.phones %}
+          <div>
+            <dt>ΤΗΛΕΦΩΝΟ</dt>
+            <dd>{% for phone in page.company.contact.phones %}<a href="{{ phone.tel_uri }}">{{ phone.display }}</a>{% if not forloop.last %}<br>{% endif %}{% endfor %}</dd>
+          </div>
+          {% endif %}
+          {% if page.company.contact.email %}
+          <div>
+            <dt>EMAIL</dt>
+            <dd><a href="mailto:{{ page.company.contact.email }}">{{ page.company.contact.email }}</a></dd>
+          </div>
+          {% endif %}
+          {% if page.company.contact.website %}
+          <div>
+            <dt>WEBSITE</dt>
+            <dd>{% if page.company.contact.website_href %}<a href="{{ page.company.contact.website_href }}" target="_blank" rel="noopener noreferrer">{{ page.company.contact.website }}</a>{% else %}{{ page.company.contact.website }}{% endif %}</dd>
+          </div>
+          {% endif %}
+          {% if page.company.contact.address %}
+          <div>
+            <dt>ΔΙΕΥΘΥΝΣΗ</dt>
+            <dd>{{ page.company.contact.address }}</dd>
+          </div>
+          {% endif %}
+        </dl>
+      </div>
+      {% endif %}
 
       {# Timeline: LIVE signals only, newest first #}
       <div class="product-record-section" id="timeline">
@@ -105,9 +137,69 @@
     </div>
 
     <aside class="product-lead-work">
-      {# Why this lead: the frozen C8 capture, five v1 components #}
-      <section class="product-match-proof" id="why-this-lead">
-        <p>ΓΙΑΤΙ ΑΥΤΗ Η ΕΥΚΑΙΡΙΑ</p>
+      {# D35: company-level Do Not Contact for the whole organization -- not a per-Radar status #}
+      {% if page.do_not_contact_state %}
+      <dialog class="product-action-modal" id="company-action-modal" aria-labelledby="company-action-title">
+        <div class="product-action-modal-head">
+          <button type="button" class="product-modal-back" data-modal-open="action-menu-modal" aria-label="Πίσω στις ενέργειες">←</button>
+          <div><span>ΕΝΕΡΓΕΙΕΣ ΕΤΑΙΡΕΙΑΣ</span><h2 id="company-action-title">Μη επικοινωνία</h2></div>
+          <button type="button" class="product-modal-close" data-modal-close aria-label="Κλείσιμο">×</button>
+        </div>
+        <div class="product-action-modal-body product-company-action-body">
+        {% if page.do_not_contact_state == 'suppressed' %}
+        <div style="font-size: var(--type-small); font-weight: 700;">✓ Χωρίς επικοινωνία για τον οργανισμό · {{ page.do_not_contact_reason_label }} · {{ page.do_not_contact_created_at|date:'d/m/Y H:i' }}</div>
+        {% elif page.do_not_contact_state == 'unavailable' %}
+        <div style="font-size: var(--type-small); color: var(--product-muted);">Η εταιρεία δεν έχει έγκυρο αριθμό ΓΕΜΗ· η μη επικοινωνία δεν μπορεί να καταχωριστεί.</div>
+        {% else %}
+        <div style="font-size: var(--type-small); color: var(--product-muted);">Ισχύει για ολόκληρη την εταιρεία σε όλο τον οργανισμό: κάθε ευκαιρία της, σε κάθε Radar, γίνεται «Χωρίς επικοινωνία». Δεν αναιρείται.</div>
+        <form method="post" action="{% url 'organization_company_do_not_contact' page.organization_id page.company.company_id %}" data-do-not-contact-form class="product-action-form">
+          {% csrf_token %}
+          <label for="do-not-contact-reason">Λόγος</label>
+          <select id="do-not-contact-reason" name="reason" required>
+            <option value="">Επιλέξτε λόγο</option>
+            {% for value, label in page.do_not_contact_reasons %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+          <label class="product-check" for="do-not-contact-confirm"><input id="do-not-contact-confirm" type="checkbox" name="confirm" value="yes" required> <span>Δεν θέλω να επικοινωνούμε με αυτή την εταιρεία</span></label>
+          <button type="submit" class="product-secondary-button">Καταχώριση μη επικοινωνίας</button>
+        </form>
+        {% endif %}
+        </div>
+      </dialog>
+      {% endif %}
+
+      {# Every visible opportunity for this company (one per Radar); statuses are never merged #}
+      <section class="product-opportunity-work" id="opportunities">
+        <p>ΕΝΕΡΓΕΙΕΣ</p>
+        <button type="button" class="product-action-launch selected" data-modal-open="action-menu-modal">
+          <span>ΕΤΑΙΡΕΙΑ &amp; ΕΥΚΑΙΡΙΕΣ</span>
+          <strong>Διαχείριση →</strong>
+        </button>
+      </section>
+      <dialog class="product-action-modal product-action-menu-modal" id="action-menu-modal" aria-labelledby="action-menu-title">
+        <div class="product-action-modal-head">
+          <div><span>ΕΝΕΡΓΕΙΕΣ</span><h2 id="action-menu-title">Τι θέλεις να διαχειριστείς;</h2></div>
+          <button type="button" class="product-modal-close" data-modal-close aria-label="Κλείσιμο">×</button>
+        </div>
+        <div class="product-action-modal-body product-opportunity-launchers">
+          {% if page.do_not_contact_state %}
+          <button type="button" class="product-action-launch" data-modal-open="company-action-modal" id="do-not-contact" data-do-not-contact="{{ page.do_not_contact_state }}">
+            <span>ΕΤΑΙΡΕΙΑ</span>
+            <strong>Μη επικοινωνία →</strong>
+          </button>
+          {% endif %}
+          {% for opportunity in page.opportunities %}
+          <button type="button" class="product-action-launch{% if opportunity.is_primary %} selected{% endif %}" data-modal-open="opportunity-modal-{{ opportunity.opportunity_id }}">
+              <span>RADAR · {{ opportunity.radar_name }}{% if opportunity.is_primary %} · ΚΥΡΙΑ{% endif %}</span>
+              <strong>Διαχείριση · {{ opportunity.status_label }} →</strong>
+          </button>
+          {% endfor %}
+        </div>
+      </dialog>
+
+      <section class="product-match-proof product-company-proof" id="why-this-company">
+        <p>ΓΙΑΤΙ ΑΥΤΗ Η ΕΤΑΙΡΕΙΑ</p>
         <h2>{{ page.score }}/100 · {{ page.score_class_label }}</h2>
         <div style="font-size: var(--type-small); color: var(--product-muted); margin-bottom: 8px;" id="score-age">Υπολογισμός score: {{ page.scored_as_of|date:'d/m/Y H:i' }} — δεν ενημερώνεται αυτόματα με τον χρόνο.</div>
         {% for line in page.breakdown %}
@@ -121,50 +213,21 @@
         </div>
         {% endfor %}
       </section>
-
-      {# D37: this membership's own notifications in this organization #}
-      <p style="font-size: var(--type-small);"><a href="{% url 'organization_notifications' page.organization_id %}" data-notifications-link>Ειδοποιήσεις{% if page.unread_notifications %} <strong data-unread-notifications>{{ page.unread_notifications }}</strong>{% endif %}</a></p>
-
-      {# D35: company-level Do Not Contact for the whole organization -- not a per-Radar status #}
-      {% if page.do_not_contact_state %}
-      <section class="product-history" id="do-not-contact" data-do-not-contact="{{ page.do_not_contact_state }}">
-        <p>ΜΗ ΕΠΙΚΟΙΝΩΝΙΑ</p>
-        {% if page.do_not_contact_state == 'suppressed' %}
-        <div style="font-size: var(--type-small); font-weight: 700;">✓ Χωρίς επικοινωνία για τον οργανισμό · {{ page.do_not_contact_reason_label }} · {{ page.do_not_contact_created_at|date:'d/m/Y H:i' }}</div>
-        {% elif page.do_not_contact_state == 'unavailable' %}
-        <div style="font-size: var(--type-small); color: var(--product-muted);">Η εταιρεία δεν έχει έγκυρο αριθμό ΓΕΜΗ· η μη επικοινωνία δεν μπορεί να καταχωριστεί.</div>
-        {% else %}
-        <div style="font-size: var(--type-small); color: var(--product-muted);">Ισχύει για ολόκληρη την εταιρεία σε όλο τον οργανισμό: κάθε ευκαιρία της, σε κάθε Radar, γίνεται «Χωρίς επικοινωνία». Δεν αναιρείται.</div>
-        <form method="post" action="{% url 'organization_company_do_not_contact' page.organization_id page.company.company_id %}" data-do-not-contact-form style="margin-top: 6px;">
-          {% csrf_token %}
-          <select name="reason" required aria-label="Λόγος μη επικοινωνίας">
-            <option value="">Επιλέξτε λόγο</option>
-            {% for value, label in page.do_not_contact_reasons %}
-            <option value="{{ value }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-          <label style="display: block; font-size: var(--type-small);"><input type="checkbox" name="confirm" value="yes" required> Δεν θέλω να επικοινωνούμε με αυτή την εταιρεία</label>
-          <button type="submit" class="product-text-button">Καταχώριση μη επικοινωνίας</button>
-        </form>
-        {% endif %}
-      </section>
-      {% endif %}
-
-      {# Every visible opportunity for this company (one per Radar); statuses are never merged #}
-      <section class="product-history" id="opportunities">
-        <p>ΕΥΚΑΙΡΙΕΣ ΑΝΑ RADAR ({{ page.opportunities|length }})</p>
-        <dl>
-          {% for opportunity in page.opportunities %}
-          <div data-opportunity="{{ opportunity.opportunity_id }}">
-            <dt style="font-family: ui-monospace, monospace; color: var(--product-muted);">{{ opportunity.radar_name }}{% if opportunity.is_primary %} · ΚΥΡΙΑ{% endif %}</dt>
-            <dd>
-              {{ opportunity.score }}/100 · {{ opportunity.score_class_label }} · {{ opportunity.status_label }}<br>
-              {{ opportunity.latest_signal_label }} · {{ opportunity.latest_signal_detected_at|date:'d/m/Y H:i' }}<br>
-              <span style="font-size: var(--type-small); color: var(--product-muted);">Υπολογισμός score: {{ opportunity.scored_as_of|date:'d/m/Y H:i' }} · Σχετικά γεγονότα: {{ opportunity.live_signal_count }}</span>
+      {% for opportunity in page.opportunities %}
+      <dialog class="product-action-modal" id="opportunity-modal-{{ opportunity.opportunity_id }}" data-opportunity="{{ opportunity.opportunity_id }}" aria-labelledby="opportunity-modal-title-{{ opportunity.opportunity_id }}">
+        <div class="product-action-modal-head">
+          <button type="button" class="product-modal-back" data-modal-open="action-menu-modal" aria-label="Πίσω στις ενέργειες">←</button>
+          <div><span>RADAR</span><h2 id="opportunity-modal-title-{{ opportunity.opportunity_id }}">{{ opportunity.radar_name }}</h2></div>
+          <button type="button" class="product-modal-close" data-modal-close aria-label="Κλείσιμο">×</button>
+        </div>
+        <div class="product-action-modal-body product-opportunity-panel-body">
+              <p class="product-opportunity-meta">{{ opportunity.latest_signal_label }} · {{ opportunity.latest_signal_detected_at|date:'d/m/Y H:i' }}<br>Υπολογισμός score: {{ opportunity.scored_as_of|date:'d/m/Y H:i' }} · Σχετικά γεγονότα: {{ opportunity.live_signal_count }}</p>
+              <div class="product-action-section">
+                <h3>Κατάσταση &amp; ανάθεση</h3>
               {% if opportunity.save_action == 'save' %}
-              <form method="post" action="{% url 'organization_save_opportunity' page.organization_id opportunity.opportunity_id %}" data-save-for="{{ opportunity.opportunity_id }}" style="margin-top: 6px;">
+              <form method="post" action="{% url 'organization_save_opportunity' page.organization_id opportunity.opportunity_id %}" data-save-for="{{ opportunity.opportunity_id }}" class="product-inline-action">
                 {% csrf_token %}
-                <button type="submit" class="product-text-button">Αποθήκευση</button>
+                <button type="submit" class="product-secondary-button">Αποθήκευση</button>
               </form>
               {% elif opportunity.save_action == 'saved' %}
               <span data-saved-for="{{ opportunity.opportunity_id }}" style="display: inline-block; margin-top: 6px; font-size: var(--type-small); font-weight: 700; color: var(--product-green);">✓ Αποθηκευμένο</span>
@@ -173,30 +236,33 @@
               <br><span data-assigned-for="{{ opportunity.opportunity_id }}" style="font-size: var(--type-small);">Ανάθεση: <strong>{{ opportunity.assigned_display_name }}</strong> · {{ opportunity.assigned_at|date:'d/m/Y H:i' }}</span>
               {% endif %}
               {% if opportunity.can_assign %}
-              <form method="post" action="{% url 'organization_assign_opportunity' page.organization_id opportunity.opportunity_id %}" data-assign-for="{{ opportunity.opportunity_id }}" style="margin-top: 6px;">
+              <form method="post" action="{% url 'organization_assign_opportunity' page.organization_id opportunity.opportunity_id %}" data-assign-for="{{ opportunity.opportunity_id }}" class="product-action-form">
                 {% csrf_token %}
-                <select name="assignee_membership_id" aria-label="Πωλητής">
+                <label for="opportunity-{{ opportunity.opportunity_id }}-assignee">Ανάθεση σε</label>
+                <select id="opportunity-{{ opportunity.opportunity_id }}-assignee" name="assignee_membership_id">
                   {% for membership_id, display_name in page.assignees %}
                   <option value="{{ membership_id }}"{% if membership_id == opportunity.assigned_membership_id %} selected{% endif %}>{{ display_name }}</option>
                   {% endfor %}
                 </select>
-                <button type="submit" class="product-text-button">{% if opportunity.assigned_membership_id %}Επανανάθεση{% else %}Ανάθεση{% endif %}</button>
+                <button type="submit" class="product-secondary-button">{% if opportunity.assigned_membership_id %}Επανανάθεση{% else %}Ανάθεση{% endif %}</button>
               </form>
               {% endif %}
               {% if opportunity.status_targets %}
-              <form method="post" action="{% url 'organization_opportunity_status' page.organization_id opportunity.opportunity_id %}" data-status-for="{{ opportunity.opportunity_id }}" style="margin-top: 6px;">
+              <form method="post" action="{% url 'organization_opportunity_status' page.organization_id opportunity.opportunity_id %}" data-status-for="{{ opportunity.opportunity_id }}" class="product-action-form">
                 {% csrf_token %}
-                <select name="status" aria-label="Νέα κατάσταση">
+                <label for="opportunity-{{ opportunity.opportunity_id }}-status">Νέα κατάσταση</label>
+                <select id="opportunity-{{ opportunity.opportunity_id }}-status" name="status">
                   {% for value, label in opportunity.status_targets %}
                   <option value="{{ value }}">{{ label }}</option>
                   {% endfor %}
                 </select>
-                <button type="submit" class="product-text-button">Ενημέρωση κατάστασης</button>
+                <button type="submit" class="product-secondary-button">Ενημέρωση κατάστασης</button>
               </form>
               {% endif %}
+              </div>
               {% if opportunity.notes or opportunity.can_add_note %}
-              <div data-notes-for="{{ opportunity.opportunity_id }}" style="margin-top: 10px;">
-                <span style="font-size: var(--type-small); font-weight: 700; color: var(--product-muted);">ΣΗΜΕΙΩΣΕΙΣ</span>
+              <div class="product-action-section" data-notes-for="{{ opportunity.opportunity_id }}">
+                <h3>Σημειώσεις</h3>
                 {% for note in opportunity.notes %}
                 <div data-note="{{ note.note_id }}" style="margin-top: 6px;">
                   <p style="white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--type-small);">{{ note.body }}</p>
@@ -204,17 +270,18 @@
                 </div>
                 {% endfor %}
                 {% if opportunity.can_add_note %}
-                <form method="post" action="{% url 'organization_add_opportunity_note' page.organization_id opportunity.opportunity_id %}" data-note-form-for="{{ opportunity.opportunity_id }}" style="margin-top: 6px;">
+                <form method="post" action="{% url 'organization_add_opportunity_note' page.organization_id opportunity.opportunity_id %}" data-note-form-for="{{ opportunity.opportunity_id }}" class="product-action-form">
                   {% csrf_token %}
-                  <textarea name="body" rows="3" maxlength="4000" required aria-label="Νέα σημείωση" style="width: 100%;"></textarea>
-                  <button type="submit" class="product-text-button">Προσθήκη σημείωσης</button>
+                  <label for="opportunity-{{ opportunity.opportunity_id }}-note">Σημειώσεις</label>
+                  <textarea id="opportunity-{{ opportunity.opportunity_id }}-note" name="body" rows="4" maxlength="4000" required placeholder="Γράψε μια εσωτερική σημείωση για αυτή την ευκαιρία…"></textarea>
+                  <button type="submit" class="product-secondary-button">Αποθήκευση σημείωσης</button>
                 </form>
                 {% endif %}
               </div>
               {% endif %}
               {% if opportunity.tasks or opportunity.can_manage_tasks %}
-              <div data-tasks-for="{{ opportunity.opportunity_id }}" style="margin-top: 10px;">
-                <span style="font-size: var(--type-small); font-weight: 700; color: var(--product-muted);">ΕΡΓΑΣΙΕΣ</span>
+              <div class="product-action-section" data-tasks-for="{{ opportunity.opportunity_id }}">
+                <h3>Εργασίες</h3>
                 {% for task in opportunity.tasks %}
                 <div data-task="{{ task.task_id }}" data-task-state="{% if task.completed_at %}completed{% elif task.overdue %}overdue{% else %}open{% endif %}" style="margin-top: 6px;">
                   <p style="overflow-wrap: anywhere; font-size: var(--type-small);{% if task.completed_at %} color: var(--product-muted);{% endif %}">{% if task.completed_at %}✓ {% endif %}{{ task.title }}</p>
@@ -228,12 +295,15 @@
                 </div>
                 {% endfor %}
                 {% if opportunity.can_manage_tasks %}
-                <form method="post" action="{% url 'organization_create_opportunity_task' page.organization_id opportunity.opportunity_id %}" data-task-form-for="{{ opportunity.opportunity_id }}" style="margin-top: 6px;">
+                <form method="post" action="{% url 'organization_create_opportunity_task' page.organization_id opportunity.opportunity_id %}" data-task-form-for="{{ opportunity.opportunity_id }}" class="product-action-form product-task-form">
                   {% csrf_token %}
-                  <input type="text" name="title" maxlength="200" required aria-label="Τίτλος εργασίας" style="width: 100%;">
-                  <input type="date" name="due_on" min="{{ page.today|date:'Y-m-d' }}" required aria-label="Προθεσμία εργασίας">
+                  <label for="opportunity-{{ opportunity.opportunity_id }}-task">Εργασία</label>
+                  <input id="opportunity-{{ opportunity.opportunity_id }}-task" type="text" name="title" maxlength="200" required placeholder="π.χ. Επικοινωνία με την εταιρεία">
+                  <label for="opportunity-{{ opportunity.opportunity_id }}-due">Ημερομηνία λήξης</label>
+                  <input id="opportunity-{{ opportunity.opportunity_id }}-due" type="date" name="due_on" min="{{ page.today|date:'Y-m-d' }}" required>
                   {% if opportunity.task_assignees %}
-                  <select name="assignee_membership_id" aria-label="Υπεύθυνος εργασίας">
+                  <label for="opportunity-{{ opportunity.opportunity_id }}-task-assignee">Ανάθεση σε</label>
+                  <select id="opportunity-{{ opportunity.opportunity_id }}-task-assignee" name="assignee_membership_id">
                     {% for membership_id, display_name in opportunity.task_assignees %}
                     <option value="{{ membership_id }}"{% if membership_id == opportunity.task_default_assignee_id %} selected{% endif %}>{{ display_name }}</option>
                     {% endfor %}
@@ -241,15 +311,15 @@
                   {% else %}
                   <span style="font-size: var(--type-small);">Υπεύθυνος: {{ opportunity.task_default_assignee_name }}</span>
                   {% endif %}
-                  <button type="submit" class="product-text-button">Δημιουργία εργασίας</button>
+                  <button type="submit" class="product-ink-button">Δημιουργία εργασίας</button>
                 </form>
                 {% endif %}
               </div>
               {% endif %}
-            </dd>
-          </div>
-          {% endfor %}
-        </dl>
+        </div>
+      </dialog>
+      {% endfor %}
+      <section class="product-opportunity-footnotes">
         {% if page.notes_truncated %}
         <p data-notes-truncated style="font-size: var(--type-small); color: var(--product-muted);">Εμφανίζονται οι 50 πιο πρόσφατες σημειώσεις.</p>
         {% endif %}

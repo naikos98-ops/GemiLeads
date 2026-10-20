@@ -358,7 +358,24 @@
     if (!current || nav.scrollWidth <= nav.clientWidth) return;
     nav.scrollLeft = current.offsetLeft - (nav.clientWidth - current.offsetWidth) / 2;
   };
+  // Keep the dossier calm: workflow forms open on demand without changing the document layout.
+  const initOpportunityPanels = () => {
+    document.querySelectorAll('[data-modal-open]').forEach(button => button.addEventListener('click', () => {
+      const modal = document.getElementById(button.dataset.modalOpen);
+      if (!modal || typeof modal.showModal !== 'function') return;
+      const parentModal = button.closest('dialog');
+      if (parentModal && parentModal !== modal) parentModal.close();
+      modal.showModal();
+    }));
+    document.querySelectorAll('[data-modal-close]').forEach(button => button.addEventListener('click', () => {
+      const modal = button.closest('dialog');
+      if (modal) modal.close();
+    }));
+    document.querySelectorAll('.product-action-modal').forEach(modal => modal.addEventListener('click', event => {
+      if (event.target === modal) modal.close();
+    }));
+  };
   setTimeout(() => document.querySelectorAll('[data-toast]').forEach(x => { x.style.opacity = '0'; setTimeout(() => x.remove(), 300); }), 3500);
-  document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); initReferencePickers(); centerMobileNav(); });
+  document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); initReferencePickers(); centerMobileNav(); initOpportunityPanels(); });
   window.addEventListener('resize', sizeCompanyTable);
 })();

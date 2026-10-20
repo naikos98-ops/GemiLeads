@@ -14,7 +14,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
-from .company_contact import CompanyPhone, extract_company_contact_phones
+from .company_contact import CompanyContact, CompanyPhone, company_contact, extract_company_contact_phones
 from .models import Company, CustomerRadar, UserCompanyLead, UserSubscription
 
 COMPANY_PHONE = "2109990001"
@@ -76,6 +76,27 @@ class ExtractionTests(TestCase):
             self.assertNotIn(other, blob)
         without_company_phone = {**RECORD, "phone": None}
         self.assertEqual(extract_company_contact_phones(without_company_phone), ())
+
+    def test_the_contact_read_model_uses_only_existing_company_fields_and_a_safe_website_link(self):
+        company = Company(
+            raw_data=RECORD, email=" info@example.invalid ", website="https://example.invalid/path",
+            address=" ΛΕΩΦΟΡΟΣ ΔΟΚΙΜΗΣ 1 ", postal_code="14561", city="ΚΗΦΙΣΙΑ",
+            municipality="ΚΗΦΙΣΙΑΣ", prefecture="ΑΤΤΙΚΗΣ",
+        )
+        contact = company_contact(company)
+        self.assertEqual(contact, CompanyContact(
+            phones=(CompanyPhone(COMPANY_PHONE, f"tel:{COMPANY_PHONE}"),), email="info@example.invalid",
+            website="https://example.invalid/path", website_href="https://example.invalid/path",
+            address="ΛΕΩΦΟΡΟΣ ΔΟΚΙΜΗΣ 1, 14561, ΚΗΦΙΣΙΑ, ΚΗΦΙΣΙΑΣ, ΑΤΤΙΚΗΣ",
+        ))
+        self.assertTrue(contact.available)
+        company.website = "javascript:alert(1)"
+        self.assertIsNone(company_contact(company).website_href)
+
+    def test_empty_contact_values_produce_no_contact_section_value(self):
+        contact = company_contact(Company(raw_data={}))
+        self.assertFalse(contact.available)
+        self.assertEqual((contact.phones, contact.email, contact.website, contact.address), ((), "", "", ""))
 
 
 class DossierTests(TestCase):

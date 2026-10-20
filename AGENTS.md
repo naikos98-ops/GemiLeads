@@ -189,6 +189,59 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   - Final cleanup: home ΚΑΔ (exact-code, έως 25) και ασφαλιστές (καμία υπονοούμενη ανάγκη), topbar «Ξεκίνα τώρα» με UTMs, πρόταση διατύπωσης απορρήτου (Supabase, GA4 ψευδωνυμοποιημένα) στο `docs/marketing/PRIVACY_WORDING_PROPOSAL.md` — **δεν** εφαρμόστηκε, θέλει έγκριση.
   - 28 tests (`gemiapp/test_campaigns.py`)· **2.512 tests OK**· `check`, `makemigrations --check` καθαρά·
     οπτικός έλεγχος desktop + 375px σε τοπικό server με αναλώσιμη SQLite.
+- **Opportunity Detail — στοιχεία επικοινωνίας και workflow UI (2026-10-20):** η σελίδα εταιρικής ευκαιρίας
+  προβάλλει πλέον, μόνο όταν υπάρχουν τιμές, τη συμπαγή ενότητα «Στοιχεία επικοινωνίας» από την ήδη
+  εξουσιοδοτημένη τρέχουσα `Company`: εταιρικό τηλέφωνο από το εγκεκριμένο top-level `raw_data.phone`, email,
+  website και συντεθειμένη διεύθυνση από τα κανονικοποιημένα πεδία. Δεν αντιγράφεται τίποτα σε Opportunity,
+  Signal ή snapshot και δεν έγινε GEMI request/enrichment. Τα `tel:`/`mailto:` είναι ενεργά, ενώ website γίνεται
+  link μόνο για absolute HTTP(S) URL. Μετά από πραγματικό recording review, η δεξιά στήλη ευθυγραμμίστηκε με το
+  εγκεκριμένο legacy Lead/Dossier UI: το «Γιατί αυτή η εταιρεία» και τα πέντε score components βρίσκονται στη
+  δεξιά στήλη, αμέσως κάτω από μία μοναδική κύρια ενέργεια «Διαχείριση». Αυτή ανοίγει action-menu modal, όπου
+  επιλέγεται το company-level DNC ή το workflow της συγκεκριμένης Opportunity/Radar· στη συνέχεια ανοίγει το
+  αντίστοιχο native modal. Έτσι η τεχνική ύπαρξη πολλών Opportunity rows δεν εμφανίζεται ως πολλαπλές κύριες
+  ενέργειες. Κάθε επιμέρους workflow modal έχει εμφανές `←` που κλείνει το ίδιο και επανανοίγει το προηγούμενο
+  action-menu modal, ενώ το αρχικό menu κρατά μόνο το `×`. Η desktop dossier grid έχει viewport-aware ελάχιστο ύψος και το λευκό action rail τεντώνεται μέχρι
+  το τέλος της κύριας επιφάνειας, χωρίς απότομο κόψιμο σε κενό paper background. Το περιττό local link «Ειδοποιήσεις» αφαιρέθηκε από
+  το dossier — το inbox παραμένει στο κύριο navigation και στο Dashboard. Status/assignment/save, notes και tasks
+  διατηρούνται αυτούσια χωρίς να επηρεάζουν το μήκος/scroll της σελίδας. Υπάρχουν προσβάσιμα labels/focus states και responsive
+  διάταξη, χωρίς αλλαγή endpoints ή semantics. Μετά από browser smoke που έδειξε νέο HTML μαζί με παλιό cached
+  CSS/JS, τα δύο μεταβαλλόμενα assets απέκτησαν κοινό version query στο base template ώστε να γίνεται ασφαλές
+  cache invalidation σε υπάρχοντα sessions.
+  Το raw `kad_2026` αφαιρέθηκε από current activity, scoring evidence και timeline· εμφανίζονται μόνο κωδικός ΚΑΔ
+  και ανθρώπινη περιγραφή. Καμία migration και καμία αλλαγή σε scoring, Signal generation, Radar matching ή
+  LIVE/SHADOW. Μετά το rebase στο τρέχον `origin/main`: 50 focused tests και 2.531/2.531 πλήρη tests OK,
+  `check`, `makemigrations --check` και
+  `git diff --check` καθαρά.
+
+- **GA4 εμπορική μέτρηση (2026-10-20, production property):** επιβεβαιώθηκε ο λογαριασμός `GemiLeads`
+  (`405610433`), η ιδιοκτησία `Gemi Leads` (`551091583`) και το web stream `https://gemileads.gr` με Measurement
+  ID `G-H9YRV774X0` (`15482105619`). Το tag στέλνει δεδομένα και έχει ποιότητα «Excellent». Google signals και
+  user-provided data παραμένουν κλειστά· η διαφημιστική εξατομίκευση απαγορεύτηκε για όλες τις περιοχές· η
+  διατήρηση event και user data είναι 14 μήνες. Στη λίστα unwanted referrals αποθηκεύτηκαν
+  `accounts.google.com`, `appleid.apple.com`, `stripe.com`. Οι ενεργές event-scoped custom dimensions είναι
+  `audience`, `cta_location`, `method`, `has_kad`, `has_region`, `has_legal_form`, `has_date`, `has_name`· οι
+  λανθασμένες `signup_method` και `search_filter_set` αρχειοθετήθηκαν αφού επιβεβαιώθηκε ότι δεν χρησιμοποιούνται
+  στην αποθηκευμένη exploration. Η exploration `Campaign performance · Gemi Leads` χρησιμοποιεί μόνο
+  `Session manual campaign name` για `gl_horeca|gl_insurance` και `Session manual ad content` για
+  `gl004|gl005|gl006|gl007`, με Active users, Sessions, New users, Key events, Purchase revenue, Purchases· τα
+  GL-004–007 δεν αντιμετωπίζονται ως campaign names. Στα ιστορικά δεδομένα 28 ημερών πριν από τον ελεγχόμενο
+  έλεγχο παρατηρήθηκε μόνο το `pricing_cta_click`· δεν είχαν παρατηρηθεί `landing_cta_click`, `sign_up_start`,
+  `sign_up`, `email_verified`, `product_search`, `radar_created`, ούτε purchase revenue. Στις 2026-10-20 έγινε
+  consented test session με `utm_campaign=gl_horeca` και `utm_content=gl004`, χωρίς συμπλήρωση ή υποβολή
+  λογαριασμού. Το browser network inventory επιβεβαίωσε φόρτωση του
+  `https://www.googletagmanager.com/gtag/js?id=G-H9YRV774X0` και πραγματικά
+  `https://region1.google-analytics.com/g/collect` requests με `tid=G-H9YRV774X0` και page URL που διατηρεί
+  `utm_campaign=gl_horeca` / `utm_content=gl004`, για `page_view`,
+  `landing_cta_click` (`audience=horeca`, `cta_location=hero`) και `sign_up_start`, χωρίς JavaScript errors. Το
+  GA4 Realtime τα παρέλαβε (στο στιγμιότυπο: 1 active user, 11 page views, 4 CTA clicks, 1 signup start· οι
+  πολλαπλοί αριθμοί προέρχονται από τις επαναληπτικές διαγνωστικές φορτώσεις). Το DebugView έμεινε 0 επειδή τα
+  collect requests δεν είχαν debug flag· το Tag Assistant του in-app browser δεν μπορεί να κρατήσει συνδεδεμένο
+  το debug window. Ακόμη και χειροκίνητο `_dbg=1` στο page URL δεν μετέτρεψε τα hits σε debug hits. Άρα η κανονική
+  παραγωγική αποστολή λειτουργεί και ο DebugView blocker είναι το περιβάλλον δοκιμής, όχι το website/tag. Το
+  `purchase` είναι ήδη key event· δεν
+  δημιουργήθηκε συνθετικό/διπλό `sign_up` και το `sign_up` δεν σημάνθηκε πρόωρα ως key event. Η ιδιοκτησία **δεν
+  είναι ακόμη έτοιμη για paid campaigns**: λείπουν Consent Mode signals, τα κύρια funnel events/parameters και η
+  σύνδεση επιβεβαιωμένων Stripe εσόδων με την αρχική καμπάνια.
 
 - **LIVE cutover — ΑΔΡΑΝΗΣ υποδομή (2026-10-14). Branch `feature/live-cutover-dormant`, ΟΧΙ στο `main`, κανένα
   deploy, καμία εντολή ή εγγραφή σε production. `GEMI_LIVE_SIGNALS_ENABLED=0`, `GEMI_LIVE_OPPORTUNITIES_VISIBLE=0`
@@ -2357,6 +2410,27 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - **Campaign rollout:** έγκριση κειμένων → merge/deploy → QA checklist του `ANALYTICS_TRACKING_PLAN.md` σε
   production → GA4 admin (custom dimensions, key events `sign_up`/`email_verified`/`radar_created`, funnel). Ανοιχτά:
   `purchase` tracking, διορθώσεις copy home/privacy (`PRODUCT_AUDIT.md` §4), προτάσεις 🟡/🔴 του CRO plan.
+- **Opportunity Detail τελικό visual acceptance:** το αρχικό local recording ελέγχθηκε και αποκάλυψε την
+  υπερβολική επανάληψη ολόκληρου workflow για κάθε Radar· μετά από διαδοχικές UI iterations, η δεξιά στήλη έχει
+  μία μόνο κύρια «Διαχείριση», modal επιλογής workflow και από κάτω το «Γιατί αυτή η εταιρεία».
+  Χρειάζεται ένα τελευταίο user smoke της νέας
+  έκδοσης σε desktop και στενό viewport, μαζί με console check. Τα template/read-model/permissions/query-bound
+  tests και η πλήρης regression suite είναι ήδη πράσινα.
+
+- **GA4 πριν από paid campaigns:** (1) υλοποίηση Consent Mode v2 από το υπάρχον consent UI, με denied defaults
+  και updates για `analytics_storage`, `ad_storage`, `ad_user_data`, `ad_personalization`, χωρίς remarketing·
+  (2) DebugView επαλήθευση από κανονικό Chrome των ήδη Network/Realtime-επιβεβαιωμένων `landing_cta_click` και
+  `sign_up_start`, και παραγωγή + επαλήθευση των `sign_up`, `email_verified`, `product_search`, `radar_created`
+  και των parameters `audience`, `cta_location`, `method`, `has_kad`, `has_region`, `has_legal_form`, `has_date`,
+  `has_name`· η ελεγχόμενη εγγραφή περιμένει ξεχωριστό test email, ρητή τελική έγκριση και κανονικό Chrome όπου
+  το Tag Assistant συνδέεται πραγματικά· (3) μόνο αφού παρατηρηθεί πραγματικό
+  `sign_up`, να σημανθεί ως κύριο key event·
+  (4) αποθήκευση first-touch/last-non-direct UTM και click identifiers στο signup/customer record και σύνδεσή
+  τους με Stripe Checkout· (5) server-side, idempotent GA4 `purchase` μετά από επιβεβαιωμένο Stripe webhook, με
+  `transaction_id`, `value`, `currency=EUR`, plan item, και αντίστοιχο refund/renewal χειρισμό· (6) σταθερά
+  campaign URLs με `utm_campaign=gl_horeca|gl_insurance` και `utm_content=gl004|gl005|gl006|gl007` — ποτέ τα
+  GL-004–007 ως campaign names — και επανέλεγχος της exploration όταν υπάρξουν δεδομένα. Καμία από αυτές τις αλλαγές
+  παραγωγικού κώδικα ή Stripe έγινε στους ελέγχους της 2026-10-19/20.
 
 - **LIVE cutover — επόμενα βήματα (όλα με ρητή έγκριση, ένα τη φορά):** (A) review/merge του
   `feature/live-cutover-dormant` και deploy με **και τα δύο flags 0** (η `0059` εφαρμόζεται από το
@@ -2615,6 +2689,102 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   `urls.py`, `seo.py`, `adapters.py`, `context_processors.py`, `static/js/app.js`, `product-ui.css`, `base.html`,
   `home.html`, `includes/analytics.html`, `legal/privacy.html`, `registration/signup.html`. 2.508 tests OK, καμία
   migration, κανένα deploy.
+- **2026-10-20 — Opportunity Detail contact completion, KAD leak fix και workflow sidebar refinement.** Έγινε
+  trace του `Company`, του `/companies` payload, του importer και του legacy Business Dossier: email, website,
+  address, postal code, city, municipality και prefecture υπήρχαν ήδη ως κανονικοποιημένες στήλες, ενώ phone,
+  fax και poBox διατηρούνται στο πλήρες `raw_data` χωρίς dedicated columns. Χρησιμοποιήθηκε/επεκτάθηκε το
+  υπάρχον privacy-minimised `company_contact.py`, αποκλειστικά για το top-level company `phone`, και δημιουργήθηκε
+  presentation-only contact read model. Η Opportunity Detail απέκτησε conditional «Στοιχεία επικοινωνίας» με
+  ασφαλή links και χωρίς κενές σειρές, ενώ DNC/status/assignment/save/notes/tasks απέκτησαν συνεκτικές product UI
+  ενότητες. Το `kad_2026` προερχόταν από ρητό rendering του `activity.kad_version` και από τα presentation strings
+  evidence/timeline· αφαιρέθηκε και στα τρία σημεία. Δεν άλλαξαν ingestion/schema, Signal payloads, snapshots,
+  scoring, Radar/ICP/deduplication ή LIVE/SHADOW. Επαλήθευση: 132 focused tests OK, πλήρης suite 2.489/2.489 OK
+  (`--parallel 4`), `manage.py check`, `makemigrations --check` και `git diff --check` καθαρά. Το local rendered
+  browser smoke έμεινε ανοιχτό μόνο λόγω αδυναμίας του in-app browser να φτάσει το localhost.
+
+- **2026-10-20 — Opportunity sidebar δεύτερο visual pass από πραγματικό recording.** Το video έδειξε ότι δύο
+  Radar matches απέδιδαν δύο πλήρη, ταυτόχρονα ορατά workflow stacks και μετέτρεπαν τη δεξιά στήλη σε μακρύ admin
+  form. Διατηρήθηκαν όλα τα per-Opportunity actions και το company-level DNC, αλλά η παρουσίαση πέρασε στα
+  primitives του ήδη εγκεκριμένου Lead/Dossier sidebar: compact Radar summaries, native keyboard-accessible
+  disclosure panels, amber selected rule, κύρια ευκαιρία ανοιχτή αρχικά και μικρός JS coordinator που κρατά μόνο
+  ένα Radar workflow ανοιχτό. Το DNC έγινε συμπτυσσόμενη company action. Endpoints, POST names, permissions,
+  scoring, Signals, Radar matching και LIVE/SHADOW έμειναν αμετάβλητα. Επαλήθευση: 113 focused tests και πλήρης
+  suite 2.489/2.489 OK, `check`, `makemigrations --check` και `git diff --check` καθαρά. Σε επόμενο πραγματικό
+  browser smoke εντοπίστηκε mixed-version render (νέο template αλλά cached παλιό CSS/JS) και προστέθηκε κοινό
+  version query στα `product-ui.css`/`app.js`. Μετά από καθαρή επανεκκίνηση ο localhost επέστρεψε 200 και για τα
+  δύο versioned assets και επιβεβαιώθηκαν οι νέοι panel selectors/initializer.
+
+- **2026-10-20 — Opportunity sidebar τρίτο visual pass από δεύτερο recording.** Το πραγματικό interaction έδειξε
+  ότι τα disclosure panels, παρότι λειτουργικά, άνοιγαν μεγάλο form μέσα στη λίστα και προκαλούσαν άλματα
+  κύλισης σε στενό viewport. Αντικαταστάθηκαν με compact ARIA tab selector ανά Radar και ένα μόνο σταθερό,
+  επίπεδο Lead-style workflow panel. Υποστηρίζονται click και ArrowUp/ArrowDown/Home/End, όλα τα υφιστάμενα
+  forms/endpoints παραμένουν, και έγινε νέο asset-version bump. Επαλήθευση: 26/26 focused tests OK, `check`,
+  `makemigrations --check` και `git diff --check` καθαρά.
+
+- **2026-10-20 — Opportunity dossier/modal layout κατόπιν ρητής κατεύθυνσης χρήστη.** Το frozen «Γιατί αυτή η
+  εταιρεία» μεταφέρθηκε από το action rail στο αριστερό company dossier. Η δεξιά στήλη έγινε compact launcher:
+  ξεχωριστό κουμπί για company-level «Μη επικοινωνία» και ένα ανά Radar, με κάθε πλήρες workflow σε native
+  `<dialog>` modal. Τα modals κλείνουν από ×, Escape ή backdrop· όλα τα υπάρχοντα forms, URLs, permissions και
+  semantics διατηρήθηκαν. Έγινε νέο asset-version bump. Επαλήθευση: 45/45 focused tests OK, `check`,
+  `makemigrations --check` και `git diff --check` καθαρά.
+
+- **2026-10-20 — Ενοποίηση Opportunity actions και αφαίρεση περιττού notification link.** Οι δύο τεχνικές
+  ενότητες «Ενέργειες εταιρείας» / «Ενέργειες ανά Radar» ενοποιήθηκαν σε μία «Ενέργειες», με το πραγματικό scope
+  να δηλώνεται μέσα στο κάθε launcher. Το αμορφοποίητο «Ειδοποιήσεις» αφαιρέθηκε από το dossier επειδή
+  επαναλάμβανε το κύριο Inbox/Dashboard· το notification subsystem παραμένει αμετάβλητο και σήμερα παράγει μόνο
+  ASSIGNMENT και TASK_DUE για τον συγκεκριμένο παραλήπτη. Επαλήθευση: 45/45 focused tests OK, `check`,
+  `makemigrations --check` και `git diff --check` καθαρά.
+
+- **2026-10-20 — Μία κύρια Opportunity ενέργεια και επιστροφή του proof δεξιά.** Κατόπιν διευκρίνισης χρήστη,
+  το «Γιατί αυτή η εταιρεία» επέστρεψε στη δεξιά στήλη κάτω από τις ενέργειες. Τα πολλαπλά company/Radar launch
+  buttons αντικαταστάθηκαν από ένα μόνο «Διαχείριση»· αυτό ανοίγει menu modal και μόνο εκεί παρουσιάζει τις
+  επιμέρους scopes που απαιτεί το data model (ένα company-wide DNC και ένα ανεξάρτητο workflow ανά Opportunity
+  επειδή status/notes/tasks δεν συγχωνεύονται μεταξύ Radars). Επαλήθευση: 45/45 focused tests OK, `check`,
+  `makemigrations --check` και `git diff --check` καθαρά.
+
+- **2026-10-20 — Συνέχεια λευκής επιφάνειας στο Opportunity action rail.** Διορθώθηκε το απότομο τέλος του
+  λευκού δεξιού rail όταν το περιεχόμενό του ήταν κοντύτερο από το viewport: η desktop dossier grid απέκτησε
+  viewport-aware minimum height και το rail explicit stretch. Στο mobile breakpoint το minimum μηδενίζεται ώστε
+  να μην εισάγεται τεχνητός κενός χώρος. Έγινε asset-version bump.
+
+- **2026-10-20 — Καθαρισμός προσωρινού local Opportunity fixture.** Η διπλή επιλογή «Διαχείριση · Νέα» στο
+  action-menu δεν ήταν διπλή λειτουργία αλλά δύο Opportunity rows για δύο Radars. Το δεύτερο προερχόταν από το
+  προσωρινό `Local Opportunity Demo` Radar που είχε δημιουργηθεί αποκλειστικά για browser smoke. Αφαιρέθηκαν
+  από την τοπική SQLite το Radar #2 και οι δύο δικές του demo Opportunities (#2, #4), αφού επαληθεύτηκαν ακριβώς
+  όνομα/IDs. Η demo contact company #17833 έχει πλέον μόνο την κανονική Opportunity #3. Καμία production ή
+  version-controlled data αλλαγή.
+
+- **2026-10-20 — Πλοήγηση πίσω στα Opportunity modals.** Προστέθηκε εμφανές, keyboard-focusable κουμπί `←` στην
+  κεφαλίδα του company DNC modal και κάθε Radar workflow modal. Χρησιμοποιεί τον υπάρχοντα modal coordinator:
+  κλείνει το τρέχον dialog και επανανοίγει το προηγούμενο action-menu dialog χωρίς page reload· το αρχικό menu
+  διατηρεί μόνο το close `×`. Επαλήθευση: 26/26 focused tests OK, `check`, `makemigrations --check` και
+  `git diff --check` καθαρά.
+
+- **2026-10-20 — GA4 διόρθωση schema και προετοιμασία ελεγχόμενης εγγραφής.** Με βάση το τρέχον GitHub `main`
+  αντικαταστάθηκαν οι λανθασμένες custom dimensions `signup_method`/`search_filter_set` με `method` και τις πέντε
+  boolean dimensions `has_kad`, `has_region`, `has_legal_form`, `has_date`, `has_name`. Οι δύο λανθασμένες
+  dimensions αρχειοθετήθηκαν μόνο αφού ελέγχθηκε ότι η μοναδική αποθηκευμένη exploration δεν τις χρησιμοποιεί.
+  Η exploration διορθώθηκε ώστε `gl_horeca`/`gl_insurance` να φιλτράρονται ως `Session manual campaign name` και
+  `gl004`–`gl007` ως `Session manual ad content`; αφαιρέθηκαν τα παλιά στοιχεία `Session campaign`. Ελέγχθηκε ότι
+  δεν δημιουργήθηκε διπλό ή συνθετικό event/key event. Προετοιμάστηκε consented test session με πραγματικό CTA
+  click και focus της φόρμας, χωρίς email ή submit. Το network inventory επιβεβαίωσε το πραγματικό `gtag.js`,
+  `/g/collect` με σωστό `tid=G-H9YRV774X0`, `page_view`, `landing_cta_click` με `audience=horeca` και
+  `cta_location=hero`, και `sign_up_start`, χωρίς JavaScript errors. Μετά το processing delay το GA4 Realtime
+  εμφάνισε 1 active user και όλα τα τρία event names. Το Tag Assistant του in-app browser δεν μπόρεσε να συνδέσει
+  το debug window, τα requests δεν είχαν debug flag και το DebugView έμεινε 0· χειροκίνητο `_dbg=1` στο page URL
+  δεν αρκεί. Συμπέρασμα: κανονική παραγωγική αποστολή σωστή, DebugView blocker αποκλειστικά στο περιβάλλον
+  δοκιμής. Καμία αλλαγή σε Stripe, production κώδικα, λογαριασμό ή διαφημιστική καμπάνια.
+
+- **2026-10-19 — GA4 production audit και ασφαλείς διοικητικές ρυθμίσεις.** Επιβεβαιώθηκε property/stream/ID και
+  πραγματική ροή δεδομένων, ελέγχθηκαν collection, consent, Google signals, personalization, retention, events,
+  key events και DebugView. Η event retention αυξήθηκε από 2 σε 14 μήνες, η ads personalization απαγορεύτηκε
+  παντού, προστέθηκαν unwanted referrals για Google/Apple/Stripe, τέσσερις event custom dimensions και μία
+  campaign exploration. Πραγματικά δεδομένα 28 ημερών: 17 active users, 31 sessions, 15 new users, 0 key
+  events/purchases/revenue για τα στοχευμένα campaigns· καμία αντιστοίχιση HoReCa/Insurance/GL-004–007. Έλεγχος
+  repository: σήμερα εκπέμπεται μόνο generic event από `data-analytics` (παρατηρήθηκε `pricing_cta_click`) και το
+  Stripe checkout/webhook δεν εκπέμπει GA4 ecommerce event ούτε μεταφέρει acquisition identifiers. Δεν έγινε
+  αλλαγή σε Stripe, production κώδικα, λογαριασμούς ή προσωπικά δεδομένα.
+
 - **2026-10-14 — LIVE cutover: και οι εσωτερικοί G5 helpers πίσω από την πύλη ορατότητας.** Οι
   `get_authorized_opportunity`, `get_authorized_opportunity_score_breakdown` (μέσω του πρώτου) και
   `get_authorized_opportunity_feed` (μέσω του `_feed_for`, που πλέον εφαρμόζει μόνο του την πύλη για κάθε feed)

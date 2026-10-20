@@ -2,8 +2,8 @@
 
 §36 defines a *company* page -- «Κάθε company page» -- with a header (Επωνυμία, διακριτικός τίτλος, status, ΓΕΜΗ,
 νομική μορφή), «Why this lead», «Current information» («Ό,τι διαθέτει νόμιμα/αξιόπιστα η πηγή»), a timeline, the
-company's opportunities and actions (Save, Assign, Call workflow, Follow-up, Dismiss). It names no contact field and
-no URL. The actions belong to later Phase D items and are not rendered here at all.
+company's opportunities and actions (Save, Assign, Call workflow, Follow-up, Dismiss). The page now also exposes the
+current contact values already persisted on ``Company`` through the existing, minimised company-contact layer.
 
 This module only *assembles* immutable page values from rows that ``organization_access`` has already authorized;
 it never decides access. It reads nothing tenant-owned by itself except the frozen C8 capture of an authorized
@@ -12,8 +12,9 @@ descriptions) that describe the company.
 
 Where every value comes from
 ----------------------------
-* **Company identity** -- ``Company.name``, ``trade_names`` (the διακριτικός τίτλος) and ``gemi_number``: the core
-  row's identity columns. Nothing else of the row is loaded -- no address, email, VAT, website, persons or payload.
+* **Company identity/contact** -- the core Company row. Contact presentation uses only its structured email,
+  website and address columns plus the approved top-level company phone reader in ``company_contact``. It never
+  reads persons, representatives or arbitrary payload keys.
 * **Status, legal form, location, activities** («current information») -- the company's **latest canonical B3
   snapshot**: status, legal type, prefecture and municipality source ids, the incorporation date only when its
   quality is VALID, and the verified-current activities with their exact code and KAD version. Never
@@ -41,6 +42,7 @@ from django.apps import apps
 
 from .company_signals import LIVE, SIGNAL_TYPE_CHOICES
 from .company_timeline import get_company_timeline
+from .company_contact import CompanyContact, company_contact
 from .opportunities import get_opportunity_score_breakdown
 
 TIMELINE_LIMIT = 20
@@ -89,6 +91,7 @@ class PageCompany:
     gemi_number: str
     name: str
     trade_names: str
+    contact: CompanyContact
 
 
 @dataclass(frozen=True)
@@ -262,6 +265,7 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
     """Assemble the page from already-authorized, LIVE-backed opportunities of one company, primary first."""
     primary_row = rows[0]
     company = primary_row.company
+    contact = company_contact(company)
     frozen = get_opportunity_score_breakdown(primary_row)
     snapshot = (_model("CompanySnapshot").objects.filter(company_id=company.pk, schema_version=1)
                 .order_by("-observed_at", "-id").first())
@@ -329,7 +333,7 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
         kind = type(item).__name__
         if kind == "KadEvidence":
             description = kad_names.get((item.code, item.kad_version or ""))
-            return f"ΚΑΔ {item.code} · {item.kad_version or '—'}" + (f" — {description}" if description else "")
+            return f"ΚΑΔ {item.code}" + (f" · {description}" if description else "")
         if kind == "RegionEvidence":
             label = "Περιφερειακή ενότητα" if item.level == "prefecture" else "Δήμος"
             return f"{label} {ref(item.level, item.source_id)}"
@@ -389,7 +393,7 @@ def build_company_opportunity_page(*, organization, rows, live_signal_counts: di
     return CompanyOpportunityPage(
         organization_id=organization.pk, organization_name=organization.name,
         company=PageCompany(company_id=company.pk, gemi_number=company.gemi_number, name=company.name,
-                            trade_names=company.trade_names),
+                            trade_names=company.trade_names, contact=contact),
         primary=primary, opportunities=opportunities, score=frozen.score, score_class=frozen.score_class,
         score_class_label=SCORE_CLASS_LABELS.get(frozen.score_class, frozen.score_class),
         scored_as_of=frozen.as_of, breakdown=breakdown, current=current, timeline=timeline,
@@ -408,7 +412,7 @@ def _timeline_summary(entry, ref, kad_names) -> str:
     """A short canonical description of what changed: ids with reference descriptions, never payload."""
     if entry.subject_kind == "kad":
         description = kad_names.get((entry.activity_code, entry.kad_version or ""))
-        return f"ΚΑΔ {entry.activity_code} · {entry.kad_version or '—'}" + (f" — {description}" if description else "")
+        return f"ΚΑΔ {entry.activity_code}" + (f" · {description}" if description else "")
     if entry.subject_kind in ("status", "legal_form", "municipality"):
         bucket = {"status": "status", "legal_form": "legal", "municipality": "municipality"}[entry.subject_kind]
         before, after = ref(bucket, entry.before_source_id), ref(bucket, entry.after_source_id)
