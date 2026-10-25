@@ -27,8 +27,11 @@
 |---|---|---|
 | `gemileads.gr/login/` | HTTP 200, assets `v=20261021-password-security` (= release `aee5214`) | [ΕΠΑΛΗΘ.] |
 | Sitemap | `<loc>` σε `https://gemileads.gr/` (όχι `example.com`) | [ΕΠΑΛΗΘ.] |
-| Billing | `LEGAL_BILLING_ACTIVE=1`, `BETA_MODE=0` στο `render.yaml`· η `/pricing/` έχει φόρμα checkout | [ΕΠΑΛΗΘ.] |
-| Cold outreach | `OUTREACH_ENABLED=0`, cap `0` στο `render.yaml` | [ΕΠΑΛΗΘ.] |
+| Billing — configuration | `LEGAL_BILLING_ACTIVE=1`, `BETA_MODE=0` στο `render.yaml` (όχι ανάγνωση του Render env) | [ΕΠΑΛΗΘ.] (repo) |
+| Billing — δημόσια σελίδα | η `/pricing/` αποδίδει φόρμα checkout | [ΕΠΑΛΗΘ.] (HTTP) |
+| Billing — πραγματική λειτουργία | επιτυχής πληρωμή, webhook και ενεργοποίηση συνδρομής **δεν** επαληθεύτηκαν | [ΑΓΝΩΣΤΟ] |
+| Cold outreach — configuration | `OUTREACH_ENABLED=0`, cap `0` στο `render.yaml` | [ΕΠΑΛΗΘ.] (repo) |
+| Cold outreach — πραγματική λειτουργία | ότι δεν στέλνεται κανένα email δεν ελέγχθηκε στο Brevo/Render | [ΑΓΝΩΣΤΟ] |
 | Render deploy `aee5214` | success | [ΑΝΑΦΟΡΑ] 2026-10-21 |
 | Τελευταία migration στο `main` | `0059_live_signal_period` | [ΕΠΑΛΗΘ.] (repo) |
 | Εφαρμοσμένη migration στη βάση production | εικάζεται `0059` μέσω `preDeployCommand`, δεν ελέγχθηκε | [ΑΓΝΩΣΤΟ] |
@@ -71,7 +74,7 @@
 ## 6. Τεχνικές εκκρεμότητες
 
 - **Ασυνέπεια τεκμηρίωσης:** το `README.md` και το `AI_SUMMARY.md` γράφουν «beta, billing κλειστό», ενώ το
-  `render.yaml` και η `/pricing/` δείχνουν ενεργό billing. Επίσης στο `AGENTS.md` αρκετές ενότητες λένε
+  `render.yaml` το ενεργοποιεί και η `/pricing/` έχει φόρμα checkout (πραγματική πληρωμή μη επαληθευμένη). Επίσης στο `AGENTS.md` αρκετές ενότητες λένε
   ακόμη «ΟΧΙ στο `main`» για δουλειά που πλέον είναι στο `main`.
 - Legacy Radar → OrganizationRadar: έγινε μόνο dry-run σε production, όχι η πραγματική μεταφορά [ΑΝΑΦΟΡΑ].
 - Email deliverability: δεν έχει αναφερθεί εκτέλεση του production backfill (`--apply`) [ΑΓΝΩΣΤΟ].
