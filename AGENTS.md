@@ -160,7 +160,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
-- **Meta Pixel (2026-10-31, τοπικά, ΟΧΙ commit/deploy):** `META_PIXEL_ID` (κενό = πλήρως ανενεργό· στο `render.yaml` το
+- **Meta Pixel (2026-10-31, κώδικας σε production `5be7029`, ΑΝΕΝΕΡΓΟ: το `META_PIXEL_ID` δεν έχει οριστεί στο Render):** `META_PIXEL_ID` (κενό = πλήρως ανενεργό· στο `render.yaml` το
   `1131952429199192`). Φορτώνεται από το `includes/analytics.html` **μόνο** με ξεχωριστή συγκατάθεση μάρκετινγκ (κλειδί
   `gemi_marketing_consent`, κουμπιά Απόρριψη / Μόνο στατιστικά / Αποδοχή όλων)· η παλιά συγκατάθεση στατιστικών δεν
   μεταφέρεται, ο επισκέπτης ρωτιέται ξανά. Μόνο σε ανώνυμους και μόνο στο `context_processors.PIXEL_PAGES` (home,
@@ -2426,7 +2426,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Meta Pixel:** commit/deploy, επιβεβαίωση `META_PIXEL_ID` στο Render, έλεγχος στο Events Manager (Test Events) και
+- **Meta Pixel:** ορισμός `META_PIXEL_ID` στο Render (το deploy της 2026-10-31 δεν το πήρε από το `render.yaml`), έλεγχος στο Events Manager (Test Events) και
   automatic advanced matching κλειστό εκεί. Ανοιχτά: νομικός έλεγχος κειμένου απορρήτου, conversion events.
 
 - **Sitemap/Site fix:** έγκριση → merge → deploy (το `migrate` του pre-deploy γράφει το Site) → έλεγχος
