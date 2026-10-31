@@ -73,6 +73,9 @@ services:
         value: "0"
       - key: GA_MEASUREMENT_ID
         sync: false
+      # Public by design: the id is visible in the page source of every site using it.
+      - key: META_PIXEL_ID
+        value: "1131952429199192"
       - key: GOOGLE_SITE_VERIFICATION
         sync: false
       - key: SENTRY_DSN

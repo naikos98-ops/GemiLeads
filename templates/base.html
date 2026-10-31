@@ -14,7 +14,7 @@
   {# Compiled by the Tailwind CLI (npm run build:css). #}
   {# The CDN build shipped a 120 KB JIT compiler that blocked the first paint. #}
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
-  <link rel="stylesheet" href="{% static 'css/product-ui.css' %}?v=20261021-password-security">
+  <link rel="stylesheet" href="{% static 'css/product-ui.css' %}?v=20261031-marketing-consent">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -155,7 +155,7 @@
         <a href="{% url 'pricing' %}">ΣΥΝΔΡΟΜΕΣ &amp; ΠΛΑΝΑ</a><br>
         <a href="{% url 'privacy' %}">ΠΟΛΙΤΙΚΗ ΑΠΟΡΡΗΤΟΥ</a><br>
         <a href="{% url 'terms' %}">ΟΡΟΙ ΧΡΗΣΗΣ</a>
-        {% if ga_measurement_id %}<br><button type="button" class="cookie-settings-link" data-cookie-settings>ΡΥΘΜΙΣΕΙΣ COOKIES</button>{% endif %}
+        {% if ga_measurement_id or meta_pixel_id %}<br><button type="button" class="cookie-settings-link" data-cookie-settings>ΡΥΘΜΙΣΕΙΣ COOKIES</button>{% endif %}
       </p>
       <p style="margin:0;max-width:44ch;">
         Το Gemi Leads είναι ανεξάρτητο εμπορικό προϊόν και δεν αποτελεί επίσημη υπηρεσία του ΓΕΜΗ, ούτε συνδέεται με αυτό.

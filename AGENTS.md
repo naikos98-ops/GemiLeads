@@ -160,6 +160,16 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Meta Pixel (2026-10-31, τοπικά, ΟΧΙ commit/deploy):** `META_PIXEL_ID` (κενό = πλήρως ανενεργό· στο `render.yaml` το
+  `1131952429199192`). Φορτώνεται από το `includes/analytics.html` **μόνο** με ξεχωριστή συγκατάθεση μάρκετινγκ (κλειδί
+  `gemi_marketing_consent`, κουμπιά Απόρριψη / Μόνο στατιστικά / Αποδοχή όλων)· η παλιά συγκατάθεση στατιστικών δεν
+  μεταφέρεται, ο επισκέπτης ρωτιέται ξανά. Μόνο σε ανώνυμους και μόνο στο `context_processors.PIXEL_PAGES` (home,
+  pricing, δύο landing, signup), ώστε σελίδες λογαριασμού και token URLs να μη φτάνουν στη Meta. Χωρίς `<noscript>` image,
+  με `autoConfig=false`. Μόνο `PageView`: κανένα conversion event. Η ανάκληση σβήνει και `_fbp`/`_fbc`. Η πολιτική
+  απορρήτου αναφέρει τη Meta όταν υπάρχει id· το κείμενο θέλει νομικό έλεγχο. 2.560 tests OK, `check` και
+  `makemigrations --check` καθαρά· σε browser με ψεύτικο id: τίποτα πριν τη συγκατάθεση, μόνο GA με «Μόνο στατιστικά»,
+  πραγματικό `/tr` PageView με «Αποδοχή όλων», ανάκληση OK.
+
 - **Authenticated password change (2026-10-21):** Settings → ΑΣΦΑΛΕΙΑ → Αλλαγή/Ορισμός κωδικού.
   Επαναχρησιμοποιούνται οι allauth PasswordChangeView/PasswordSetView και οι αντίστοιχες forms, με ελληνική
   παρουσίαση και επιστροφή στα Settings. Current password απαιτείται μόνο όταν υπάρχει usable password.
@@ -168,6 +178,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   makemigrations --check καθαρά. Η πλήρης suite απαιτεί production-shaped test environment, τοπική SQLite,
   fixture-only GEMI key και δικαίωμα εγγραφής στα temporary backup αρχεία· καμία αλλαγή στο .env.
   Ο χρήστης επιβεβαίωσε λειτουργικό smoke και ενέκρινε production δημοσίευση στις 2026-10-21.
+  Production release `aee5214` ενεργό: Render deployment `7213599274` success και δημόσιο `/login/` HTTP 200
+  με το νέο stylesheet version `20261021-password-security` (2026-10-21).
 
 - **Sites record από το BASE_URL (2026-10-19). Branch `claude/fix-sitemap-site-domain`, ΟΧΙ στο `main`, κανένα
   deploy, καμία migration.** Αιτία: το `django.contrib.sites` (μπήκε 2026-09-04 για το allauth, `SITE_ID=1`) κρατούσε
@@ -2414,7 +2426,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Authenticated password change:** επιβεβαίωση ολοκλήρωσης Render deployment μετά το push στο main.
+- **Meta Pixel:** commit/deploy, επιβεβαίωση `META_PIXEL_ID` στο Render, έλεγχος στο Events Manager (Test Events) και
+  automatic advanced matching κλειστό εκεί. Ανοιχτά: νομικός έλεγχος κειμένου απορρήτου, conversion events.
 
 - **Sitemap/Site fix:** έγκριση → merge → deploy (το `migrate` του pre-deploy γράφει το Site) → έλεγχος
   `https://gemileads.gr/sitemap.xml` και ενός password-reset email → υποβολή sitemap στο Search Console.
@@ -2693,8 +2706,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-10-31 — Meta Pixel πίσω από ξεχωριστή συγκατάθεση μάρκετινγκ.** Αλλαγές: `includes/analytics.html`,
+  `context_processors.py`, `settings.py`, `.env.example`, `render.yaml`, `base.html`, `legal/privacy.html`,
+  `product-ui.css`, `tests.py` (`MetaPixelConsentTests`), `test_campaigns.py`. Καμία migration.
+
 - **2026-10-21 — Production release password change:** user acceptance («Λειτουργεί τέλεια») και ρητή
   έγκριση παραγωγικής δημοσίευσης. Main συγχρονισμένο με origin πριν το release· χωρίς migration ή αλλαγή env.
+  Push `aee5214` στο origin/main· Render success, production login 200 και νέο asset version επιβεβαιωμένο.
 
 - **2026-10-21 — Authenticated password change/set:** product templates και security section στα Settings,
   ελληνικές allauth forms/messages, adapter redirect στα Settings, 19 security/behavior tests.

@@ -411,6 +411,7 @@ BETA_MODE = os.getenv("BETA_MODE", "1") == "1"
 
 # Google Analytics 4 measurement id (G-XXXXXXXXXX). Unset disables analytics entirely.
 GA_MEASUREMENT_ID = os.getenv("GA_MEASUREMENT_ID", "")
+META_PIXEL_ID = os.getenv("META_PIXEL_ID", "")
 
 # Google Search Console site verification. Set to the token value only (not the full tag).
 # Leave unset to omit the meta tag entirely; DNS TXT verification needs nothing here.

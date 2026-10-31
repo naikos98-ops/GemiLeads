@@ -4237,6 +4237,69 @@ class AnalyticsConsentTests(TestCase):
         self.assertNotIn("<script>alert(1)</script>", html)
 
 
+@override_settings(
+    ALLOWED_HOSTS=["gemileads.gr", "testserver"],
+    RATELIMIT_ENABLE=False,
+    GA_MEASUREMENT_ID="G-TEST123456",
+    META_PIXEL_ID="1131952429199192",
+)
+class MetaPixelConsentTests(TestCase):
+    """Advertising tracking needs its own consent, and must never see account pages or token URLs."""
+
+    def _html(self, url):
+        return self.client.get(url, HTTP_HOST="gemileads.gr").content.decode()
+
+    def test_the_pixel_has_no_static_tag_and_no_noscript_fallback(self):
+        html = self._html(reverse("home"))
+        self.assertIsNone(re.search(r'<script[^>]+src="https://connect\.facebook\.net', html))
+        self.assertNotIn("facebook.com/tr", html)
+
+    def test_marketing_is_a_separate_choice_with_its_own_stored_key(self):
+        html = self._html(reverse("home"))
+        self.assertIn("data-cookie-analytics-only", html)
+        self.assertIn("choose('granted', 'denied')", html)
+        self.assertIn("gemi_marketing_consent", html)
+
+    def test_automatic_page_scanning_is_turned_off_before_init(self):
+        html = self._html(reverse("signup"))
+        self.assertLess(html.index("'autoConfig', false"), html.index("fbq('init'"))
+
+    def test_runs_on_public_marketing_pages(self):
+        for name in ("home", "pricing", "landing_horeca", "landing_insurance", "signup"):
+            self.assertIn("var PIXEL_ON_PAGE = true", self._html(reverse(name)), name)
+
+    def test_stays_off_pages_whose_url_should_not_reach_meta(self):
+        for name in ("login", "privacy", "terms", "password_reset"):
+            self.assertIn("var PIXEL_ON_PAGE = false", self._html(reverse(name)), name)
+
+    def test_stays_off_for_signed_in_users_even_on_public_pages(self):
+        self.client.force_login(User.objects.create_user("pixel", "pixel@example.com", "pw"))
+        self.assertIn("var PIXEL_ON_PAGE = false", self._html(reverse("home")))
+
+    def test_withdrawal_clears_the_marketing_choice_and_meta_cookies(self):
+        html = self._html(reverse("privacy"))
+        self.assertIn("data-cookie-settings", html)
+        self.assertIn("localStorage.removeItem(MARKETING_KEY)", html)
+        self.assertIn("_fbp|_fbc", html)
+
+    def test_privacy_policy_discloses_meta(self):
+        html = self._html(reverse("privacy"))
+        self.assertIn("Meta Platforms Ireland", html)
+        self.assertIn("Meta Pixel", html)
+
+    @override_settings(META_PIXEL_ID="")
+    def test_without_an_id_nothing_about_meta_is_shown(self):
+        for name in ("home", "privacy"):
+            html = self._html(reverse(name))
+            self.assertNotIn("Meta Pixel", html, name)
+            self.assertNotIn("<button type=\"button\" data-cookie-analytics-only", html, name)
+            self.assertNotIn("cookies μάρκετινγκ", html, name)
+
+    @override_settings(META_PIXEL_ID='1"><script>alert(1)</script>')
+    def test_pixel_id_cannot_break_out_of_the_script(self):
+        self.assertNotIn("<script>alert(1)</script>", self._html(reverse("home")))
+
+
 @override_settings(ALLOWED_HOSTS=["gemileads.gr", "testserver"], RATELIMIT_ENABLE=False)
 class LegalPagesTests(TestCase):
     """A policy naming no controller is not binding, so it must never be published as if it were."""

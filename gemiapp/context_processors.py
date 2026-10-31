@@ -5,6 +5,21 @@ from .campaigns import pop_queued_analytics_events
 from .models import Company
 
 
+# Public marketing pages only. The Pixel sends Meta the full URL, so it stays off account pages and
+# off the password-reset, verification and unsubscribe links, whose URLs carry tokens.
+PIXEL_PAGES = frozenset({"home", "pricing", "landing_horeca", "landing_insurance", "signup"})
+
+
+def _pixel_on_page(request):
+    if not settings.META_PIXEL_ID:
+        return False
+    match = getattr(request, "resolver_match", None)
+    if match is None or match.url_name not in PIXEL_PAGES:
+        return False
+    user = getattr(request, "user", None)
+    return not (user and user.is_authenticated)
+
+
 def global_stats(request):
     # Runs on every request site-wide. An exact count is not needed for a marketing
     # figure, so it is cached for an hour to keep the query off the critical path.
@@ -16,6 +31,8 @@ def global_stats(request):
         "global_company_count": count,
         "google_site_verification": settings.GOOGLE_SITE_VERIFICATION,
         "ga_measurement_id": settings.GA_MEASUREMENT_ID,
+        "meta_pixel_id": settings.META_PIXEL_ID,
+        "meta_pixel_on_page": _pixel_on_page(request),
         # Site-wide because both facts have to be visible on every page, including the ones a
         # visitor lands on directly. Read from settings on each request so flipping the env var
         # takes effect on redeploy without touching a template.

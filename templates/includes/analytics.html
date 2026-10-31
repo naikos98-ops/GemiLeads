@@ -7,20 +7,27 @@ also keeps the 486 KB gtag.js off the critical path for those users.
 
 The banner is plain HTML/CSS with a small inline script: no consent-management vendor, no extra
 dependency, and no layout shift because it is fixed to the viewport bottom.
+
+The Meta Pixel is advertising tracking, a different purpose from statistics, so it has its own
+choice and its own stored key: a visitor who accepted statistics under the old wording is asked
+again and never inherits marketing consent. Meta's <noscript> image is left out on purpose, since
+it would fire with no way to ask. The Pixel only runs on the public pages listed in
+context_processors.PIXEL_PAGES, so account pages and token URLs never reach Meta.
 {% endcomment %}
-{% if ga_measurement_id %}
+{% if ga_measurement_id or meta_pixel_id %}
 {% if page_analytics_events %}{{ page_analytics_events|json_script:"gemiPageEvents" }}{% endif %}
 {% if queued_analytics_events %}{{ queued_analytics_events|json_script:"gemiQueuedEvents" }}{% endif %}
 <div id="cookieBanner" hidden class="cookie-banner">
   <div>
     <p>
-      Χρησιμοποιούμε cookies στατιστικών για να καταλάβουμε πώς χρησιμοποιείται ο ιστότοπος.
+      {% if ga_measurement_id %}Χρησιμοποιούμε cookies στατιστικών για να καταλάβουμε πώς χρησιμοποιείται ο ιστότοπος{% if meta_pixel_id %} και, αν το επιλέξεις, cookies μάρκετινγκ της Meta (Facebook, Instagram) για τη μέτρηση και τη στόχευση των διαφημίσεών μας{% endif %}.{% else %}Χρησιμοποιούμε, αν το επιλέξεις, cookies μάρκετινγκ της Meta (Facebook, Instagram) για τη μέτρηση και τη στόχευση των διαφημίσεών μας.{% endif %}
       Δεν φορτώνεται τίποτα χωρίς τη συγκατάθεσή σου.
       <a href="{% url 'privacy' %}">Πολιτική Απορρήτου</a>
     </p>
     <div class="cookie-actions">
       <button type="button" data-cookie-decline>Απόρριψη</button>
-      <button type="button" data-cookie-accept class="primary">Αποδοχή</button>
+      {% if ga_measurement_id and meta_pixel_id %}<button type="button" data-cookie-analytics-only>Μόνο στατιστικά</button>{% endif %}
+      <button type="button" data-cookie-accept class="primary">{% if ga_measurement_id and meta_pixel_id %}Αποδοχή όλων{% else %}Αποδοχή{% endif %}</button>
     </div>
   </div>
 </div>
@@ -28,11 +35,14 @@ dependency, and no layout shift because it is fixed to the viewport bottom.
 <script>
   (function () {
     var KEY = 'gemi_cookie_consent';
+    var MARKETING_KEY = 'gemi_marketing_consent';
     var ID = '{{ ga_measurement_id|escapejs }}';
+    var PIXEL_ID = '{{ meta_pixel_id|escapejs }}';
+    var PIXEL_ON_PAGE = {{ meta_pixel_on_page|yesno:"true,false" }};
     var banner = document.getElementById('cookieBanner');
 
     function loadAnalytics() {
-      if (window.__gemiAnalyticsLoaded) return;
+      if (!ID || window.__gemiAnalyticsLoaded) return;
       window.__gemiAnalyticsLoaded = true;
       var s = document.createElement('script');
       s.async = true;
@@ -45,19 +55,45 @@ dependency, and no layout shift because it is fixed to the viewport bottom.
       gtag('config', ID);
     }
 
-    var stored;
-    try { stored = localStorage.getItem(KEY); } catch (e) { stored = null; }
+    function loadPixel() {
+      if (!PIXEL_ID || !PIXEL_ON_PAGE || window.__gemiPixelLoaded) return;
+      window.__gemiPixelLoaded = true;
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      // Stops the Pixel reading buttons and page metadata on its own (the signup form among them).
+      window.fbq('set', 'autoConfig', false, PIXEL_ID);
+      window.fbq('init', PIXEL_ID);
+      window.fbq('track', 'PageView');
+    }
 
-    if (stored === 'granted') {
-      loadAnalytics();
-    } else if (stored !== 'denied' && banner) {
+    function read(key) {
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+
+    var stored = read(KEY);
+    var storedMarketing = read(MARKETING_KEY);
+
+    if (stored === 'granted') loadAnalytics();
+    if (storedMarketing === 'granted') loadPixel();
+    if (banner && ((ID && stored === null) || (PIXEL_ID && storedMarketing === null))) {
       banner.hidden = false;
     }
 
-    function choose(value) {
-      try { localStorage.setItem(KEY, value); } catch (e) {}
+    function choose(analytics, marketing) {
+      try {
+        localStorage.setItem(KEY, analytics);
+        // Without a Pixel there was no marketing question, so no answer is recorded for later.
+        if (PIXEL_ID) localStorage.setItem(MARKETING_KEY, marketing);
+      } catch (e) {}
       if (banner) banner.hidden = true;
-      if (value === 'granted') { loadAnalytics(); sendPageEvents(); }
+      if (analytics === 'granted') { loadAnalytics(); sendPageEvents(); }
+      if (marketing === 'granted') loadPixel();
     }
 
     // Conversion events the server handed this page (gemiapp.campaigns). Sent only when gtag
@@ -77,14 +113,14 @@ dependency, and no layout shift because it is fixed to the viewport bottom.
     }
     sendPageEvents();
 
-    // Withdrawing consent must be as easy as giving it: forget the choice, drop the GA cookies this
-    // site set, and reload so gtag is no longer on the page. The banner then asks again.
+    // Withdrawing consent must be as easy as giving it: forget the choice, drop the GA and Meta cookies
+    // this site set, and reload so neither script is left on the page. The banner then asks again.
     document.querySelectorAll('[data-cookie-settings]').forEach(function (button) {
       button.addEventListener('click', function () {
-        try { localStorage.removeItem(KEY); } catch (e) {}
+        try { localStorage.removeItem(KEY); localStorage.removeItem(MARKETING_KEY); } catch (e) {}
         document.cookie.split(';').forEach(function (c) {
           var name = c.split('=')[0].trim();
-          if (name.indexOf('_ga') !== 0) return;
+          if (!/^(_ga|_fbp|_fbc)/.test(name)) return;
           var host = location.hostname.split('.');
           for (var i = 0; i < host.length - 1; i++) {
             var domain = host.slice(i).join('.');
@@ -92,12 +128,13 @@ dependency, and no layout shift because it is fixed to the viewport bottom.
           }
           document.cookie = name + '=; Max-Age=0; path=/';
         });
-        if (window.__gemiAnalyticsLoaded) { location.reload(); } else if (banner) { banner.hidden = false; }
+        if (window.__gemiAnalyticsLoaded || window.__gemiPixelLoaded) { location.reload(); } else if (banner) { banner.hidden = false; }
       });
     });
 
-    banner?.querySelector('[data-cookie-accept]')?.addEventListener('click', function () { choose('granted'); });
-    banner?.querySelector('[data-cookie-decline]')?.addEventListener('click', function () { choose('denied'); });
+    banner?.querySelector('[data-cookie-accept]')?.addEventListener('click', function () { choose('granted', 'granted'); });
+    banner?.querySelector('[data-cookie-analytics-only]')?.addEventListener('click', function () { choose('granted', 'denied'); });
+    banner?.querySelector('[data-cookie-decline]')?.addEventListener('click', function () { choose('denied', 'denied'); });
   })();
 </script>
 {% endif %}

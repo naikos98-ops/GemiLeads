@@ -215,7 +215,7 @@ class AccuracyGuardTests(TestCase):
     def test_ga_is_never_loaded_by_markup_only_by_consent_script(self):
         content = self.client.get(reverse("landing_horeca")).content.decode()
         self.assertNotIn('<script async src="https://www.googletagmanager.com', content)
-        self.assertIn("if (value === 'granted') { loadAnalytics(); sendPageEvents(); }", content)
+        self.assertIn("if (analytics === 'granted') { loadAnalytics(); sendPageEvents(); }", content)
 
 
 class HomepageAccuracyTests(TestCase):
