@@ -160,6 +160,22 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Επικοινωνία & In-app Support (2026-11-04, branch `claude/communication-support-form-3dc212`, PR ανοιχτό, ΟΧΙ merge,
+  ΟΧΙ deploy):** (Α) `gemiapp/email_headers.user_reply_to()` = `EMAIL_REPLY_TO` ως Reply-To σε **όλα** τα emails προς
+  χρήστες: digest (`_send_digest_email`), verification, Django password reset (`DeliverablePasswordResetForm.send_mail`),
+  allauth (`NoLocalSignupAdapter.render_mail`). Ορατό «ΕΠΙΚΟΙΝΩΝΙΑ: info@gemileads.gr» στο κάτω μέρος του product rail
+  και ενότητα ΕΠΙΚΟΙΝΩΝΙΑ στα Settings (`support_email` από τον context processor). (Β) Κουμπί «Βοήθεια» κάτω δεξιά
+  (`includes/support_widget.html`, μόνο συνδεδεμένοι, σε mobile μόνο εικονίδιο πάνω από το bottom nav + 116px
+  padding στο `.product-main`), native `<dialog>` με Tab trap, Esc, focus return, aria. `POST /support/`
+  (`gemiapp/support.py`: login_required, CSRF, `ratelimit key=user 5/h` στο shared DB cache, 10–2000 χαρ., 4
+  κατηγορίες) → `SupportMessage` (migration `0060`, status new/answered, snapshot email/πλάνου, page_url μόνο
+  τοπικό path, user agent) → `async_task(send_support_notification_task)` → email στο `SUPPORT_INBOX`
+  (env, default info@) με Reply-To τον χρήστη και θέμα `[Support][<Πλάνο>] <κατηγορία> — <email>`. Αποτυχία SMTP:
+  η γραμμή μένει, `notify_attempts`/`last_notify_error`, one-off django-q `Schedule` retry (10/20/30/40′, έως 5),
+  δίχτυ ασφαλείας `manage.py resend_support_notifications [--dry-run]`. Superadmin → CUSTOMERS → Support: λίστα
+  νέα/απαντημένα/όλα + «Σήμανση ως απαντημένο» (audit `SUPPORT_MARK_ANSWERED`). Κανένα third-party script/cookie.
+  Η Πολιτική Απορρήτου **δεν** άλλαξε· πρόταση κειμένου στο PR. 31 νέα tests (`gemiapp/test_support.py`)· **2.591 tests OK** (`--parallel 4`), `check`, `makemigrations --check` καθαρά· screenshots στο `docs/support-screenshots/` (test client + headless Chrome, αναλώσιμη SQLite).
+
 - **Meta Pixel (2026-10-31, κώδικας σε production `5be7029`, ΑΝΕΝΕΡΓΟ: το `META_PIXEL_ID` δεν έχει οριστεί στο Render):** `META_PIXEL_ID` (κενό = πλήρως ανενεργό· στο `render.yaml` το
   `1131952429199192`). Φορτώνεται από το `includes/analytics.html` **μόνο** με ξεχωριστή συγκατάθεση μάρκετινγκ (κλειδί
   `gemi_marketing_consent`, κουμπιά Απόρριψη / Μόνο στατιστικά / Αποδοχή όλων)· η παλιά συγκατάθεση στατιστικών δεν
@@ -2426,6 +2442,10 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **In-app Support:** έγκριση Founder για merge/deploy του PR (εφαρμόζει `0060`)· έγκριση/εφαρμογή της πρότασης
+  κειμένου απορρήτου για τα μηνύματα υποστήριξης· μετά το deploy, ένα πραγματικό μήνυμα από production για
+  επιβεβαίωση ότι φτάνει στο info@ με σωστό Reply-To.
+
 - **Meta Pixel:** ορισμός `META_PIXEL_ID` στο Render (το deploy της 2026-10-31 δεν το πήρε από το `render.yaml`), έλεγχος στο Events Manager (Test Events) και
   automatic advanced matching κλειστό εκεί. Ανοιχτά: νομικός έλεγχος κειμένου απορρήτου, conversion events.
 
@@ -2705,6 +2725,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - Όταν ενεργοποιηθούν οι πληρωμές: `LEGAL_BILLING_ACTIVE=1` και, όταν φύγει και η ένδειξη beta, `BETA_MODE=0`.
 
 ## Ιστορικό εργασιών
+
+- **2026-11-04 — Επικοινωνία & In-app Support (brief BRAIN 4/11).** Επαληθεύτηκε στο `a4aa099`: footer μόνο για
+  ανώνυμους, digest/verification χωρίς Reply-To. Νέα: `email_headers.py`, `support.py`, `SupportMessage` + `0060`,
+  `includes/support_widget.html`, `emails/support_notification.txt`, `superadmin/support/list.html`,
+  `resend_support_notifications`, `test_support.py`. Αλλαγές: `services.py`, `views.py`, `adapters.py`, `tasks.py`,
+  `urls.py`, `superadmin/*`, `context_processors.py`, `settings.py` (`SUPPORT_INBOX`), `.env.example`, `render.yaml`,
+  `base.html`, `settings.html`, `product-ui.css`, `app.js`, migration pins 0059 → 0060, ένα guard test
+  (`test_customer_workspace`) περιορίστηκε στο `</main>`.
 
 - **2026-10-31 — Meta Pixel πίσω από ξεχωριστή συγκατάθεση μάρκετινγκ.** Αλλαγές: `includes/analytics.html`,
   `context_processors.py`, `settings.py`, `.env.example`, `render.yaml`, `base.html`, `legal/privacy.html`,

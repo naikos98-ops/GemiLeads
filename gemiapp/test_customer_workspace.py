@@ -603,7 +603,8 @@ class RadarListTests(WorkspaceTestCase):
         self.assertIn("Αδρανές", html)
         self.assertNotIn("Radar Β του B", html)
         self.assertIn(self.ws_url("organization_opportunities") + f"?status=all&amp;radar={full.radar_id}", html)
-        self.assertNotIn("<form", html.split('id="radars"', 1)[1])  # read-only: no editing is offered
+        # read-only: no editing is offered (the page itself; the site-wide «Βοήθεια» form lives after </main>)
+        self.assertNotIn("<form", html.split('id="radars"', 1)[1].split("</main>", 1)[0])
 
     def test_roles_without_radar_access_and_other_tenants_get_404(self):
         self.denied(get_authorized_workspace_radars, self.maria_user, self.org.pk)

@@ -38,6 +38,8 @@ def global_stats(request):
         # takes effect on redeploy without touching a template.
         "beta_mode": settings.BETA_MODE,
         "billing_active": settings.LEGAL_BILLING_ACTIVE,
+        # The product contact address, shown to signed-in users in the rail, Settings and the «Βοήθεια» form.
+        "support_email": settings.EMAIL_REPLY_TO,
         # One-shot conversion events queued by a server-side action (gemiapp.campaigns). Emitted by
         # includes/analytics.html only when gtag exists, i.e. only with analytics consent.
         "queued_analytics_events": pop_queued_analytics_events(request) if settings.GA_MEASUREMENT_ID else [],

@@ -31,6 +31,14 @@ class NoLocalSignupAdapter(DefaultAccountAdapter):
         """Return authenticated password changes to the account settings surface."""
         return reverse("settings")
 
+    def render_mail(self, template_prefix, email, context, headers=None):
+        """Every allauth email carries the product Reply-To, like the project's own sends."""
+        from .email_headers import user_reply_to
+
+        message = super().render_mail(template_prefix, email, context, headers=headers)
+        message.reply_to = user_reply_to()
+        return message
+
     def send_mail(self, template_prefix, email, context):
         """allauth's own mail (its password reset is still reachable at /accounts/password/reset/)
         obeys the same deliverability rule as the project's views: nothing to an address Brevo

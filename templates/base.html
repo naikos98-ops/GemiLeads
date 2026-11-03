@@ -14,7 +14,7 @@
   {# Compiled by the Tailwind CLI (npm run build:css). #}
   {# The CDN build shipped a 120 KB JIT compiler that blocked the first paint. #}
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
-  <link rel="stylesheet" href="{% static 'css/product-ui.css' %}?v=20261031-marketing-consent">
+  <link rel="stylesheet" href="{% static 'css/product-ui.css' %}?v=20261104-support">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -111,6 +111,7 @@
     {% if workspace_nav.workspaces %}{% include "organizations/_workspace_rail.html" %}{% endif %}
     {% if not workspace_nav.current %}<div class="product-flow" aria-label="Source to match to lead"><span>SOURCE</span><i></i><span>MATCH</span><i></i><span>LEAD</span></div>{% endif %}
     <div class="product-source"><span>PUBLIC DATA SOURCE</span><b>ΓΕΜΗ OPEN DATA</b></div>
+    {% if support_email %}<div class="product-contact"><span>ΕΠΙΚΟΙΝΩΝΙΑ</span><a href="mailto:{{ support_email }}">{{ support_email }}</a></div>{% endif %}
   </nav>
   {% else %}
   {% comment %} Public chrome. Different destinations from the authenticated rail, but the same
@@ -180,8 +181,9 @@
     {% endif %}{% endwith %}
     {% endif %}
   </nav>
+  {% include "includes/support_widget.html" %}
   {% endif %}
-  <script src="{% static 'js/app.js' %}?v=20261020-modal-back"></script>
+  <script src="{% static 'js/app.js' %}?v=20261104-support"></script>
   {% include "includes/analytics.html" %}
   {% block scripts %}{% endblock %}
 </body></html>

@@ -8,6 +8,7 @@ from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.db.models import Count, Max, Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -43,6 +44,7 @@ from ..models import (
     EmailEngagementEvent,
     ImportRun,
     RadarMatch,
+    SupportMessage,
     UserCompanyLead,
     UserSubscription,
     complimentary_q,
@@ -721,3 +723,35 @@ def account_create(request):
     )
     messages.success(request, f"Ο λογαριασμός {user.email} δημιουργήθηκε.")
     return redirect("superadmin:account_list")
+
+
+@superadmin_required
+def support_list(request):
+    """In-app «Βοήθεια» messages, newest first. Replying happens from the inbox (Reply-To = user);
+    this page is the record and the place to mark a message answered."""
+    status = request.GET.get("status", "new")
+    support_messages = SupportMessage.objects.select_related("answered_by")
+    if status in dict(SupportMessage.STATUSES):
+        support_messages = support_messages.filter(status=status)
+    else:
+        status = "all"
+    page_obj = Paginator(support_messages, 30).get_page(request.GET.get("page"))
+    return render(request, "superadmin/support/list.html", {
+        "page_obj": page_obj,
+        "status": status,
+        "new_count": SupportMessage.objects.filter(status=SupportMessage.STATUS_NEW).count(),
+    })
+
+
+@superadmin_required
+@require_POST
+def support_mark_answered(request, message_id):
+    support = get_object_or_404(SupportMessage, pk=message_id)
+    if support.status != SupportMessage.STATUS_ANSWERED:
+        support.status = SupportMessage.STATUS_ANSWERED
+        support.answered_at = timezone.now()
+        support.answered_by = request.user
+        support.save(update_fields=["status", "answered_at", "answered_by"])
+        log_admin_action(request.user, "SUPPORT_MARK_ANSWERED", "SupportMessage", support.pk, str(support))
+        messages.success(request, f"Το μήνυμα #{support.pk} σημειώθηκε ως απαντημένο.")
+    return redirect(f"{reverse('superadmin:support_list')}?status=new")

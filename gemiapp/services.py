@@ -18,6 +18,7 @@ from .ingestion.activities import (
     sync_company_activities as sync_canonical_company_activities,
 )
 from .email_deliverability import DELIVERY_SUPPRESSED_REASON, is_email_delivery_suppressed
+from .email_headers import user_reply_to
 from .kad import normalize_kad_search
 from .models import (
     Company,
@@ -385,6 +386,7 @@ def _send_digest_email(user, subject, body_text, body_html, tag):
     message = EmailMultiAlternatives(
         subject, body_text, settings.DEFAULT_FROM_EMAIL, [user.email],
         headers={"X-Mailin-Tag": tag},
+        reply_to=user_reply_to(),
     )
     message.attach_alternative(body_html, "text/html")
     message.send()
@@ -434,6 +436,7 @@ def send_verification_email_now(user_id: int) -> bool:
         settings.DEFAULT_FROM_EMAIL,
         [user.email],
         headers={"X-Mailin-Tag": verification_email_tag(user.pk)},
+        reply_to=user_reply_to(),
     )
     message.attach_alternative(render_to_string("emails/verification.html", context), "text/html")
     message.send()

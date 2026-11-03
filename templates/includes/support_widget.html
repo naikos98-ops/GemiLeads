@@ -1,0 +1,42 @@
+{% comment %} In-app support (gemiapp.support). Signed-in users only; rendered once from base.html.
+   Native <dialog>: showModal() makes the page behind it inert, Esc closes it, and app.js keeps Tab
+   inside it and returns focus to the button. The form also works without JavaScript (plain POST,
+   redirect back with a message). {% endcomment %}
+<button type="button" class="product-help-button" data-support-open aria-haspopup="dialog" aria-controls="support-dialog">
+  <span aria-hidden="true">?</span><b>Βοήθεια</b>
+</button>
+<dialog id="support-dialog" class="product-support-dialog" aria-labelledby="support-title" aria-describedby="support-reply-note">
+  <div class="product-support-head">
+    <div>
+      <p class="product-eyebrow">ΥΠΟΣΤΗΡΙΞΗ</p>
+      <h2 id="support-title">Πώς μπορούμε να βοηθήσουμε;</h2>
+    </div>
+    <button type="button" class="product-modal-close" data-support-close aria-label="Κλείσιμο">×</button>
+  </div>
+  <form method="post" action="{% url 'support_message_create' %}" class="product-support-form" data-support-form novalidate>
+    {% csrf_token %}
+    <input type="hidden" name="page_url" value="{{ request.get_full_path }}" data-support-page>
+    <fieldset class="product-support-categories">
+      <legend>Κατηγορία</legend>
+      <label><input type="radio" name="category" value="question" checked> Ερώτηση</label>
+      <label><input type="radio" name="category" value="problem"> Πρόβλημα</label>
+      <label><input type="radio" name="category" value="billing"> Χρέωση/Συνδρομή</label>
+      <label><input type="radio" name="category" value="suggestion"> Πρόταση</label>
+    </fieldset>
+    <label class="product-support-label" for="support-message">Μήνυμα</label>
+    <textarea id="support-message" name="message" rows="6" minlength="10" maxlength="2000" required
+              aria-describedby="support-message-hint support-error" data-support-message></textarea>
+    <p class="product-support-hint" id="support-message-hint"><span data-support-count>0</span>/2000 · τουλάχιστον 10 χαρακτήρες</p>
+    <p class="product-form-error" id="support-error" role="alert" data-support-error hidden></p>
+    <p class="product-support-note" id="support-reply-note">Θα σου απαντήσουμε στο <b>{{ user.email }}</b> — συνήθως μέσα σε 1 εργάσιμη.</p>
+    <div class="product-support-actions">
+      {% if support_email %}<a class="product-text-button" href="mailto:{{ support_email }}">ή γράψε στο {{ support_email }}</a>{% endif %}
+      <button type="submit" class="product-ink-button" data-support-submit>Αποστολή</button>
+    </div>
+  </form>
+  <div class="product-support-success" data-support-success hidden tabindex="-1">
+    <p class="product-support-success-title">✓ Το μήνυμά σου στάλθηκε.</p>
+    <p>Θα σου απαντήσουμε στο <b>{{ user.email }}</b> — συνήθως μέσα σε 1 εργάσιμη.</p>
+    <div class="product-support-actions"><button type="button" class="product-ink-button" data-support-close>Κλείσιμο</button></div>
+  </div>
+</dialog>

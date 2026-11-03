@@ -154,6 +154,19 @@
       </div>
     </section>
 
+    {% if support_email %}
+    <section class="product-settings-panel" aria-labelledby="contact-title">
+      <p class="product-settings-label">ΕΠΙΚΟΙΝΩΝΙΑ</p>
+      <div class="product-settings-row">
+        <div>
+          <h2 id="contact-title">Επικοινωνία: <a href="mailto:{{ support_email }}">{{ support_email }}</a></h2>
+          <p>Για ερωτήσεις, προβλήματα ή θέματα χρέωσης και συνδρομής. Μπορείς επίσης να απαντήσεις σε οποιοδήποτε email σου στέλνουμε ή να χρησιμοποιήσεις το κουμπί «Βοήθεια».</p>
+        </div>
+        <button type="button" class="product-ink-button" data-support-open aria-haspopup="dialog" aria-controls="support-dialog">Γράψε μας</button>
+      </div>
+    </section>
+    {% endif %}
+
     <!-- Digest Preferences Form -->
     <div class="product-settings-panel">
       <p style="font-family: ui-monospace, monospace; font-size: var(--type-label); font-weight: 700; color: var(--product-muted); letter-spacing: .08em; margin: 0 0 12px;">

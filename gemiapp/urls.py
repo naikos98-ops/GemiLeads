@@ -3,6 +3,7 @@ from . import views
 from . import billing
 from . import email_tracking
 from . import organization_views
+from . import support
 
 urlpatterns = [
     path("", views.home, name="home"),
@@ -12,6 +13,7 @@ urlpatterns = [
     path("for/insurance/", views.campaign_landing, {"audience": "insurance"}, name="landing_insurance"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("settings/", views.settings_view, name="settings"),
+    path("support/", support.support_message_create, name="support_message_create"),
     path("radars/", views.radar_list, name="radar_list"),
     path("radars/new/", views.radar_create, name="radar_create"),
     path("radars/preview/", views.radar_preview, name="radar_preview"),
