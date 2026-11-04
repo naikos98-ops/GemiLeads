@@ -331,3 +331,11 @@ class SuperadminSupportTests(TestCase):
     def test_mark_answered_requires_post(self):
         self.client.force_login(self.admin)
         self.assertEqual(self.client.get(reverse("superadmin:support_mark_answered", args=[self.support.pk])).status_code, 405)
+
+
+class SupportPrivacyPolicyTests(TestCase):
+    def test_privacy_policy_describes_support_messages(self):
+        html = self.client.get(reverse("privacy")).content.decode()
+        self.assertIn("Μηνύματα υποστήριξης", html)
+        self.assertIn("Απάντηση σε αιτήματα υποστήριξης", html)
+        self.assertIn("διαγράφονται μαζί με αυτόν", html)

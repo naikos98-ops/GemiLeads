@@ -26,7 +26,7 @@
 | Στοιχείο | Κατάσταση | Πηγή |
 |---|---|---|
 | `gemileads.gr/login/` | HTTP 200, assets `v=20261104-support` (= release `9b5dcc4`) | [ΕΠΑΛΗΘ.] |
-| In-app Support | `/support/`, `/superadmin/support/` → login redirect· πραγματικό μήνυμα προς info@ δεν ελέγχθηκε | [ΕΠΑΛΗΘ.] (HTTP) |
+| In-app Support | `/support/`, `/superadmin/support/` → login redirect [ΕΠΑΛΗΘ.]· πραγματικό μήνυμα προς info@ OK | [ΑΝΑΦΟΡΑ] Founder 2026-11-04 |
 | Sitemap | `<loc>` σε `https://gemileads.gr/` (όχι `example.com`) | [ΕΠΑΛΗΘ.] |
 | Billing — configuration | `LEGAL_BILLING_ACTIVE=1`, `BETA_MODE=0` στο `render.yaml` (όχι ανάγνωση του Render env) | [ΕΠΑΛΗΘ.] (repo) |
 | Billing — δημόσια σελίδα | η `/pricing/` αποδίδει φόρμα checkout | [ΕΠΑΛΗΘ.] (HTTP) |
@@ -44,6 +44,7 @@
 
 | Ημερομηνία | Commit / PR | Τι |
 |---|---|---|
+| 2026-11-04 | — | Πολιτική Απορρήτου: μηνύματα υποστήριξης |
 | 2026-11-04 | PR #4 (`9b5dcc4`) | In-app Support «Βοήθεια», Reply-To info@ σε όλα τα emails, ορατό email επικοινωνίας |
 | 2026-10-21 | `aee5214` | Αλλαγή/ορισμός κωδικού από τα Settings |
 | 2026-10-20 | `38eb99a` | Opportunity Detail: στοιχεία επικοινωνίας, ενιαία «Διαχείριση» |
@@ -106,8 +107,6 @@
 7. **Legacy Radar migration:** έγκριση για την πραγματική εκτέλεση (`--apply`) μετά το provisioning dry-run.
 8. **Free owners:** αν θα βλέπουν τις σελίδες του οργανισμού τους (κανόνας πρόσβασης).
 9. **Καθαρισμός** των ήδη merged remote branches και worktrees.
-10. **In-app Support:** έγκριση της πρότασης
-    κειμένου για την Πολιτική Απορρήτου (μηνύματα υποστήριξης) που περιγράφεται στο PR.
 
 ## 9. Αναλυτική τεκμηρίωση
 

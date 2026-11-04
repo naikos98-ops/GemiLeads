@@ -174,7 +174,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   η γραμμή μένει, `notify_attempts`/`last_notify_error`, one-off django-q `Schedule` retry (10/20/30/40′, έως 5),
   δίχτυ ασφαλείας `manage.py resend_support_notifications [--dry-run]`. Superadmin → CUSTOMERS → Support: λίστα
   νέα/απαντημένα/όλα + «Σήμανση ως απαντημένο» (audit `SUPPORT_MARK_ANSWERED`). Κανένα third-party script/cookie.
-  Η Πολιτική Απορρήτου **δεν** άλλαξε· πρόταση κειμένου στο PR. 31 νέα tests (`gemiapp/test_support.py`)· **2.591 tests OK** (`--parallel 4`), `check`, `makemigrations --check` καθαρά· screenshots στο `docs/support-screenshots/` (test client + headless Chrome, αναλώσιμη SQLite).
+  Η Πολιτική Απορρήτου ενημερώθηκε με έγκριση Founder (2026-11-04): μηνύματα υποστήριξης στο «Τι συλλέγουμε»,
+  νομική βάση 6§1β, διατήρηση όσο ο λογαριασμός είναι ενεργός (CASCADE στη διαγραφή)· `LEGAL_LAST_UPDATED` → 4 Νοεμβρίου 2026. 31 νέα tests (`gemiapp/test_support.py`)· **2.591 tests OK** (`--parallel 4`), `check`, `makemigrations --check` καθαρά· screenshots στο `docs/support-screenshots/` (test client + headless Chrome, αναλώσιμη SQLite).
 
 - **Meta Pixel (2026-10-31, κώδικας σε production `5be7029`, ΑΝΕΝΕΡΓΟ: το `META_PIXEL_ID` δεν έχει οριστεί στο Render):** `META_PIXEL_ID` (κενό = πλήρως ανενεργό· στο `render.yaml` το
   `1131952429199192`). Φορτώνεται από το `includes/analytics.html` **μόνο** με ξεχωριστή συγκατάθεση μάρκετινγκ (κλειδί
@@ -2442,9 +2443,6 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **In-app Support:** έγκριση/εφαρμογή της πρότασης
-  κειμένου απορρήτου για τα μηνύματα υποστήριξης· μετά το deploy, ένα πραγματικό μήνυμα από production για
-  επιβεβαίωση ότι φτάνει στο info@ με σωστό Reply-To.
 
 - **Meta Pixel:** ορισμός `META_PIXEL_ID` στο Render (το deploy της 2026-10-31 δεν το πήρε από το `render.yaml`), έλεγχος στο Events Manager (Test Events) και
   automatic advanced matching κλειστό εκεί. Ανοιχτά: νομικός έλεγχος κειμένου απορρήτου, conversion events.
@@ -2726,6 +2724,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-04 — Πολιτική Απορρήτου: μηνύματα υποστήριξης.** Έγκριση Founder· εφαρμόστηκε η πρόταση του PR #4
+  στο `templates/legal/privacy.html`, νέα ημερομηνία ενημέρωσης, 1 test· 2.592 tests OK. Ο Founder επιβεβαίωσε πραγματικό
+  μήνυμα από production προς info@ («λειτουργεί άψογα»).
 - **2026-11-04 — In-app Support σε production.** Τοπική δοκιμή από τον Founder (φόρμα → `SupportMessage` → email προς info@ με
   Reply-To τον χρήστη, `sent=1`), έγκριση, merge PR #4 (`9b5dcc4`), Render deploy· live έλεγχος HTTP (assets `20261104-support`,
   endpoints προστατευμένα). Πραγματικό μήνυμα από production δεν έχει σταλεί ακόμη.

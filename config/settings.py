@@ -396,7 +396,7 @@ LEGAL_EUID = "ELGEMI.195879401000"
 LEGAL_ADDRESS = "Μαυρομματαίων 6, Αθήνα 10682, Ελλάδα"
 LEGAL_WEBSITE = "https://norva.gr"
 LEGAL_CONTACT_EMAIL = "info@norva.gr"
-LEGAL_LAST_UPDATED = os.getenv("LEGAL_LAST_UPDATED", "13 Σεπτεμβρίου 2026")
+LEGAL_LAST_UPDATED = os.getenv("LEGAL_LAST_UPDATED", "4 Νοεμβρίου 2026")
 LEGAL_REFUND_POLICY = os.getenv(
     "LEGAL_REFUND_POLICY",
     "Δεν προβλέπεται επιστροφή για το τρέχον διάστημα συνδρομής, εκτός αν ορίζει διαφορετικά ο νόμος.",
