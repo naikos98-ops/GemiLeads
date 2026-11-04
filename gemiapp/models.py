@@ -2528,6 +2528,57 @@ class OrganizationNotification(models.Model):
         return f"{self.notification_type} · member #{self.recipient_id} · {self.created_at:%Y-%m-%d %H:%M}"
 
 
+class SupportMessage(models.Model):
+    """A message a signed-in user sent from the in-app «Βοήθεια» form.
+
+    Stored first, notified second: the row is the record, the email to SUPPORT_INBOX is only a
+    notification of it. A failed SMTP send leaves the row (notified_at empty, last_notify_error
+    set) and is retried by the worker, so no message is ever lost to a relay outage.
+
+    The email and plan are snapshots at send time: a reply goes to the address the user wrote
+    from, and the plan explains a billing question even after it changes. Deleted with the account.
+    """
+
+    CATEGORY_QUESTION = "question"
+    CATEGORY_PROBLEM = "problem"
+    CATEGORY_BILLING = "billing"
+    CATEGORY_SUGGESTION = "suggestion"
+    CATEGORIES = [
+        (CATEGORY_QUESTION, "Ερώτηση"),
+        (CATEGORY_PROBLEM, "Πρόβλημα"),
+        (CATEGORY_BILLING, "Χρέωση/Συνδρομή"),
+        (CATEGORY_SUGGESTION, "Πρόταση"),
+    ]
+    STATUS_NEW = "new"
+    STATUS_ANSWERED = "answered"
+    STATUSES = [(STATUS_NEW, "Νέο"), (STATUS_ANSWERED, "Απαντήθηκε")]
+
+    MESSAGE_MIN_LENGTH = 10
+    MESSAGE_MAX_LENGTH = 2000
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="support_messages")
+    email = models.EmailField()
+    plan = models.CharField(max_length=40)
+    category = models.CharField(max_length=20, choices=CATEGORIES)
+    message = models.TextField()
+    page_url = models.CharField(max_length=500, blank=True)
+    user_agent = models.CharField(max_length=400, blank=True)
+    status = models.CharField(max_length=20, choices=STATUSES, default=STATUS_NEW)
+    created_at = models.DateTimeField(auto_now_add=True)
+    answered_at = models.DateTimeField(null=True, blank=True)
+    answered_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    notified_at = models.DateTimeField(null=True, blank=True)
+    notify_attempts = models.PositiveSmallIntegerField(default=0)
+    last_notify_error = models.CharField(max_length=300, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["status", "-created_at"], name="support_message_status_idx")]
+
+    def __str__(self):
+        return f"Support #{self.pk} · {self.get_category_display()} · {self.email}"
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 

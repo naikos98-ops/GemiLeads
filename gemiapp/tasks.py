@@ -212,6 +212,24 @@ def send_verification_email_task(user_id):
     send_verification_email_now(user_id)
 
 
+def send_support_notification_task(message_id):
+    """Email SUPPORT_INBOX about one stored SupportMessage (gemiapp.support).
+
+    The message is already in the database; this only notifies. On an SMTP failure the attempt is
+    recorded on the row, a later retry is scheduled (bounded), and the error is re-raised so the
+    worker records the failed task too.
+    """
+    from gemiapp.models import SupportMessage
+    from gemiapp.support import schedule_retry, send_support_notification
+
+    try:
+        return send_support_notification(int(message_id))
+    except Exception:
+        attempts = SupportMessage.objects.filter(pk=message_id).values_list("notify_attempts", flat=True).first() or 0
+        schedule_retry(int(message_id), attempts)
+        raise
+
+
 def purge_gemi_source_records_task():
     """Delete expired GEMI source records. Returns the number deleted.
 

@@ -3,7 +3,7 @@
 Σύντομη κατάσταση για το Claude Project «Gemi Leads | HQ». Η λεπτομερής τεχνική μνήμη είναι το
 [`AGENTS.md`](../AGENTS.md)· αυτό το αρχείο δεν το αντικαθιστά, μόνο το συνοψίζει.
 
-**Τελευταία επαλήθευση:** 2026-10-25 · `origin/main` = `aee5214`
+**Τελευταία επαλήθευση:** 2026-11-04 · `main` = `a4aa099` (μόνο repo· production δεν ξαναελέγχθηκε)
 
 Ετικέτες πηγής — κάθε γραμμή δηλώνει από πού προέρχεται:
 
@@ -52,6 +52,10 @@
 
 ## 4. Ενεργά development tasks
 
+- **Επικοινωνία & In-app Support** — branch `claude/communication-support-form-3dc212`, PR ανοιχτό,
+  **όχι merge, όχι deploy** [ΜΟΝΟ BRANCH]. Reply-To `info@gemileads.gr` σε όλα τα emails προς χρήστες,
+  ορατό email επικοινωνίας στο rail και στα Settings, κουμπί «Βοήθεια» με native φόρμα (`SupportMessage`,
+  migration `0060`, ειδοποίηση στο `SUPPORT_INBOX` με Reply-To τον χρήστη), Superadmin → Support.
 - **Σύνδεση HQ ↔ Claude Code:** αυτό το αρχείο και ο κανόνας στο `AGENTS.md` (branch `docs/hq-status`).
 - **SEO public pages** — worktree `gemi-leads-seo-audit-31a410`: **17 uncommitted αρχεία**, χωρίς commit
   ή push από 2026-09-21. [ΜΟΝΟ BRANCH, τοπικά] Η δουλειά δεν υπάρχει πουθενά αλλού.
@@ -104,6 +108,8 @@
 7. **Legacy Radar migration:** έγκριση για την πραγματική εκτέλεση (`--apply`) μετά το provisioning dry-run.
 8. **Free owners:** αν θα βλέπουν τις σελίδες του οργανισμού τους (κανόνας πρόσβασης).
 9. **Καθαρισμός** των ήδη merged remote branches και worktrees.
+10. **In-app Support PR:** έγκριση merge/deploy (εφαρμόζει τη migration `0060`)· έγκριση της πρότασης
+    κειμένου για την Πολιτική Απορρήτου (μηνύματα υποστήριξης) που περιγράφεται στο PR.
 
 ## 9. Αναλυτική τεκμηρίωση
 

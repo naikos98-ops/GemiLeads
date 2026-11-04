@@ -262,6 +262,9 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
 EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "20"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Gemi Leads <notifications@send.gemileads.gr>")
 EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "info@gemileads.gr")
+# Where in-app «Βοήθεια» messages are delivered (gemiapp.support). Each message is stored first; this inbox only
+# receives the notification, with Reply-To set to the user who wrote it.
+SUPPORT_INBOX = os.getenv("SUPPORT_INBOX", "info@gemileads.gr")
 # The sender for error mail, which is what AdminEmailHandler puts on an operator alert. Django's default is
 # root@localhost: the Brevo relay accepted it and returned success, then dropped the message, so the alert
 # tested in production never arrived and nothing reported a failure. Defaults to the address the digests

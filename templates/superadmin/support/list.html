@@ -1,0 +1,73 @@
+{% extends 'superadmin/base.html' %}
+
+{% block title %}Support · Superadmin Control Center{% endblock %}
+{% block page_title %}Support · μηνύματα «Βοήθεια»{% endblock %}
+
+{% block content %}
+<div>
+  <div class="admin-headrow">
+    <div class="admin-actions" aria-label="Φίλτρο κατάστασης">
+      <a class="admin-tag{% if status == 'new' %} warn{% endif %}" href="?status=new" {% if status == 'new' %}aria-current="page"{% endif %}>Νέα ({{ new_count }})</a>
+      <a class="admin-tag" href="?status=answered" {% if status == 'answered' %}aria-current="page"{% endif %}>Απαντημένα</a>
+      <a class="admin-tag" href="?status=all" {% if status == 'all' %}aria-current="page"{% endif %}>Όλα</a>
+    </div>
+    <span class="mono">Απάντηση από το inbox: το Reply-To κάθε ειδοποίησης είναι ο χρήστης.</span>
+  </div>
+
+  <div class="admin-scroll">
+    <table class="admin-register">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Ώρα</th>
+          <th>Χρήστης / Πλάνο</th>
+          <th>Κατηγορία</th>
+          <th>Μήνυμα</th>
+          <th>Σελίδα</th>
+          <th>Ειδοποίηση</th>
+          <th>Κατάσταση</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in page_obj %}
+        <tr>
+          <td class="mono">{{ m.pk }}</td>
+          <td class="mono">{{ m.created_at|date:"d/m/Y H:i" }}</td>
+          <td><a href="mailto:{{ m.email }}">{{ m.email }}</a><br><span class="admin-tag">{{ m.plan }}</span></td>
+          <td>{{ m.get_category_display }}</td>
+          <td style="white-space:pre-wrap;max-width:46ch;">{{ m.message }}</td>
+          <td class="mono">{{ m.page_url|default:"—" }}</td>
+          <td class="mono">
+            {% if m.notified_at %}✓ {{ m.notified_at|date:"d/m H:i" }}
+            {% elif m.notify_attempts %}<span class="admin-tag warn">Απέτυχε ×{{ m.notify_attempts }}</span>{% if m.last_notify_error %}<br>{{ m.last_notify_error }}{% endif %}
+            {% else %}Σε αναμονή{% endif %}
+          </td>
+          <td>
+            {% if m.status == 'answered' %}
+            <span class="admin-tag">Απαντήθηκε</span><br><span class="mono">{{ m.answered_at|date:"d/m H:i" }}{% if m.answered_by %} · {{ m.answered_by.email }}{% endif %}</span>
+            {% else %}
+            <form method="post" action="{% url 'superadmin:support_mark_answered' m.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="admin-btn">Σήμανση ως απαντημένο</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td class="empty" colspan="8">Δεν υπάρχουν μηνύματα.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if page_obj.has_other_pages %}
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;">
+    <span>Σελίδα {{ page_obj.number }} από {{ page_obj.paginator.num_pages }}</span>
+    <span style="display:flex;gap:7px;">
+      {% if page_obj.has_previous %}<a class="admin-tag" href="?page={{ page_obj.previous_page_number }}&status={{ status }}">← Προηγούμενη</a>{% endif %}
+      {% if page_obj.has_next %}<a class="admin-tag" href="?page={{ page_obj.next_page_number }}&status={{ status }}">Επόμενη →</a>{% endif %}
+    </span>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

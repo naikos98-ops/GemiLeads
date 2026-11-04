@@ -4390,3 +4390,163 @@ body.product-body textarea {
   .product-password-actions .product-ink-button,
   .product-password-actions .product-text-button { width: 100%; text-align: center; }
 }
+
+
+/* In-app support (includes/support_widget.html). Contact line in the rail, a fixed help button
+   bottom-right for signed-in users, and a native <dialog> in the same square ledger grammar as the
+   product modals. Selected category uses the shared amber inset rule. */
+.product-contact {
+  border-top: 1px solid var(--product-line);
+  padding: 12px 15px 14px;
+  font-size: var(--type-meta);
+}
+.product-contact span {
+  display: block;
+  margin-bottom: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-micro);
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--product-muted);
+}
+.product-contact a { color: var(--product-green); font-weight: 600; word-break: break-all; text-decoration: none; }
+.product-contact a:hover, .product-contact a:focus-visible { text-decoration: underline; }
+
+.product-help-button {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 45;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px 0 10px;
+  border: 1px solid var(--product-ink);
+  background: var(--product-ink);
+  color: var(--product-white);
+  font: inherit;
+  font-size: var(--type-secondary);
+  font-weight: 600;
+  cursor: pointer;
+}
+.product-help-button span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid currentColor;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+}
+.product-help-button:hover { box-shadow: inset 3px 0 var(--product-amber); }
+.product-help-button:focus-visible { outline: 2px solid var(--product-amber); outline-offset: 2px; }
+
+.product-support-dialog {
+  /* Light on every device, like the other product modals: the legacy mobile dark theme would
+     otherwise repaint the native controls inside it. */
+  color-scheme: light;
+  width: min(560px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border-radius: 0;
+  box-shadow: 0 18px 60px rgba(18, 32, 30, .22);
+  border: 1px solid var(--product-ink);
+  background: var(--product-white);
+  color: var(--product-ink);
+}
+.product-support-dialog::backdrop { background: rgba(18, 32, 30, .55); }
+.product-support-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid var(--product-ink);
+}
+.product-support-head h2 { margin: 4px 0 0; font-size: var(--type-title); line-height: 1.2; }
+.product-support-form, .product-support-success { padding: 18px 22px 22px; }
+.product-support-categories { margin: 0 0 16px; padding: 0; border: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.product-support-categories legend,
+.product-support-label {
+  display: block;
+  margin-bottom: 8px;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-label);
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--product-muted);
+  text-transform: uppercase;
+}
+.product-support-categories label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--product-line);
+  background: var(--product-paper);
+  font-size: var(--type-secondary);
+  cursor: pointer;
+}
+.product-support-categories label:has(input:checked) {
+  border-color: var(--product-ink);
+  background: var(--product-white);
+  box-shadow: inset 3px 0 var(--product-amber);
+}
+.product-support-categories input { accent-color: var(--product-ink); }
+.product-support-categories input:focus-visible { outline: 2px solid var(--product-amber); outline-offset: 2px; }
+.product-support-form textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 140px;
+  padding: 10px 12px;
+  border: 1px solid var(--product-ink);
+  background: var(--product-white);
+  color: var(--product-ink);
+  font: inherit;
+  font-size: var(--type-body);
+  line-height: 1.5;
+  resize: vertical;
+}
+/* static/src/input.css repaints every field with !important under the legacy mobile dark theme;
+   the support sheet stays light like the rest of the dialog. */
+.product-support-dialog textarea {
+  background-color: var(--product-white) !important;
+  color: var(--product-ink) !important;
+  border-color: var(--product-ink) !important;
+}
+.product-support-form textarea:focus-visible { outline: 2px solid var(--product-amber); outline-offset: 1px; }
+.product-support-hint {
+  margin: 6px 0 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-meta);
+  color: var(--product-muted);
+}
+.product-support-note {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--product-amber);
+  background: var(--product-paper);
+  font-size: var(--type-secondary);
+}
+.product-support-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 16px; padding-top: 18px; }
+.product-support-actions .product-text-button { font-size: var(--type-meta); }
+.product-support-success:focus { outline: none; }
+.product-support-success p { margin: 0 0 8px; font-size: var(--type-secondary); }
+.product-support-success .product-support-success-title { font-size: var(--type-lead); font-weight: 700; color: var(--product-green); }
+
+@media (max-width: 900px) {
+  /* Above the 57px mobile bar, icon-only, and the page gains bottom room so the button never
+     sits on top of the last CTA of a page. The label stays for screen readers. */
+  .product-help-button { right: 12px; bottom: 69px; min-height: 40px; padding: 0 8px; }
+  .product-help-button b { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .product-main { padding-bottom: 116px; }
+  .product-support-head, .product-support-form, .product-support-success { padding-left: 16px; padding-right: 16px; }
+  .product-support-actions { flex-direction: column-reverse; align-items: stretch; }
+  .product-support-actions .product-ink-button { width: 100%; }
+  .product-support-actions .product-text-button { text-align: center; }
+}

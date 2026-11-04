@@ -18,6 +18,7 @@ from django.contrib.auth.tokens import default_token_generator
 from django.core.paginator import Paginator
 from django.core.signing import BadSignature, SignatureExpired, TimestampSigner
 from django.conf import settings
+from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.encoding import DjangoUnicodeDecodeError, force_bytes, force_str
@@ -25,6 +26,7 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.decorators import method_decorator
 from django_ratelimit.decorators import ratelimit
 from .email_deliverability import is_email_delivery_suppressed
+from .email_headers import user_reply_to
 from .forms import CustomerRadarForm, DigestPreferenceForm, LeadNotesForm, LeadStatusForm, SignupForm
 from .ingestion.kad_catalogue import kad_picker_queryset
 from .kad import normalize_kad_code, normalize_kad_search
@@ -155,6 +157,20 @@ class DeliverablePasswordResetForm(PasswordResetForm):
         for user in super().get_users(email):
             if not is_email_delivery_suppressed(getattr(user, email_field)):
                 yield user
+
+    def send_mail(self, subject_template_name, email_template_name, context, from_email, to_email,
+                  html_email_template_name=None):
+        """Django's own send_mail, plus the product Reply-To (gemiapp.email_headers): an answer to a
+        reset email reaches a person instead of the unread notifications@ sender."""
+        subject = "".join(render_to_string(subject_template_name, context).splitlines())
+        body = render_to_string(email_template_name, context)
+        message = EmailMultiAlternatives(subject, body, from_email, [to_email], reply_to=user_reply_to())
+        if html_email_template_name is not None:
+            message.attach_alternative(render_to_string(html_email_template_name, context), "text/html")
+        try:
+            message.send()
+        except Exception:
+            logger.exception("Failed to send password reset email to %s", context["user"].pk)
 
 
 # Password reset sends an email to any address supplied, with no login and no CAPTCHA in

@@ -375,7 +375,68 @@
       if (event.target === modal) modal.close();
     }));
   };
+  // In-app support (templates/includes/support_widget.html). Native <dialog> gives inertness and Esc;
+  // this adds a Tab trap, focus return, a live character count and a fetch submit with inline errors.
+  const initSupport = () => {
+    const dialog = document.getElementById('support-dialog');
+    const openers = document.querySelectorAll('[data-support-open]');
+    if (!dialog || !openers.length || typeof dialog.showModal !== 'function') return;
+    let opener = openers[0];
+    const form = dialog.querySelector('[data-support-form]');
+    const success = dialog.querySelector('[data-support-success]');
+    const message = dialog.querySelector('[data-support-message]');
+    const count = dialog.querySelector('[data-support-count]');
+    const error = dialog.querySelector('[data-support-error]');
+    const submit = dialog.querySelector('[data-support-submit]');
+    const page = dialog.querySelector('[data-support-page]');
+    const showError = text => { error.textContent = text; error.hidden = !text; };
+    const focusables = () => [...dialog.querySelectorAll('button, [href], input, textarea, select')]
+      .filter(el => !el.disabled && !el.closest('[hidden]'));
+    openers.forEach(button => button.addEventListener('click', () => {
+      opener = button;
+      if (!success.hidden) { form.reset(); count.textContent = '0'; form.hidden = false; success.hidden = true; }
+      showError('');
+      if (page) page.value = window.location.pathname + window.location.search;
+      dialog.showModal();
+      message.focus();
+    }));
+    dialog.querySelectorAll('[data-support-close]').forEach(b => b.addEventListener('click', () => dialog.close()));
+    dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
+    dialog.addEventListener('close', () => opener.focus());
+    dialog.addEventListener('keydown', event => {
+      if (event.key !== 'Tab') return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    });
+    message.addEventListener('input', () => { count.textContent = String(message.value.length); });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const text = message.value.trim();
+      if (text.length < 10) { showError('Γράψε τουλάχιστον 10 χαρακτήρες.'); message.focus(); return; }
+      if (text.length > 2000) { showError('Το μήνυμα ξεπερνά τους 2000 χαρακτήρες.'); message.focus(); return; }
+      showError(''); submit.disabled = true; submit.textContent = 'Αποστολή…';
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST', body: new FormData(form), credentials: 'same-origin',
+          headers: { 'X-Requested-With': 'fetch', 'Accept': 'application/json' },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.ok) {
+          form.hidden = true; success.hidden = false; success.focus();
+        } else {
+          showError(Object.values(data.errors || {}).join(' ') || 'Κάτι πήγε στραβά. Δοκίμασε ξανά.');
+        }
+      } catch (_) {
+        showError('Δεν ήταν δυνατή η αποστολή. Έλεγξε τη σύνδεσή σου και δοκίμασε ξανά.');
+      } finally {
+        submit.disabled = false; submit.textContent = 'Αποστολή';
+      }
+    });
+  };
   setTimeout(() => document.querySelectorAll('[data-toast]').forEach(x => { x.style.opacity = '0'; setTimeout(() => x.remove(), 300); }), 3500);
-  document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); initReferencePickers(); centerMobileNav(); initOpportunityPanels(); });
+  document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); initReferencePickers(); centerMobileNav(); initOpportunityPanels(); initSupport(); });
   window.addEventListener('resize', sizeCompanyTable);
 })();

@@ -251,7 +251,8 @@ class ActivationAndListTests(RadarUiTestCase):
         self.assertIn('data-radar-state="active"', owner_html)
         viewer_html = self.html(self.members["viewer"], "organization_radars")
         for control in ("data-new-radar", "data-edit-radar", "data-toggle-radar", "<form"):
-            self.assertNotIn(control, viewer_html.split('id="radars"', 1)[1], control)
+            # the page itself; the site-wide «Βοήθεια» form lives after </main>
+            self.assertNotIn(control, viewer_html.split('id="radars"', 1)[1].split("</main>", 1)[0], control)
         self.assertIn("Αττικής", viewer_html)
 
     def test_saving_or_toggling_a_radar_changes_no_pipeline_legacy_or_billing_state(self):

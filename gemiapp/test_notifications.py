@@ -115,7 +115,7 @@ class SchemaTests(NotificationTestCase):
     def test_the_migration_is_one_additive_create_model_without_backfill(self):
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0059_live_signal_period")
+                         "0060_support_message")
         migration = loader.disk_migrations[("gemiapp", "0054_organization_notification")]
         self.assertEqual(migration.dependencies, [("gemiapp", "0053_organization_audit_event")])
         self.assertEqual([(type(op).__name__, op.name) for op in migration.operations],
@@ -476,7 +476,8 @@ class BoundaryTests(NotificationTestCase):
         html = self.client.get(self.list_url()).content.decode()
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
         self.assertNotIn("<script>alert(1)", html)
-        body = html.split("</header>", 1)[-1]  # the site header shows the viewer's own account, as everywhere
+        # the site header and the «Βοήθεια» dialog (after </main>) show the viewer's own account, as everywhere
+        body = html.split("</header>", 1)[-1].split("</main>", 1)[0]
         for secret in ("2109990001", "info@x.gr", self.maria_user.email, "owner@example.com"):
             self.assertNotIn(secret, body)
         stored = str(list(Notification.objects.values()))

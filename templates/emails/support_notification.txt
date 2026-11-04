@@ -1,0 +1,16 @@
+{% autoescape off %}Νέο μήνυμα υποστήριξης #{{ support.pk }}
+
+Κατηγορία:  {{ support.get_category_display }}
+Χρήστης:    {{ support.email }} (id {{ support.user_id }})
+Πλάνο:      {{ support.plan }}
+Ώρα:        {{ support.created_at|date:"d/m/Y H:i" }} (Ελλάδα)
+Σελίδα:     {{ support.page_url|default:"—" }}
+Browser:    {{ support.user_agent|default:"—" }}
+
+---
+{{ support.message }}
+---
+
+Απάντησε σε αυτό το email: το Reply-To είναι ο χρήστης.
+Σήμανση ως απαντημένο: Superadmin → Support.
+{% endautoescape %}
