@@ -160,8 +160,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
-- **Επικοινωνία & In-app Support (2026-11-04, branch `claude/communication-support-form-3dc212`, PR ανοιχτό, ΟΧΙ merge,
-  ΟΧΙ deploy):** (Α) `gemiapp/email_headers.user_reply_to()` = `EMAIL_REPLY_TO` ως Reply-To σε **όλα** τα emails προς
+- **Επικοινωνία & In-app Support (2026-11-04, PR #4 merged `9b5dcc4`, deployed σε production με έγκριση Founder· live
+  `/login/` με assets `v=20261104-support`, `/support/` και `/superadmin/support/` → login redirect):** (Α) `gemiapp/email_headers.user_reply_to()` = `EMAIL_REPLY_TO` ως Reply-To σε **όλα** τα emails προς
   χρήστες: digest (`_send_digest_email`), verification, Django password reset (`DeliverablePasswordResetForm.send_mail`),
   allauth (`NoLocalSignupAdapter.render_mail`). Ορατό «ΕΠΙΚΟΙΝΩΝΙΑ: info@gemileads.gr» στο κάτω μέρος του product rail
   και ενότητα ΕΠΙΚΟΙΝΩΝΙΑ στα Settings (`support_email` από τον context processor). (Β) Κουμπί «Βοήθεια» κάτω δεξιά
@@ -2442,7 +2442,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **In-app Support:** έγκριση Founder για merge/deploy του PR (εφαρμόζει `0060`)· έγκριση/εφαρμογή της πρότασης
+- **In-app Support:** έγκριση/εφαρμογή της πρότασης
   κειμένου απορρήτου για τα μηνύματα υποστήριξης· μετά το deploy, ένα πραγματικό μήνυμα από production για
   επιβεβαίωση ότι φτάνει στο info@ με σωστό Reply-To.
 
@@ -2726,6 +2726,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-04 — In-app Support σε production.** Τοπική δοκιμή από τον Founder (φόρμα → `SupportMessage` → email προς info@ με
+  Reply-To τον χρήστη, `sent=1`), έγκριση, merge PR #4 (`9b5dcc4`), Render deploy· live έλεγχος HTTP (assets `20261104-support`,
+  endpoints προστατευμένα). Πραγματικό μήνυμα από production δεν έχει σταλεί ακόμη.
 - **2026-11-04 — Επικοινωνία & In-app Support (brief BRAIN 4/11).** Επαληθεύτηκε στο `a4aa099`: footer μόνο για
   ανώνυμους, digest/verification χωρίς Reply-To. Νέα: `email_headers.py`, `support.py`, `SupportMessage` + `0060`,
   `includes/support_widget.html`, `emails/support_notification.txt`, `superadmin/support/list.html`,

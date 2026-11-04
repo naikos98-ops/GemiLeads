@@ -3,7 +3,7 @@
 Σύντομη κατάσταση για το Claude Project «Gemi Leads | HQ». Η λεπτομερής τεχνική μνήμη είναι το
 [`AGENTS.md`](../AGENTS.md)· αυτό το αρχείο δεν το αντικαθιστά, μόνο το συνοψίζει.
 
-**Τελευταία επαλήθευση:** 2026-11-04 · `main` = `a4aa099` (μόνο repo· production δεν ξαναελέγχθηκε)
+**Τελευταία επαλήθευση:** 2026-11-04 · `main` = `9b5dcc4` · production: δημόσιο HTTP μετά το deploy του In-app Support
 
 Ετικέτες πηγής — κάθε γραμμή δηλώνει από πού προέρχεται:
 
@@ -25,7 +25,8 @@
 
 | Στοιχείο | Κατάσταση | Πηγή |
 |---|---|---|
-| `gemileads.gr/login/` | HTTP 200, assets `v=20261021-password-security` (= release `aee5214`) | [ΕΠΑΛΗΘ.] |
+| `gemileads.gr/login/` | HTTP 200, assets `v=20261104-support` (= release `9b5dcc4`) | [ΕΠΑΛΗΘ.] |
+| In-app Support | `/support/`, `/superadmin/support/` → login redirect· πραγματικό μήνυμα προς info@ δεν ελέγχθηκε | [ΕΠΑΛΗΘ.] (HTTP) |
 | Sitemap | `<loc>` σε `https://gemileads.gr/` (όχι `example.com`) | [ΕΠΑΛΗΘ.] |
 | Billing — configuration | `LEGAL_BILLING_ACTIVE=1`, `BETA_MODE=0` στο `render.yaml` (όχι ανάγνωση του Render env) | [ΕΠΑΛΗΘ.] (repo) |
 | Billing — δημόσια σελίδα | η `/pricing/` αποδίδει φόρμα checkout | [ΕΠΑΛΗΘ.] (HTTP) |
@@ -33,8 +34,8 @@
 | Cold outreach — configuration | `OUTREACH_ENABLED=0`, cap `0` στο `render.yaml` | [ΕΠΑΛΗΘ.] (repo) |
 | Cold outreach — πραγματική λειτουργία | ότι δεν στέλνεται κανένα email δεν ελέγχθηκε στο Brevo/Render | [ΑΓΝΩΣΤΟ] |
 | Render deploy `aee5214` | success | [ΑΝΑΦΟΡΑ] 2026-10-21 |
-| Τελευταία migration στο `main` | `0059_live_signal_period` | [ΕΠΑΛΗΘ.] (repo) |
-| Εφαρμοσμένη migration στη βάση production | εικάζεται `0059` μέσω `preDeployCommand`, δεν ελέγχθηκε | [ΑΓΝΩΣΤΟ] |
+| Τελευταία migration στο `main` | `0060_support_message` | [ΕΠΑΛΗΘ.] (repo) |
+| Εφαρμοσμένη migration στη βάση production | εικάζεται `0060` μέσω `preDeployCommand`, δεν ελέγχθηκε | [ΑΓΝΩΣΤΟ] |
 | Ενιαία ingestion + same-day lane | ενεργές, parity OK 2026-10-09 → 10-13 | [ΑΝΑΦΟΡΑ] |
 | `GEMI_LIVE_SIGNALS_ENABLED` / `GEMI_LIVE_OPPORTUNITIES_VISIBLE` | δεν ορίζονται στο `render.yaml` → default `0` | [ΑΓΝΩΣΤΟ] (Render env) |
 | GA4 `G-H9YRV774X0` | στέλνει δεδομένα· όχι έτοιμο για paid campaigns | [ΑΝΑΦΟΡΑ] 2026-10-20 |
@@ -43,6 +44,7 @@
 
 | Ημερομηνία | Commit / PR | Τι |
 |---|---|---|
+| 2026-11-04 | PR #4 (`9b5dcc4`) | In-app Support «Βοήθεια», Reply-To info@ σε όλα τα emails, ορατό email επικοινωνίας |
 | 2026-10-21 | `aee5214` | Αλλαγή/ορισμός κωδικού από τα Settings |
 | 2026-10-20 | `38eb99a` | Opportunity Detail: στοιχεία επικοινωνίας, ενιαία «Διαχείριση» |
 | 2026-10-19 | PR #2 (`460cab9`) | Sites record από `BASE_URL` (sitemap, password-reset links) |
@@ -52,10 +54,6 @@
 
 ## 4. Ενεργά development tasks
 
-- **Επικοινωνία & In-app Support** — branch `claude/communication-support-form-3dc212`, PR ανοιχτό,
-  **όχι merge, όχι deploy** [ΜΟΝΟ BRANCH]. Reply-To `info@gemileads.gr` σε όλα τα emails προς χρήστες,
-  ορατό email επικοινωνίας στο rail και στα Settings, κουμπί «Βοήθεια» με native φόρμα (`SupportMessage`,
-  migration `0060`, ειδοποίηση στο `SUPPORT_INBOX` με Reply-To τον χρήστη), Superadmin → Support.
 - **Σύνδεση HQ ↔ Claude Code:** αυτό το αρχείο και ο κανόνας στο `AGENTS.md` (branch `docs/hq-status`).
 - **SEO public pages** — worktree `gemi-leads-seo-audit-31a410`: **17 uncommitted αρχεία**, χωρίς commit
   ή push από 2026-09-21. [ΜΟΝΟ BRANCH, τοπικά] Η δουλειά δεν υπάρχει πουθενά αλλού.
@@ -108,7 +106,7 @@
 7. **Legacy Radar migration:** έγκριση για την πραγματική εκτέλεση (`--apply`) μετά το provisioning dry-run.
 8. **Free owners:** αν θα βλέπουν τις σελίδες του οργανισμού τους (κανόνας πρόσβασης).
 9. **Καθαρισμός** των ήδη merged remote branches και worktrees.
-10. **In-app Support PR:** έγκριση merge/deploy (εφαρμόζει τη migration `0060`)· έγκριση της πρότασης
+10. **In-app Support:** έγκριση της πρότασης
     κειμένου για την Πολιτική Απορρήτου (μηνύματα υποστήριξης) που περιγράφεται στο PR.
 
 ## 9. Αναλυτική τεκμηρίωση
