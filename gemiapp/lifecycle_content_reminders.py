@@ -18,6 +18,7 @@ from django.urls import reverse
 
 from .lifecycle_content import TIER_NAMES, EmailContent, _subscription, absolute, greeting, local_date
 from .models import RADAR_LIMITS, Company, CustomerRadar, RadarMatch, SubscriptionPeriod
+from .radar_limits import auto_pause_enabled
 
 
 def registrations(count: int) -> str:
@@ -123,10 +124,21 @@ def build_e7(user, params, now):
         return None
     when = local_date(sub.scheduled_change_at)
     new_tier = TIER_NAMES.get(sub.scheduled_tier, sub.scheduled_tier)
-    limit = RADAR_LIMITS.get(sub.scheduled_tier, 0)
+    # Same order as UserSubscription.radar_limit: a Superadmin capacity override wins over the tier default.
+    limit = sub.custom_radar_limit if sub.custom_radar_limit and sub.custom_radar_limit > 0         else RADAR_LIMITS.get(sub.scheduled_tier, 0)
     active = CustomerRadar.objects.filter(user=user, is_active=True, deleted_at__isnull=True).count()
     blocks = [("p", f"Η αλλαγή καταχωρίστηκε: στις {when} περνάς στο {new_tier}. Έως τότε όλα μένουν όπως είναι.")]
-    if active > limit:
+    if active > limit and auto_pause_enabled():
+        extra = active - limit
+        blocks.append(("p", f"Το {new_tier} επιτρέπει έως {limit} ενεργά Radars και τώρα έχεις {active}. Στις {when} "
+                            f"μένουν ενεργά τα {limit} παλαιότερα και τα {extra} πιο πρόσφατα μπαίνουν σε παύση."
+                            if extra > 1 else
+                            f"Το {new_tier} επιτρέπει έως {limit} ενεργά Radars και τώρα έχεις {active}. Στις {when} "
+                            f"μένουν ενεργά τα {limit} παλαιότερα και το πιο πρόσφατο μπαίνει σε παύση."))
+        blocks.append(("p", "Θες να κρατήσεις άλλα; Βάλε σε παύση από τη σελίδα Radars όσα δεν χρειάζεσαι πριν από "
+                            "τότε. Όσα μπουν σε παύση κρατούν τα κριτήριά τους και τα ξαναενεργοποιείς όποτε θες, "
+                            "μέσα στο όριο του πλάνου σου."))
+    elif active > limit:
         blocks.append(("p", f"Το {new_tier} επιτρέπει έως {limit} ενεργά Radars και τώρα έχεις {active}. Διάλεξε "
                             "ποια θα κρατήσεις ενεργά και βάλε τα υπόλοιπα σε παύση από τη σελίδα Radars — τα κριτήριά "
                             "τους μένουν αποθηκευμένα."))

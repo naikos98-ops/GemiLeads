@@ -171,12 +171,20 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   Όλα μετρούν από το `LIFECYCLE_START_AT` και περνούν από την ίδια κράτηση/αποστολή του PR 1.
   - **E1** ανεπιβεβαίωτος ≥24h μετά από εγγραφή μετά την ενεργοποίηση, μία φορά, νέος σύνδεσμος
     (`services.verification_url`, ίδιο token με το verification). Λογαριασμού.
-  - **E3** Free, 48h μετά το E2, χωρίς χρήση φίλτρων. **Ορισμός «χρήσης φίλτρων» (απόφαση προς επιβεβαίωση):** νέο πεδίο
+  - **E3** Free, 48h μετά το E2, χωρίς χρήση φίλτρων. **Ορισμός «χρήσης φίλτρων» (εγκρίθηκε, Founder 2026-11-06):** νέο πεδίο
     `last_filter_used_at`, γράφεται μία φορά όταν το `/dashboard/` φορτώνει με ενεργό φίλτρο (ίδιο κριτήριο με το GA4
     `product_search`). Πριν από αυτό το PR δεν καταγραφόταν τίποτα server-side.
   - **E6** Radar ενεργό ≥7 ημέρες (από την ενεργοποίηση το νωρίτερο) χωρίς κανένα ταίριασμα, μία φορά ανά Radar.
-  - **E7** στο `subscription_schedule.updated` (μία φορά ανά schedule). **Το κείμενο ΔΕΝ λέει ότι τα Radars παγώνουν**
-    (δεν υπάρχει αυτόματη παύση): ζητά από τον χρήστη να διαλέξει ποια κρατά ενεργά.
+  - **E7** στο `subscription_schedule.updated` (μία φορά ανά schedule): ανακοινώνει ότι στο boundary μένουν ενεργά τα
+    παλαιότερα έως το νέο όριο και τα πιο πρόσφατα μπαίνουν σε παύση (με `RADAR_AUTO_PAUSE_ON_DOWNGRADE=0`: «διάλεξε»).
+  - **Αυτόματη παύση Radars (απόφαση Founder 2026-11-06, `gemiapp/radar_limits.py`):** όταν μια αλλαγή entitlement
+    κατεβάζει το όριο σε θετικό αριθμό (Stripe downgrade στο boundary, χαμηλότερο complimentary), μένουν ενεργά τα
+    παλαιότερα (`created_at`) έως το όριο και τα νεότερα μπαίνουν σε παύση (`is_active=False`, + mirror G4, κριτήρια
+    ανέγγιχτα). Ποτέ αυτόματη επανενεργοποίηση. Λήξη (όριο 0): τίποτα δεν παύεται (ίδια συμπεριφορά με πριν, όπως λέει
+    το E10). Κάθε παύση σε δικό της savepoint, ποτέ δεν σπάει το webhook. Διακόπτης `RADAR_AUTO_PAUSE_ON_DOWNGRADE`
+    (προεπιλογή 1, ανεξάρτητος από το flag των emails). Δεν καλύπτεται: λήξη complimentary από χρόνο ενώ υπάρχει
+    μικρότερη πληρωμένη συνδρομή (ο πληρωμένος tier υπερισχύει ήδη, άρα δεν αλλάζει όριο) και χειροκίνητη αλλαγή του
+    `custom_radar_limit` από το Superadmin.
   - **E9** 3 ημέρες πριν το `active_until`, μόνο αν είχε σταλεί το αντίστοιχο E8 (άρα μετά την ενεργοποίηση).
   - **E11** 7 ημέρες χωρίς login και χωρίς click (`EmailEngagementEvent`, όχι opens), μετρημένες από την ενεργοποίηση το
     νωρίτερο· Ν = ταιριάσματα Radars της εβδομάδας, αλλιώς όλες οι νέες καταχωρίσεις· Ν=0 ⇒ όχι· μία φορά ανά περίοδο
@@ -2828,6 +2836,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-06 — PR 3: αυτόματη παύση Radars + E7.** Νέα: `radar_limits.py`, `test_radar_limits.py` (8 tests).
+  Αλλαγές: `lifecycle_triggers.py` (`Before.radar_limit`), `superadmin/services.py`, `lifecycle_content_reminders.py` (E7),
+  `settings.py`, `.env.example`, πρόταση νομικών κειμένων, 3 tests E7.
 - **2026-11-06 — PR 3 Lifecycle κύματα 2–3.** Νέα: `lifecycle_content_reminders.py`, migration `0062`,
   `lifecycle/keep_confirm.html`, `test_lifecycle_reminders.py`. Αλλαγές: `lifecycle.py` (triggers, keep link, E12 stop),
   `lifecycle_content.py`, `services.py` (`verification_url`), `billing.py` (E7), `views.py` (filter marker, keep),

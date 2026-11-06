@@ -409,11 +409,12 @@ def grant_complimentary_access(admin_user, target_user, tier, until_datetime=Non
     sub, _ = UserSubscription.objects.get_or_create(user=target_user)
     old_tier = sub.complimentary_tier
     old_until = sub.complimentary_until
+    previous_limit = sub.radar_limit
 
     sub.complimentary_tier = tier
     sub.complimentary_until = until_datetime
     sub.save()
-    after_complimentary_change(sub)
+    after_complimentary_change(sub, previous_limit=previous_limit)
 
     log_admin_action(
         admin_user=admin_user,
@@ -437,10 +438,11 @@ def revoke_complimentary_access(admin_user, target_user):
     """
     sub, _ = UserSubscription.objects.get_or_create(user=target_user)
     old_tier = sub.complimentary_tier
+    previous_limit = sub.radar_limit
     sub.complimentary_tier = "none"
     sub.complimentary_until = None
     sub.save()
-    after_complimentary_change(sub)
+    after_complimentary_change(sub, previous_limit=previous_limit)
 
     log_admin_action(
         admin_user=admin_user,

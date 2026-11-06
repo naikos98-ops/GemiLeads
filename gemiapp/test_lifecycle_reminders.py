@@ -107,7 +107,41 @@ class E6Tests(TestCase):
 
 @override_settings(**ON, **STRIPE)
 class E7Tests(TestCase):
-    def test_scheduled_downgrade_announces_the_new_limit_without_claiming_a_pause(self):
+    def send_schedule(self, user_count=7):
+        user = make_user("biz@example.gr", tier="business")
+        sub = user.subscription
+        sub.stripe_subscription_id = "sub_biz"
+        sub.save()
+        for i in range(user_count):
+            CustomerRadar.objects.create(user=user, name=f"R{i}")
+        when = int((timezone.now() + timedelta(days=20)).timestamp())
+        event = {"id": "evt_sched", "type": "subscription_schedule.updated", "data": {"object": {
+            "id": "sub_sched_1", "subscription": "sub_biz",
+            "phases": [{"items": [{"price": "price_biz"}]}, {"items": [{"price": "price_pro"}], "start_date": when}],
+        }}}
+        with patch("django_q.tasks.async_task", side_effect=lambda f, pk: __import__("gemiapp.lifecycle", fromlist=["deliver"]).deliver(pk)),                 self.captureOnCommitCallbacks(execute=True):
+            _post_webhook(self.client, event)
+        return [m for m in mail.outbox if "περνάς στο Pro" in m.subject]
+
+    def test_scheduled_downgrade_announces_the_automatic_pause(self):
+        e7 = self.send_schedule(7)
+        self.assertEqual(len(e7), 1)
+        self.assertIn("μένουν ενεργά τα 5 παλαιότερα και τα 2 πιο πρόσφατα μπαίνουν σε παύση", e7[0].body)
+        self.assertIn("σελίδα Radars", e7[0].body)
+        # Announcing is not pausing: everything stays active until the boundary.
+        self.assertEqual(CustomerRadar.objects.filter(is_active=True).count(), 7)
+
+    def test_one_radar_over_uses_the_singular(self):
+        e7 = self.send_schedule(6)
+        self.assertIn("το πιο πρόσφατο μπαίνει σε παύση", e7[0].body)
+
+    @override_settings(RADAR_AUTO_PAUSE_ON_DOWNGRADE=False)
+    def test_with_auto_pause_off_the_email_asks_the_user_to_choose(self):
+        e7 = self.send_schedule(7)
+        self.assertIn("Διάλεξε", e7[0].body)
+        self.assertNotIn("μπαίνουν σε παύση", e7[0].body)
+
+    def test_scheduled_downgrade_is_announced_once(self):
         user = make_user("biz@example.gr", tier="business")
         sub = user.subscription
         sub.stripe_subscription_id = "sub_biz"
@@ -126,7 +160,6 @@ class E7Tests(TestCase):
         e7 = [m for m in mail.outbox if "περνάς στο Pro" in m.subject]
         self.assertEqual(len(e7), 1)
         self.assertIn("έως 5 ενεργά Radars και τώρα έχεις 7", e7[0].body)
-        self.assertNotIn("μπαίνουν σε παύση", e7[0].body)
         self.assertIn("https://gemileads.gr/settings/", e7[0].body)
 
 
