@@ -3,7 +3,7 @@
 Σύντομη κατάσταση για το Claude Project «Gemi Leads | HQ». Η λεπτομερής τεχνική μνήμη είναι το
 [`AGENTS.md`](../AGENTS.md)· αυτό το αρχείο δεν το αντικαθιστά, μόνο το συνοψίζει.
 
-**Τελευταία επαλήθευση:** 2026-11-06 (μόνο repo, PR 0–2) · `main` = `9b5dcc4` · production: δημόσιο HTTP μετά το deploy του In-app Support
+**Τελευταία επαλήθευση:** 2026-11-06 (μόνο repo, PR 0–3) · `main` = `9b5dcc4` · production: δημόσιο HTTP μετά το deploy του In-app Support
 
 Ετικέτες πηγής — κάθε γραμμή δηλώνει από πού προέρχεται:
 
@@ -58,7 +58,8 @@
 - **Lifecycle emails + Radar nudge + διαγραφή λογαριασμού** (brief BRAIN 2026-11-06): PR 0 mobile account menu
   (`claude/mobile-account-menu`) και PR 1 θεμέλια/E2/E4/E5/E8/E10/nudge (`claude/lifecycle-pr1-foundations`, migration
   `0061`, `LIFECYCLE_EMAILS_ENABLED=0`) και PR 2 self-service διαγραφή + E15 (`claude/lifecycle-pr2-account-deletion`)
-  [ΜΟΝΟ BRANCH]· PR 3 ακολουθεί. Νομικό κείμενο: μόνο πρόταση, θέλει έγκριση.
+  και PR 3 E1/E3/E6/E7/E9/E11–E14 (`claude/lifecycle-pr3-reminders`, migration `0062`) [ΜΟΝΟ BRANCH].
+  Νομικό κείμενο: μόνο πρόταση, θέλει έγκριση.
   **Εύρημα:** καμία αυτόματη παύση Radars σε downgrade — μετά από 10→5 και τα 10 συνεχίζουν να ταιριάζουν [ΕΠΑΛΗΘ.] (repo).
 - **Σύνδεση HQ ↔ Claude Code:** αυτό το αρχείο και ο κανόνας στο `AGENTS.md` (branch `docs/hq-status`).
 - **SEO public pages** — worktree `gemi-leads-seo-audit-31a410`: **17 uncommitted αρχεία**, χωρίς commit

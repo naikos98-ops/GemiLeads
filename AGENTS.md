@@ -165,6 +165,30 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Lifecycle PR 3 — κύματα 2–3: E1, E3, E6, E7, E9, E11–E14 (2026-11-06, branch `claude/lifecycle-pr3-reminders` πάνω στο
+  PR 2, ΟΧΙ στο `main`, migration `0062_lifecycle_reminder_signals`: 3 nullable πεδία στο `UserLifecycleProfile`):**
+  κείμενα στο `gemiapp/lifecycle_content_reminders.py`, triggers στο `gemiapp/lifecycle.py` (`TIME_BASED_TRIGGERS`).
+  Όλα μετρούν από το `LIFECYCLE_START_AT` και περνούν από την ίδια κράτηση/αποστολή του PR 1.
+  - **E1** ανεπιβεβαίωτος ≥24h μετά από εγγραφή μετά την ενεργοποίηση, μία φορά, νέος σύνδεσμος
+    (`services.verification_url`, ίδιο token με το verification). Λογαριασμού.
+  - **E3** Free, 48h μετά το E2, χωρίς χρήση φίλτρων. **Ορισμός «χρήσης φίλτρων» (απόφαση προς επιβεβαίωση):** νέο πεδίο
+    `last_filter_used_at`, γράφεται μία φορά όταν το `/dashboard/` φορτώνει με ενεργό φίλτρο (ίδιο κριτήριο με το GA4
+    `product_search`). Πριν από αυτό το PR δεν καταγραφόταν τίποτα server-side.
+  - **E6** Radar ενεργό ≥7 ημέρες (από την ενεργοποίηση το νωρίτερο) χωρίς κανένα ταίριασμα, μία φορά ανά Radar.
+  - **E7** στο `subscription_schedule.updated` (μία φορά ανά schedule). **Το κείμενο ΔΕΝ λέει ότι τα Radars παγώνουν**
+    (δεν υπάρχει αυτόματη παύση): ζητά από τον χρήστη να διαλέξει ποια κρατά ενεργά.
+  - **E9** 3 ημέρες πριν το `active_until`, μόνο αν είχε σταλεί το αντίστοιχο E8 (άρα μετά την ενεργοποίηση).
+  - **E11** 7 ημέρες χωρίς login και χωρίς click (`EmailEngagementEvent`, όχι opens), μετρημένες από την ενεργοποίηση το
+    νωρίτερο· Ν = ταιριάσματα Radars της εβδομάδας, αλλιώς όλες οι νέες καταχωρίσεις· Ν=0 ⇒ όχι· μία φορά ανά περίοδο
+    αδράνειας. **E12** 30 ημέρες της ίδιας περιόδου μετά το E11· «Ναι, κράτα με» (signed link, POST) γράφει `kept_at`·
+    χωρίς απάντηση ή login σε 14 ημέρες ⇒ `reminders_enabled=False` + `reminders_stopped_at` (το digest δεν αλλάζει· το
+    link τα ξανανοίγει).
+  - **E13** πρώην πληρωμένος, 14 ημέρες μετά το `ended_at`: Ν = καταχωρίσεις μετά τη λήξη που ταιριάζουν με τα
+    αποθηκευμένα Radars (`company_matches_radar`)· Ν=0 ⇒ εκδοχή χωρίς αριθμό. **E14** 60 ημέρες μετά, μόνο με κείμενο
+    στο `LIFECYCLE_WHATS_NEW` (κενό ⇒ ούτε κράτηση). Όχι με νέα συνδρομή, όχι με do_not_contact.
+  - Preview όλων των 15 (`preview_lifecycle_emails`, δείγμα ανά email, rollback). 17 tests (`test_lifecycle_reminders.py`)·
+    **2.666 tests OK**· κύκλος 0061↔0062 OK.
+
 - **Lifecycle PR 2 — self-service διαγραφή λογαριασμού + E15 + καθαρισμός payloads (2026-11-06, branch
   `claude/lifecycle-pr2-account-deletion` πάνω στο PR 1, ΟΧΙ στο `main`, καμία migration):**
   `gemiapp/account_deletion.py`. Settings → «Διαγραφή λογαριασμού» → `/settings/delete/`: τι διαγράφεται / τι κρατάμε,
@@ -2516,7 +2540,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 ## Τι απομένει
 
 - **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0 και PR 1 ανοιχτά, περιμένουν
-  έγκριση Founder· PR 2 ανοιχτό (διαγραφή)· ακολουθεί PR 3. Για τον πελάτη της 5/11 (μετά το merge του PR 2):
+  έγκριση Founder· PR 2 (διαγραφή) και PR 3 (E1/E3/E6/E7/E9/E11–E14) ανοιχτά. Για τον πελάτη της 5/11 (μετά το merge του PR 2):
   `scrub_customer_webhook_payloads --email … --customer …` (dry-run → `--apply`) και διαγραφή από το Superadmin.
   Έγκριση των προτεινόμενων κειμένων Όρων/Απορρήτου. Μετά το merge του PR 1: `backfill_subscription_periods` (dry-run → έγκριση →
   `--apply`), `LIFECYCLE_START_AT` + `LIFECYCLE_EMAILS_ENABLED=1` στο Render, `send_lifecycle_emails --dry-run` → report
@@ -2803,6 +2827,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-06 — PR 3 Lifecycle κύματα 2–3.** Νέα: `lifecycle_content_reminders.py`, migration `0062`,
+  `lifecycle/keep_confirm.html`, `test_lifecycle_reminders.py`. Αλλαγές: `lifecycle.py` (triggers, keep link, E12 stop),
+  `lifecycle_content.py`, `services.py` (`verification_url`), `billing.py` (E7), `views.py` (filter marker, keep),
+  `urls.py`, `models.py`, `settings.py`, `.env.example`, `render.yaml`, `preview_lifecycle_emails`, migration pins
+  (0061 → 0062). 2.666 tests OK.
 - **2026-11-06 — PR 2 Self-service διαγραφή + E15.** Νέα: `account_deletion.py`, εντολή
   `scrub_customer_webhook_payloads`, templates `lifecycle/account_delete.html`, `account_deleted.html`,
   `docs/legal/LIFECYCLE_AND_DELETION_PROPOSAL.md`, `test_account_deletion.py`. Αλλαγές: `views.py`, `urls.py`,

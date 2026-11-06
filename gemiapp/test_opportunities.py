@@ -87,7 +87,7 @@ class SchemaTests(TestCase):
                           "0055_gemi_request_attempt", "0056_legacy_radar_migration_map",
                           "0057_email_delivery_suppression", "0058_discovery_observation_ingest_outcome",
                           "0059_live_signal_period", "0060_support_message",
-                          "0061_lifecycle_foundations"])
+                          "0061_lifecycle_foundations", "0062_lifecycle_reminder_signals"])
         migration = loader.disk_migrations[("gemiapp", "0048_opportunity")]
         allowed = {"CreateModel", "AddIndex", "AddConstraint", "AddField"}
         self.assertTrue({type(op).__name__ for op in migration.operations} <= allowed)

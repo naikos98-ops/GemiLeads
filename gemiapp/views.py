@@ -559,6 +559,10 @@ def dashboard(request):
     }
     if context["filters_active"]:
         context["page_analytics_events"] = [analytics_event("product_search", search_event_params(request))]
+        # E3 «χωρίς σημάδι χρήσης φίλτρων»: the one server-side record of filter use (first use only, one write).
+        from .models import UserLifecycleProfile
+        UserLifecycleProfile.objects.filter(user=request.user, last_filter_used_at__isnull=True) \
+            .update(last_filter_used_at=timezone.now())
     return render(request, "dashboard.html", context)
 
 
@@ -641,6 +645,24 @@ def lifecycle_unsubscribe(request, token):
                        "ξανά από τις Ρυθμίσεις.",
         })
     return render(request, "lifecycle/unsubscribe_confirm.html", {"token": token})
+
+
+def lifecycle_keep(request, token):
+    """E12 «Ναι, κράτα με»: GET confirms, POST records the answer and keeps (or turns back on) reminders."""
+    from .lifecycle import user_from_keep_token
+
+    user = user_from_keep_token(token)
+    if user is None:
+        return render(request, "unsubscribed.html", {"error": "Ο σύνδεσμος είναι άκυρος ή έχει λήξει."})
+    if request.method == "POST":
+        profile = profile_for(user)
+        profile.kept_at = timezone.now()
+        if profile.reminders_stopped_at:
+            profile.reminders_enabled, profile.reminders_stopped_at = True, None
+        profile.save(update_fields=["kept_at", "reminders_enabled", "reminders_stopped_at", "updated_at"])
+        return render(request, "unsubscribed.html", {"message": "Ευχαριστώ! Θα συνεχίσεις να λαμβάνεις συμβουλές και "
+                                                               "υπενθυμίσεις. Μπορείς να τις σταματήσεις από τις Ρυθμίσεις."})
+    return render(request, "lifecycle/keep_confirm.html", {"token": token})
 
 
 @login_required

@@ -1,0 +1,21 @@
+ΤΙ ΝΈΟ ΈΧΕΙ ΤΟ GEMI LEADS
+
+Γεια σου Μαρία,
+
+Από τότε που έληξε η συνδρομή σου, αλλάξαμε μερικά πράγματα:
+
+- Φίλτρο νομικής μορφής στη λίστα
+- Προεπισκόπηση Radar με τα αποτελέσματα των τελευταίων 30 ημερών
+
+Δες τα πλάνα: http://localhost:8000/pricing/
+
+Αυτό είναι το τελευταίο email για επιστροφή — δεν θα σου ξαναγράψω γι' αυτό.
+
+Νίκος
+Gemi Leads
+
+--
+Στάλθηκε στο preview-e14@example.gr, τον λογαριασμό σου στο gemileads.gr.
+Διακοπή συμβουλών και υπενθυμίσεων (το πρωινό email δεν αλλάζει): http://localhost:8000/reminders/unsubscribe/eyJ1IjoxNH0:1xPElW:7aSEAt8ibbdcEh_0Qg53UNpKPMGLhS2RQPKkJdiPR7E/
+GEMI LEADS — προϊόν της NORVA Ι.Κ.Ε.
+

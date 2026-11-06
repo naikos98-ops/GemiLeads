@@ -265,7 +265,9 @@ BUILDERS = {"e2": build_e2, "e4": build_e4, "e5": build_e5, "e8": build_e8, "e10
 
 
 def build_content(row, *, now=None):
-    builder = BUILDERS.get(row.kind)
+    from .lifecycle_content_reminders import REMINDER_BUILDERS
+
+    builder = BUILDERS.get(row.kind) or REMINDER_BUILDERS.get(row.kind)
     if builder is None:
         raise LookupError(f"No builder for lifecycle email {row.kind}")
     return builder(row.user, row.params or {}, now or timezone.now())

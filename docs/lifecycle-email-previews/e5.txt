@@ -12,7 +12,7 @@
 Gemi Leads
 
 --
-Στάλθηκε στο preview-lifecycle@example.gr, τον λογαριασμό σου στο gemileads.gr.
-Διακοπή συμβουλών και υπενθυμίσεων (το πρωινό email δεν αλλάζει): http://localhost:8000/reminders/unsubscribe/eyJ1IjoxfQ:1xPEUn:hzC-6woccuF0SorxTXPn43Vm9CNaQmiz9e8a2bM8bfY/
+Στάλθηκε στο preview-e5@example.gr, τον λογαριασμό σου στο gemileads.gr.
+Διακοπή συμβουλών και υπενθυμίσεων (το πρωινό email δεν αλλάζει): http://localhost:8000/reminders/unsubscribe/eyJ1Ijo1fQ:1xPElW:WMAwq8jD2t_i4s8VqwmSwPx3leNGi1rtt41x5NVEZGg/
 GEMI LEADS — προϊόν της NORVA Ι.Κ.Ε.
 

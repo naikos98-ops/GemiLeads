@@ -402,6 +402,18 @@ def verification_email_tag(user_id: int) -> str:
     return f"verification:{user_id}"
 
 
+def verification_url(user) -> str:
+    """A fresh account-verification link (token valid 3 days, single use: it embeds last_login)."""
+    from django.contrib.auth.tokens import default_token_generator
+    from django.urls import reverse
+    from django.utils.encoding import force_bytes
+    from django.utils.http import urlsafe_base64_encode
+
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    return f"{settings.BASE_URL.rstrip('/')}{reverse('verify_email', kwargs={'uidb64': uid, 'token': token})}"
+
+
 def send_verification_email_now(user_id: int) -> bool:
     """Build and send the verification link for ``user_id``. Returns False when there is
     nothing to send (user gone, already verified, no address).
@@ -425,9 +437,7 @@ def send_verification_email_now(user_id: int) -> bool:
         logger.info("Skipping verification email for user %s: %s.", user_id, DELIVERY_SUPPRESSED_REASON)
         return False
 
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = default_token_generator.make_token(user)
-    verify_url = f"{settings.BASE_URL.rstrip('/')}{reverse('verify_email', kwargs={'uidb64': uid, 'token': token})}"
+    verify_url = verification_url(user)
     context = {"verify_url": verify_url, "user": user}
 
     message = EmailMultiAlternatives(
