@@ -14,7 +14,7 @@
   {# Compiled by the Tailwind CLI (npm run build:css). #}
   {# The CDN build shipped a 120 KB JIT compiler that blocked the first paint. #}
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
-  <link rel="stylesheet" href="{% static 'css/product-ui.css' %}?v=20261104-support">
+  <link rel="stylesheet" href="{% static 'css/product-ui.css' %}?v=20261106-account-menu">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -94,6 +94,19 @@
       <span>{{ user.email }}</span>
       <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button type="submit">Έξοδος</button></form>
     </div>
+    {% comment %} Phones: .product-account is hidden at <=900px, so the same three things (email, SUPERADMIN for staff,
+       logout) live behind one compact account button in the topbar's right column. Native <details>: works
+       without JavaScript; app.js only adds Escape / click-outside closing. {% endcomment %}
+    <details class="product-account-menu" data-account-menu>
+      <summary aria-label="Λογαριασμός: {{ user.email }}">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>
+      </summary>
+      <div class="product-account-panel">
+        <span class="product-account-panel-email">{{ user.email }}</span>
+        {% if user.is_staff or user.is_superuser %}<a href="{% url 'superadmin:overview' %}">SUPERADMIN</a>{% endif %}
+        <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button type="submit">Έξοδος</button></form>
+      </div>
+    </details>
   </header>
   {% comment %} One primary navigation per user: the organization's (organizations/_primary_nav.html) when the
      navigation resolves one organization, otherwise the legacy one below, unchanged (no organization, or several
@@ -183,7 +196,7 @@
   </nav>
   {% include "includes/support_widget.html" %}
   {% endif %}
-  <script src="{% static 'js/app.js' %}?v=20261104-support"></script>
+  <script src="{% static 'js/app.js' %}?v=20261106-account-menu"></script>
   {% include "includes/analytics.html" %}
   {% block scripts %}{% endblock %}
 </body></html>

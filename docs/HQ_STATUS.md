@@ -3,7 +3,7 @@
 Σύντομη κατάσταση για το Claude Project «Gemi Leads | HQ». Η λεπτομερής τεχνική μνήμη είναι το
 [`AGENTS.md`](../AGENTS.md)· αυτό το αρχείο δεν το αντικαθιστά, μόνο το συνοψίζει.
 
-**Τελευταία επαλήθευση:** 2026-11-04 · `main` = `9b5dcc4` · production: δημόσιο HTTP μετά το deploy του In-app Support
+**Τελευταία επαλήθευση:** 2026-11-06 (μόνο repo, PR 0) · `main` = `9b5dcc4` · production: δημόσιο HTTP μετά το deploy του In-app Support
 
 Ετικέτες πηγής — κάθε γραμμή δηλώνει από πού προέρχεται:
 
@@ -55,6 +55,8 @@
 
 ## 4. Ενεργά development tasks
 
+- **Lifecycle emails + Radar nudge + διαγραφή λογαριασμού** (brief BRAIN 2026-11-06): PR 0 mobile account menu
+  (`claude/mobile-account-menu`) [ΜΟΝΟ BRANCH]· PR 1–3 ακολουθούν, το καθένα με δική του έγκριση.
 - **Σύνδεση HQ ↔ Claude Code:** αυτό το αρχείο και ο κανόνας στο `AGENTS.md` (branch `docs/hq-status`).
 - **SEO public pages** — worktree `gemi-leads-seo-audit-31a410`: **17 uncommitted αρχεία**, χωρίς commit
   ή push από 2026-09-21. [ΜΟΝΟ BRANCH, τοπικά] Η δουλειά δεν υπάρχει πουθενά αλλού.

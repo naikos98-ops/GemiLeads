@@ -160,6 +160,13 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Mobile account menu (2026-11-06, PR 0, branch `claude/mobile-account-menu`, ΟΧΙ στο `main`):** στο ≤900px το
+  `.product-account` είναι κρυφό, άρα στο κινητό δεν υπήρχε «Έξοδος» ούτε SUPERADMIN. Νέο `<details
+  class="product-account-menu">` στη δεξιά στήλη του topbar (μόνο ≤900px, ίδιο σε legacy και workspace nav): email ·
+  SUPERADMIN μόνο για staff/superuser · «Έξοδος» (POST + CSRF). Native, λειτουργεί χωρίς JS· το `app.js` κλείνει με
+  Escape/κλικ έξω. Assets `v=20261106-account-menu`. 6 tests (`test_mobile_account_menu.py`), screenshots στο
+  `docs/mobile-account-menu-screenshots/`.
+
 - **Επικοινωνία & In-app Support (2026-11-04, PR #4 merged `9b5dcc4`, deployed σε production με έγκριση Founder· live
   `/login/` με assets `v=20261104-support`, `/support/` και `/superadmin/support/` → login redirect):** (Α) `gemiapp/email_headers.user_reply_to()` = `EMAIL_REPLY_TO` ως Reply-To σε **όλα** τα emails προς
   χρήστες: digest (`_send_digest_email`), verification, Django password reset (`DeliverablePasswordResetForm.send_mail`),
@@ -2443,6 +2450,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0 (mobile account menu)
+  ανοιχτό, περιμένει έγκριση Founder· ακολουθούν PR 1–3.
 
 - **Meta Pixel:** ορισμός `META_PIXEL_ID` στο Render (το deploy της 2026-10-31 δεν το πήρε από το `render.yaml`), έλεγχος στο Events Manager (Test Events) και
   automatic advanced matching κλειστό εκεί. Ανοιχτά: νομικός έλεγχος κειμένου απορρήτου, conversion events.
@@ -2724,6 +2733,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-06 — PR 0 Mobile account menu.** `templates/base.html`, `static/css/product-ui.css`, `static/js/app.js`,
+  `templates/superadmin/base.html` (asset version), `gemiapp/test_mobile_account_menu.py`. 2.598 tests OK, `check` και
+  `makemigrations --check` καθαρά. Κανένα merge/deploy.
 - **2026-11-04 — Πολιτική Απορρήτου: μηνύματα υποστήριξης.** Έγκριση Founder· εφαρμόστηκε η πρόταση του PR #4
   στο `templates/legal/privacy.html`, νέα ημερομηνία ενημέρωσης, 1 test· 2.592 tests OK. Ο Founder επιβεβαίωσε πραγματικό
   μήνυμα από production προς info@ («λειτουργεί άψογα»).
