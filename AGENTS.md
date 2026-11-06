@@ -201,7 +201,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     opt-out («Συμβουλές και υπενθυμίσεις» στα Settings + signed link με POST επιβεβαίωση + List-Unsubscribe),
     do_not_contact (Superadmin, audit), ≤1/ημέρα (το δεύτερο πάει την επόμενη). Ποτέ σε ανενεργούς/suppressed.
     Γραμμή που κόλλησε σε `sending` δεν ξαναστέλνεται. SMTP failure → failed → retry στο ημερήσιο job (έως 5).
-  - **Triggers:** E2 στην πρώτη επαλήθευση· E4 σε νέο πληρωμένο tier ή αναβάθμιση (όχι ανανέωση/downgrade/complimentary)·
+  - **Triggers:** E2 στην πρώτη επαλήθευση — και σε εγγραφή/ενεργοποίηση μέσω Google/Apple (`SocialAccountAdapter`,
+    απόφαση Founder 2026-11-06: μόνο το καλωσόρισμα, ίδιο dedupe `e2:<id>`)· E4 σε νέο πληρωμένο tier ή αναβάθμιση (όχι ανανέωση/downgrade/complimentary)·
     E5 ημερήσια (περίοδος ≥24h μετά το `LIFECYCLE_START_AT`, 0 ενεργά Radars)· E8 όταν ορίζεται `active_until` (κουμπί ή
     Portal)· E10 σε deleted/terminal status (όχι past_due, όχι με complimentary, όχι με do_not_contact).
   - **Daily job:** `send_lifecycle_emails [--dry-run]`, schedule `30 9 * * *` μόνο όταν το flag είναι 1.
@@ -2520,8 +2521,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   `scrub_customer_webhook_payloads --email … --customer …` (dry-run → `--apply`) και διαγραφή από το Superadmin.
   Έγκριση των προτεινόμενων κειμένων Όρων/Απορρήτου. Μετά το merge του PR 1: `backfill_subscription_periods` (dry-run → έγκριση →
   `--apply`), `LIFECYCLE_START_AT` + `LIFECYCLE_EMAILS_ENABLED=1` στο Render, `send_lifecycle_emails --dry-run` → report
-  στον Founder πριν την πρώτη πραγματική εκτέλεση. Αποφάσεις: αυτόματη παύση Radars σε downgrade (για E7)· E2 για
-  χρήστες social login (δεν περνούν από verify)· πεδίο χρήσης φίλτρων για E3.
+  στον Founder πριν την πρώτη πραγματική εκτέλεση. Αποφάσεις Founder (2026-11-06): αυτόματη παύση Radars σε downgrade → ναι (PR 3)·
+  E2 για social login → ναι (PR 1)· πεδίο `last_filter_used_at` για E3 → ναι.
 
 - **Meta Pixel:** ορισμός `META_PIXEL_ID` στο Render (το deploy της 2026-10-31 δεν το πήρε από το `render.yaml`), έλεγχος στο Events Manager (Test Events) και
   automatic advanced matching κλειστό εκεί. Ανοιχτά: νομικός έλεγχος κειμένου απορρήτου, conversion events.
@@ -2808,6 +2809,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   `docs/legal/LIFECYCLE_AND_DELETION_PROPOSAL.md`, `test_account_deletion.py`. Αλλαγές: `views.py`, `urls.py`,
   `billing.py` (checkout για ανύπαρκτο χρήστη), `lifecycle_content.py` (E15), `tasks.py`, `superadmin/*`, `settings.html`,
   `product-ui.css`, `preview_lifecycle_emails`. 2.649 tests OK.
+- **2026-11-06 — PR 1: E2 και για social login.** `adapters.py` (`save_user`, ενεργοποίηση στο `pre_social_login`),
+  4 tests στο `test_lifecycle.py`.
 - **2026-11-06 — PR 1 Lifecycle θεμέλια + Κύμα 1 + Radar nudge.** Νέα: `subscription_history.py`, `lifecycle.py`,
   `lifecycle_content.py`, `lifecycle_triggers.py`, εντολές `send_lifecycle_emails`, `preview_lifecycle_emails`,
   `backfill_subscription_periods`, migration `0061`, templates `emails/lifecycle*`, `lifecycle/*`,
