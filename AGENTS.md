@@ -226,7 +226,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     αποθηκευμένα και ξαναρχίζουν» αντί «σε παύση» (δεν παύονται τεχνικά).
   - 41 tests (`test_lifecycle.py`)· **2.639 tests OK**· `check`, `makemigrations --check` καθαρά· κύκλος 0060↔0061 OK.
 
-- **Mobile account menu (2026-11-06, PR 0, branch `claude/mobile-account-menu`, ΟΧΙ στο `main`):** στο ≤900px το
+- **Mobile account menu (2026-11-06, PR #5 merged `930ec0b` με έγκριση Founder, deployed σε production· live assets
+  `v=20261106-account-menu`):** στο ≤900px το
   `.product-account` είναι κρυφό, άρα στο κινητό δεν υπήρχε «Έξοδος» ούτε SUPERADMIN. Νέο `<details
   class="product-account-menu">` στη δεξιά στήλη του topbar (μόνο ≤900px, ίδιο σε legacy και workspace nav): email ·
   SUPERADMIN μόνο για staff/superuser · «Έξοδος» (POST + CSRF). Native, λειτουργεί χωρίς JS· το `app.js` κλείνει με
@@ -2516,7 +2517,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0 και PR 1 ανοιχτά, περιμένουν
+- **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0 merged και deployed (2026-11-06)· PR 1 ανοιχτό, περιμένει
   έγκριση Founder· PR 2 ανοιχτό (διαγραφή)· ακολουθεί PR 3. Για τον πελάτη της 5/11 (μετά το merge του PR 2):
   `scrub_customer_webhook_payloads --email … --customer …` (dry-run → `--apply`) και διαγραφή από το Superadmin.
   Έγκριση των προτεινόμενων κειμένων Όρων/Απορρήτου. Μετά το merge του PR 1: `backfill_subscription_periods` (dry-run → έγκριση →
@@ -2804,6 +2805,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-06 — PR #5 (mobile account menu) merged `930ec0b` και deployed** με έγκριση Founder· live έλεγχος
+  HTTP (assets `20261106-account-menu`, `/dashboard/` → 302). Η διαγραφή του branch έκλεισε προσωρινά το #6 (ήταν η βάση του)·
+  επανήλθε, το #6 βασίζεται πλέον στο `main`. Σε stacked PRs: πρώτα retarget, μετά διαγραφή branch.
 - **2026-11-06 — PR 2 Self-service διαγραφή + E15.** Νέα: `account_deletion.py`, εντολή
   `scrub_customer_webhook_payloads`, templates `lifecycle/account_delete.html`, `account_deleted.html`,
   `docs/legal/LIFECYCLE_AND_DELETION_PROPOSAL.md`, `test_account_deletion.py`. Αλλαγές: `views.py`, `urls.py`,
