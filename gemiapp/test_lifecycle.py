@@ -177,6 +177,55 @@ class WelcomeEmailTests(LifecycleTestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(LifecycleEmail.objects.get(kind="e2").status, "sent")
 
+    def _social(self, email):
+        from allauth.socialaccount.models import SocialAccount, SocialLogin
+        from django.contrib.sessions.backends.db import SessionStore
+        from django.test import RequestFactory
+
+        from .adapters import SocialAccountAdapter
+
+        request = RequestFactory().get("/accounts/google/login/callback/")
+        request.session = SessionStore()
+        login = SocialLogin(user=User(email=email, username=email),
+                            account=SocialAccount(provider="google", uid=f"uid-{email}"))
+        return SocialAccountAdapter(), request, login
+
+    def test_new_social_signup_gets_the_welcome_once(self):
+        adapter, request, login = self._social("google@example.gr")
+        with run_tasks_inline(), self.captureOnCommitCallbacks(execute=True):
+            user = adapter.save_user(request, login)
+        self.assertEqual(self.sent_subjects(), ["Καλώς ήρθες στο Gemi Leads — ένα βήμα για να ξεκινήσεις"])
+        self.assertEqual(LifecycleEmail.objects.get(kind="e2").user, user)
+        # A later password verification (or a second social sign-in) never sends another.
+        with run_tasks_inline(), self.captureOnCommitCallbacks(execute=True):
+            from .adapters import _welcome
+            _welcome(user)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_social_login_activating_an_unverified_account_gets_the_welcome(self):
+        existing = User.objects.create_user("cold@example.gr", "cold@example.gr", "StrongPass123", is_active=False)
+        adapter, request, login = self._social("cold@example.gr")
+        with patch("allauth.socialaccount.models.SocialLogin.connect"), run_tasks_inline(), \
+                self.captureOnCommitCallbacks(execute=True):
+            adapter.pre_social_login(request, login)
+        self.assertEqual(self.kinds(), ["e2"])
+        self.assertEqual(LifecycleEmail.objects.get(kind="e2").user, existing)
+
+    def test_social_login_of_an_active_account_sends_nothing(self):
+        User.objects.create_user("warm@example.gr", "warm@example.gr", "StrongPass123")
+        adapter, request, login = self._social("warm@example.gr")
+        with patch("allauth.socialaccount.models.SocialLogin.connect"), run_tasks_inline(), \
+                self.captureOnCommitCallbacks(execute=True):
+            adapter.pre_social_login(request, login)
+        self.assertEqual(self.kinds(), [])
+
+    @override_settings(LIFECYCLE_EMAILS_ENABLED=False)
+    def test_social_signup_with_flag_off_reserves_nothing(self):
+        adapter, request, login = self._social("off@example.gr")
+        with self.captureOnCommitCallbacks(execute=True):
+            adapter.save_user(request, login)
+        self.assertEqual(LifecycleEmail.objects.count(), 0)
+
     def test_paid_welcome_once_per_tier(self):
         self.checkout()
         self.checkout()                                             # duplicate webhook
