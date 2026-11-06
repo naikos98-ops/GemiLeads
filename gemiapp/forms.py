@@ -168,3 +168,20 @@ class LeadNotesForm(forms.ModelForm):
         if len(notes) > 5000:
             raise forms.ValidationError("Οι σημειώσεις μπορούν να έχουν έως 5.000 χαρακτήρες.")
         return notes
+
+
+class ExitSurveyForm(forms.Form):
+    """Five fixed answers + free text. Shared by the cancellation question (E8) and account deletion."""
+
+    reasons = forms.MultipleChoiceField(
+        label="Τι δεν σου κάλυψε;", required=False, widget=forms.CheckboxSelectMultiple,
+        choices=[],
+    )
+    text = forms.CharField(label="Θες να πεις κάτι περισσότερο;", required=False, max_length=2000,
+                           widget=forms.Textarea(attrs={"rows": 4}))
+
+    def __init__(self, *args, **kwargs):
+        from .models import ExitSurvey
+
+        super().__init__(*args, **kwargs)
+        self.fields["reasons"].choices = ExitSurvey.REASONS

@@ -115,7 +115,7 @@ class SchemaTests(NotificationTestCase):
     def test_the_migration_is_one_additive_create_model_without_backfill(self):
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0060_support_message")
+                         "0061_lifecycle_foundations")
         migration = loader.disk_migrations[("gemiapp", "0054_organization_notification")]
         self.assertEqual(migration.dependencies, [("gemiapp", "0053_organization_audit_event")])
         self.assertEqual([(type(op).__name__, op.name) for op in migration.operations],

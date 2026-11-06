@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Τι δεν σου κάλυψε; · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+{% block content %}
+<div class="product-workspace">
+  <div class="product-pagehead">
+    <div>
+      <p class="product-eyebrow">FEEDBACK</p>
+      <h1>Τι δεν σου κάλυψε;</h1>
+    </div>
+  </div>
+  <div class="product-settings-panel">
+    <p style="margin: 0 0 16px; color: var(--product-muted);">Μία ερώτηση μόνο. Την απάντηση τη διαβάζω εγώ — με βοηθά να κάνω το Gemi Leads καλύτερο.</p>
+    <form method="post" class="product-feedback-form">
+      {% csrf_token %}
+      <input type="hidden" name="context" value="{{ context_value }}">
+      {% include "lifecycle/_churn_feedback_fields.html" %}
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="submit" class="product-ink-button">Αποστολή</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

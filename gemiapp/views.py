@@ -31,6 +31,7 @@ from .forms import CustomerRadarForm, DigestPreferenceForm, LeadNotesForm, LeadS
 from .ingestion.kad_catalogue import kad_picker_queryset
 from .kad import normalize_kad_code, normalize_kad_search
 from .legacy_radar_sync import mirror_legacy_radar
+from .lifecycle import enqueue as enqueue_lifecycle, profile_for, user_from_unsubscribe_token
 from .reference_search import KINDS, reference_options
 from .models import (
     ActivityCode,
@@ -261,8 +262,12 @@ def verify_email(request, uidb64, token):
         user = None
 
     if user is not None and default_token_generator.check_token(user, token):
+        first_verification = not user.is_active
         user.is_active = True
         user.save()
+        if first_verification:
+            # E2 welcome, reserved once per user (dedupe e2:<id>) and sent by a worker; never inline.
+            enqueue_lifecycle("e2", user, f"e2:{user.pk}", {})
         login(request, user, backend=PASSWORD_BACKEND)
         queue_analytics_event(request, "email_verified")
         messages.success(request, "Το email σου επιβεβαιώθηκε! Καλώς ήρθες στο Gemi Leads.")
@@ -564,7 +569,63 @@ def settings_view(request):
         form.save()
         messages.success(request, "Οι προτιμήσεις email αποθηκεύτηκαν.")
         return redirect("settings")
-    return render(request, "settings.html", {"form": form, "preference": preference})
+    return render(request, "settings.html", {
+        "form": form, "preference": preference, "lifecycle_profile": profile_for(request.user),
+    })
+
+
+@login_required
+@require_POST
+def settings_reminders(request):
+    """«Συμβουλές και υπενθυμίσεις»: the user's own switch for reminder emails (independent of the digest)."""
+    profile = profile_for(request.user)
+    profile.reminders_enabled = request.POST.get("reminders_enabled") == "1"
+    profile.save(update_fields=["reminders_enabled", "updated_at"])
+    messages.success(request, "Οι συμβουλές και υπενθυμίσεις ενεργοποιήθηκαν." if profile.reminders_enabled
+                     else "Δεν θα λαμβάνεις πλέον συμβουλές και υπενθυμίσεις.")
+    return redirect("settings")
+
+
+def lifecycle_unsubscribe(request, token):
+    """The signed link in every reminder email: turns reminders off, never touches the digest.
+
+    GET shows a confirmation button and only the POST changes anything, so a mail client or a link
+    scanner prefetching the URL cannot unsubscribe anyone.
+    """
+    user = user_from_unsubscribe_token(token)
+    if user is None:
+        return render(request, "unsubscribed.html", {"error": "Ο σύνδεσμος είναι άκυρος ή έχει λήξει."})
+    if request.method == "POST":
+        profile = profile_for(user)
+        profile.reminders_enabled = False
+        profile.save(update_fields=["reminders_enabled", "updated_at"])
+        return render(request, "unsubscribed.html", {
+            "message": "Δεν θα λαμβάνεις πλέον συμβουλές και υπενθυμίσεις. Το πρωινό email και τα email "
+                       "του λογαριασμού σου (π.χ. για τη συνδρομή) δεν αλλάζουν. Μπορείς να τις ενεργοποιήσεις "
+                       "ξανά από τις Ρυθμίσεις.",
+        })
+    return render(request, "lifecycle/unsubscribe_confirm.html", {"token": token})
+
+
+@login_required
+def churn_feedback(request):
+    """«Τι δεν σου κάλυψε;» -- linked from the cancellation email (E8); the deletion flow reuses the form."""
+    from .forms import ExitSurveyForm
+    from .models import ExitSurvey
+    from .subscription_history import user_ref_for
+
+    context_value = request.GET.get("context") or request.POST.get("context") or "cancel"
+    if context_value not in dict(ExitSurvey.CONTEXTS):
+        context_value = "cancel"
+    form = ExitSurveyForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        ExitSurvey.objects.create(
+            user=request.user, user_ref=user_ref_for(request.user), context=context_value,
+            reasons=form.cleaned_data["reasons"], text=form.cleaned_data["text"],
+        )
+        messages.success(request, "Ευχαριστώ — η απάντησή σου καταγράφηκε.")
+        return redirect("settings")
+    return render(request, "lifecycle/churn_feedback.html", {"form": form, "context_value": context_value})
 
 
 @login_required

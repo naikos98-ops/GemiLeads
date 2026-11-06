@@ -27,6 +27,14 @@ SCHEDULES = [
     # batch itself hit the cap -- so a backlog sat untouched until some *later* batch
     # overflowed and dragged part of it along. This sweeps every pending row, no matter which
     # batch it came from. Runs before the outreach working day so a full cap is available.
+    # Lifecycle emails (gemiapp.lifecycle): the daily job at 09:30, after the 09:00 digest. "requires": no row exists
+    # while LIFECYCLE_EMAILS_ENABLED is off (the default), so the merge alone schedules nothing.
+    {
+        "func": "gemiapp.tasks.send_lifecycle_emails_task",
+        "name": "Lifecycle Emails",
+        "cron": "30 9 * * *",
+        "requires": "gemiapp.lifecycle.lifecycle_enabled",
+    },
     {
         "func": "gemiapp.tasks.drain_pending_outreach_task",
         "name": "Drain Pending Outreach",

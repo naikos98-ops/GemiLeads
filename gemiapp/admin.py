@@ -752,3 +752,49 @@ class OpportunityScoreEvidenceAdmin(OrganizationReadOnlyAdmin):
                     "region_source_id", "legal_type_source_id", "age_seconds")
     list_filter = ("kind",)
     list_select_related = ("component",)
+
+
+from .models import ExitSurvey, LifecycleEmail, SubscriptionPeriod, UserLifecycleProfile  # noqa: E402
+
+
+@admin.register(SubscriptionPeriod)
+class SubscriptionPeriodAdmin(admin.ModelAdmin):
+    list_display = ("user_ref", "user", "source", "tier", "started_at", "ended_at", "end_reason")
+    list_filter = ("source", "tier", "end_reason")
+    readonly_fields = [f.name for f in SubscriptionPeriod._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(LifecycleEmail)
+class LifecycleEmailAdmin(admin.ModelAdmin):
+    list_display = ("kind", "dedupe_key", "user", "status", "attempts", "created_at", "sent_at")
+    list_filter = ("kind", "status")
+    readonly_fields = [f.name for f in LifecycleEmail._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(UserLifecycleProfile)
+class UserLifecycleProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "reminders_enabled", "do_not_contact", "updated_at")
+    list_filter = ("reminders_enabled", "do_not_contact")
+    readonly_fields = ("ref", "updated_at")
+
+
+@admin.register(ExitSurvey)
+class ExitSurveyAdmin(admin.ModelAdmin):
+    list_display = ("context", "user_ref", "reasons", "created_at")
+    list_filter = ("context",)
+    readonly_fields = [f.name for f in ExitSurvey._meta.fields]

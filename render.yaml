@@ -46,6 +46,11 @@ services:
         value: info@gemileads.gr
       - key: SUPPORT_INBOX
         value: info@gemileads.gr
+      # Lifecycle emails stay off until the Founder enables them (and sets LIFECYCLE_START_AT).
+      - key: LIFECYCLE_EMAILS_ENABLED
+        value: "0"
+      - key: LIFECYCLE_START_AT
+        sync: false
       - key: BREVO_WEBHOOK_TOKEN
         sync: false
       - key: OUTREACH_ENABLED

@@ -125,6 +125,7 @@ TEMPLATES = [{
         "django.contrib.messages.context_processors.messages",
         "gemiapp.context_processors.global_stats",
         "gemiapp.context_processors.social_login_providers",
+        "gemiapp.context_processors.radar_nudge",
         # Gemi Leads 2.0: the signed-in user's organization workspaces for the navigation (lazy; no query unless
         # the product navigation is rendered).
         "gemiapp.organization_views.workspace_navigation",
@@ -265,6 +266,12 @@ EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "info@gemileads.gr")
 # Where in-app «Βοήθεια» messages are delivered (gemiapp.support). Each message is stored first; this inbox only
 # receives the notification, with Reply-To set to the user who wrote it.
 SUPPORT_INBOX = os.getenv("SUPPORT_INBOX", "info@gemileads.gr")
+# Lifecycle emails (gemiapp.lifecycle): welcome, payment, cancellation and reminder emails. Off by default: the merge
+# sends nothing until the Founder turns it on. LIFECYCLE_START_AT (ISO 8601, e.g. 2026-11-10T09:00:00+02:00) is the
+# moment they were turned on; time-based triggers only count events after it, so enabling never mails anyone about
+# something that happened before. Without it, no time-based email is ever produced.
+LIFECYCLE_EMAILS_ENABLED = os.getenv("LIFECYCLE_EMAILS_ENABLED", "0") == "1"
+LIFECYCLE_START_AT = os.getenv("LIFECYCLE_START_AT", "").strip()
 # The sender for error mail, which is what AdminEmailHandler puts on an operator alert. Django's default is
 # root@localhost: the Brevo relay accepted it and returned success, then dropped the message, so the alert
 # tested in production never arrived and nothing reported a failure. Defaults to the address the digests

@@ -14,7 +14,7 @@
   {# Compiled by the Tailwind CLI (npm run build:css). #}
   {# The CDN build shipped a 120 KB JIT compiler that blocked the first paint. #}
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
-  <link rel="stylesheet" href="{% static 'css/product-ui.css' %}?v=20261106-account-menu">
+  <link rel="stylesheet" href="{% static 'css/product-ui.css' %}?v=20261106-lifecycle">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -117,7 +117,7 @@
     {% include "organizations/_transition_nav.html" with mobile=False %}
     {% else %}
     <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><span>MARKET</span><b>Signals</b><small>new registrations</small></a>
-    <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name and 'organization' not in request.resolver_match.url_name %}aria-current="page"{% endif %}><span>CRITERIA</span><b>Radars</b><small>matching definitions</small></a>
+    <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name and 'organization' not in request.resolver_match.url_name %}aria-current="page"{% endif %}{% if radar_nudge %} class="radar-nudge" aria-label="Radars — δεν έχεις στήσει ακόμη" data-radar-nudge{% endif %}><span>CRITERIA</span><b>Radars</b><small>matching definitions</small></a>
     <a href="{% url 'lead_list' %}" {% if request.resolver_match.url_name == 'lead_list' or request.resolver_match.url_name == 'company_detail' %}aria-current="page"{% endif %}><span>OUTCOME</span><b>Leads</b><small>qualified businesses</small></a>
     <a href="{% url 'settings' %}" {% if request.resolver_match.url_name == 'settings' %}aria-current="page"{% endif %}><span>SYSTEM</span><b>Settings</b><small>plan &amp; digest</small></a>
     {% endif %}
@@ -186,7 +186,7 @@
     {% include "organizations/_transition_nav.html" with mobile=True %}
     {% else %}
     <a href="{% url 'dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}>Signals</a>
-    <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name and 'organization' not in request.resolver_match.url_name %}aria-current="page"{% endif %}>Radars</a>
+    <a href="{% url 'radar_list' %}" {% if 'radar' in request.resolver_match.url_name and 'organization' not in request.resolver_match.url_name %}aria-current="page"{% endif %}{% if radar_nudge %} class="radar-nudge" aria-label="Radars — δεν έχεις στήσει ακόμη" data-radar-nudge{% endif %}>Radars</a>
     <a href="{% url 'lead_list' %}" {% if request.resolver_match.url_name == 'lead_list' or request.resolver_match.url_name == 'company_detail' %}aria-current="page"{% endif %}>Leads</a>
     <a href="{% url 'settings' %}" {% if request.resolver_match.url_name == 'settings' %}aria-current="page"{% endif %}>Settings</a>
     {% with ws=workspace_nav.home %}{% if ws %}
@@ -196,7 +196,7 @@
   </nav>
   {% include "includes/support_widget.html" %}
   {% endif %}
-  <script src="{% static 'js/app.js' %}?v=20261106-account-menu"></script>
+  <script src="{% static 'js/app.js' %}?v=20261106-lifecycle"></script>
   {% include "includes/analytics.html" %}
   {% block scripts %}{% endblock %}
 </body></html>

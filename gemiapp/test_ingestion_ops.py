@@ -492,6 +492,8 @@ class ScheduleTests(TestCase):
             "gemiapp.tasks.run_intraday_pipeline_task": "0 8,11,14,17,20,23 * * *",
             "gemiapp.tasks.drain_pending_outreach_task": "37 7 * * *",
             "gemiapp.tasks.generate_task_due_notifications_task": "0 8 * * *",
+            # Lifecycle emails (2026-11-06): gated by LIFECYCLE_EMAILS_ENABLED, off by default, so no row exists.
+            "gemiapp.tasks.send_lifecycle_emails_task": "30 9 * * *",
         })
         scheduled = " ".join(entry["func"] for entry in gemi_apps.SCHEDULES)
         for unscheduled in ("hydrat", "discovery_v2", "g4_shadow", "company_refresh", "reference_data"):

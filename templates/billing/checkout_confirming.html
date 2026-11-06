@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Η πληρωμή επιβεβαιώνεται · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+{% block head %}{% if refresh %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block content %}
+<div class="product-workspace">
+  <div class="product-pagehead">
+    <div>
+      <p class="product-eyebrow">BILLING</p>
+      <h1>Η πληρωμή επιβεβαιώνεται…</h1>
+    </div>
+  </div>
+  <div class="product-nudge-notice" role="status">
+    {% if refresh %}
+    <p>Η Stripe ολοκλήρωσε την πληρωμή και περιμένουμε την επιβεβαίωσή της. Η σελίδα ανανεώνεται μόνη της σε λίγα δευτερόλεπτα.</p>
+    {% else %}
+    <p>Η επιβεβαίωση αργεί λίγο περισσότερο από το συνηθισμένο. Η συνδρομή σου θα ενεργοποιηθεί μόλις έρθει — θα δεις το πλάνο σου στις Ρυθμίσεις. Αν δεν εμφανιστεί σε λίγα λεπτά, πάτα «Βοήθεια».</p>
+    <a href="{% url 'settings' %}" class="product-ink-button">Στις Ρυθμίσεις</a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
