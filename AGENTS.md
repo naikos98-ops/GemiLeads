@@ -165,6 +165,25 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Lifecycle PR 2 — self-service διαγραφή λογαριασμού + E15 + καθαρισμός payloads (2026-11-06, branch
+  `claude/lifecycle-pr2-account-deletion` πάνω στο PR 1, ΟΧΙ στο `main`, καμία migration):**
+  `gemiapp/account_deletion.py`. Settings → «Διαγραφή λογαριασμού» → `/settings/delete/`: τι διαγράφεται / τι κρατάμε,
+  προαιρετικό «Γιατί φεύγεις;» (ίδιο `ExitSurveyForm` με το E8), επιβεβαίωση με κωδικό (μόνο social login: το email).
+  Σειρά: (1) ενεργή Stripe συνδρομή → `stripe.Subscription.cancel(prorate=False, invoice_now=False)`· αν η Stripe
+  αρνηθεί, **τίποτα δεν διαγράφεται**· (2) ανοιχτές περίοδοι → `account_deleted` (μετά SET_NULL, μένει `user_ref`)·
+  (3) redaction των προσωπικών πεδίων (`PERSONAL_KEYS`) σε όσα `StripeWebhookEvent` αναφέρουν το customer id ή το email
+  (ids/ποσά/ημερομηνίες μένουν), διαγραφή των `EmailEngagementEvent` της διεύθυνσης, `AdminAuditLog.target_repr` →
+  `deleted:<ref>`· (4) διαγραφή User — CASCADE: UserSubscription, DigestPreference/Delivery, CustomerRadar (+RadarMatch),
+  UserCompanyLead, SupportMessage, UserLifecycleProfile, OrganizationMember, allauth EmailAddress/SocialAccount, admin
+  LogEntry· SET_NULL: SubscriptionPeriod, LifecycleEmail, ExitSurvey, AdminAuditLog.admin_user· μένουν (δεν συνδέονται):
+  EmailDeliverySuppression, OutreachSuppression. Οργανισμός με μόνο μέλος τον χρήστη διαγράφεται· με άλλα μέλη → άρνηση
+  (μεταφορά ιδιοκτησίας μέσω Βοήθειας)· (5) E15: γραμμή χωρίς διεύθυνση, η διεύθυνση μόνο στα args του task με
+  `save=False`, χωρίς retry· (6) logout. Webhooks μετά τη διαγραφή: graceful no-op (το `checkout.session.completed` για
+  ανύπαρκτο χρήστη πλέον επιστρέφει χωρίς Stripe call). Superadmin: ίδια ροή (`user_delete_account`, πληκτρολόγηση email,
+  AdminAuditLog `delete_account`, όχι superusers). Εντολή `scrub_customer_webhook_payloads --email/--customer [--apply]`
+  (για τον πελάτη της 5/11). Νομικά: μόνο πρόταση στο `docs/legal/LIFECYCLE_AND_DELETION_PROPOSAL.md` — **όχι** εφαρμογή.
+  10 tests (`test_account_deletion.py`)· **2.649 tests OK**· `check`, `makemigrations --check` καθαρά.
+
 - **Lifecycle emails PR 1 — θεμέλια + E2/E4/E5/E8/E10 + Radar nudge (2026-11-06, branch `claude/lifecycle-pr1-foundations`
   πάνω στο PR 0, ΟΧΙ στο `main`, `LIFECYCLE_EMAILS_ENABLED=0`):**
   - **Migration `0061_lifecycle_foundations`:** `UserLifecycleProfile` (σταθερό ανώνυμο `ref`, `reminders_enabled`,
@@ -2497,7 +2516,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 ## Τι απομένει
 
 - **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0 και PR 1 ανοιχτά, περιμένουν
-  έγκριση Founder· ακολουθούν PR 2–3. Μετά το merge του PR 1: `backfill_subscription_periods` (dry-run → έγκριση →
+  έγκριση Founder· PR 2 ανοιχτό (διαγραφή)· ακολουθεί PR 3. Για τον πελάτη της 5/11 (μετά το merge του PR 2):
+  `scrub_customer_webhook_payloads --email … --customer …` (dry-run → `--apply`) και διαγραφή από το Superadmin.
+  Έγκριση των προτεινόμενων κειμένων Όρων/Απορρήτου. Μετά το merge του PR 1: `backfill_subscription_periods` (dry-run → έγκριση →
   `--apply`), `LIFECYCLE_START_AT` + `LIFECYCLE_EMAILS_ENABLED=1` στο Render, `send_lifecycle_emails --dry-run` → report
   στον Founder πριν την πρώτη πραγματική εκτέλεση. Αποφάσεις: αυτόματη παύση Radars σε downgrade (για E7)· E2 για
   χρήστες social login (δεν περνούν από verify)· πεδίο χρήσης φίλτρων για E3.
@@ -2782,6 +2803,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-06 — PR 2 Self-service διαγραφή + E15.** Νέα: `account_deletion.py`, εντολή
+  `scrub_customer_webhook_payloads`, templates `lifecycle/account_delete.html`, `account_deleted.html`,
+  `docs/legal/LIFECYCLE_AND_DELETION_PROPOSAL.md`, `test_account_deletion.py`. Αλλαγές: `views.py`, `urls.py`,
+  `billing.py` (checkout για ανύπαρκτο χρήστη), `lifecycle_content.py` (E15), `tasks.py`, `superadmin/*`, `settings.html`,
+  `product-ui.css`, `preview_lifecycle_emails`. 2.649 tests OK.
 - **2026-11-06 — PR 1 Lifecycle θεμέλια + Κύμα 1 + Radar nudge.** Νέα: `subscription_history.py`, `lifecycle.py`,
   `lifecycle_content.py`, `lifecycle_triggers.py`, εντολές `send_lifecycle_emails`, `preview_lifecycle_emails`,
   `backfill_subscription_periods`, migration `0061`, templates `emails/lifecycle*`, `lifecycle/*`,

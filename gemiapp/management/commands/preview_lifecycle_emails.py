@@ -15,7 +15,7 @@ from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from gemiapp.lifecycle_content import BUILDERS
+from gemiapp.lifecycle_content import BUILDERS, build_e15
 from gemiapp.models import LifecycleEmail, SubscriptionPeriod, UserSubscription
 
 
@@ -33,7 +33,7 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         out = Path(opts["out"])
         out.mkdir(parents=True, exist_ok=True)
-        kinds = opts["kind"] or sorted(BUILDERS, key=lambda k: int(k[1:]))
+        kinds = opts["kind"] or sorted([*BUILDERS, "e15"], key=lambda k: int(k[1:]))
         written = []
         try:
             with transaction.atomic():
@@ -66,7 +66,7 @@ class Command(BaseCommand):
                 period.save()
             row = LifecycleEmail(kind=kind, user=user, dedupe_key=f"preview:{kind}", params=params,
                                  brevo_tag=f"lifecycle:{kind}:preview")
-            content = BUILDERS[kind](user, params, now)
+            content = build_e15("Μαρία") if kind == "e15" else BUILDERS[kind](user, params, now)
             if content is None:
                 self.stderr.write(f"{kind}: not applicable for the sample account")
                 continue

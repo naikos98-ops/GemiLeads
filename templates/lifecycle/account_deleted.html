@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block title %}Ο λογαριασμός διαγράφηκε · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+{% block content %}
+<div class="auth-shell">
+  <div class="auth-head">
+    <h1>Ο λογαριασμός σου διαγράφηκε</h1>
+    <p>Αποσυνδέθηκες. Δεν θα λάβεις άλλα email από εμάς, εκτός από μία επιβεβαίωση της διαγραφής.</p>
+  </div>
+  <div class="auth-actions">
+    <a href="{% url 'home' %}" class="product-ink-button" style="width:100%;">Επιστροφή στην αρχική</a>
+  </div>
+</div>
+{% endblock %}

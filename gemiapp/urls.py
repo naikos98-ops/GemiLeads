@@ -14,6 +14,7 @@ urlpatterns = [
     path("dashboard/", views.dashboard, name="dashboard"),
     path("settings/", views.settings_view, name="settings"),
     path("settings/reminders/", views.settings_reminders, name="settings_reminders"),
+    path("settings/delete/", views.account_delete, name="account_delete"),
     path("feedback/leaving/", views.churn_feedback, name="churn_feedback"),
     path("reminders/unsubscribe/<token>/", views.lifecycle_unsubscribe, name="lifecycle_unsubscribe"),
     path("support/", support.support_message_create, name="support_message_create"),

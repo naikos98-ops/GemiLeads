@@ -190,6 +190,20 @@
     </div>
   </div>
 
+  {% if not target_user.is_superuser %}
+  <div class="admin-panel">
+    <div class="flex items-center justify-between border-b border-navy-900/5 pb-3">
+      <h3 class="font-extrabold text-navy-950">Διαγραφή λογαριασμού</h3>
+    </div>
+    <p class="text-xs text-navy-700/50">Ίδια ροή με τη διαγραφή από τα Settings: άμεση ακύρωση Stripe (χωρίς αυτόματη επιστροφή), κλείσιμο ιστορικού, καθαρισμός payloads, διαγραφή, E15. Καταγράφεται στο Audit Log.</p>
+    <form action="{% url 'superadmin:user_delete_account' target_user.id %}" method="post" onsubmit="return confirm('Οριστική διαγραφή του λογαριασμού;');">
+      {% csrf_token %}
+      <input type="email" name="confirm_email" required placeholder="Γράψε {{ target_user.email }}" aria-label="Email επιβεβαίωσης">
+      <button type="submit" class="admin-btn">Οριστική διαγραφή</button>
+    </form>
+  </div>
+  {% endif %}
+
   <!-- User Radars & Recent Leads Grid -->
   <div class="grid gap-6 lg:grid-cols-2">
     <!-- User Radars Card -->

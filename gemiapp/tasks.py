@@ -219,6 +219,13 @@ def send_lifecycle_email_task(row_id):
     return deliver(int(row_id)).status
 
 
+def send_account_deleted_email_task(row_id, email, first_name=""):
+    """E15 after an account deletion. Enqueued with save=False: the address is not kept in task history."""
+    from gemiapp.account_deletion import send_account_deleted_email
+
+    return send_account_deleted_email(int(row_id), email, first_name)
+
+
 def send_lifecycle_emails_task():
     """The daily lifecycle job (after the 09:00 digest): see gemiapp.lifecycle.run_daily."""
     from gemiapp.lifecycle import run_daily
