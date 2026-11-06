@@ -436,7 +436,21 @@
       }
     });
   };
+  // Phone account menu (<details>): close on Escape and on a click outside it.
+  const initAccountMenu = () => {
+    const menu = document.querySelector('[data-account-menu]');
+    if (!menu) return;
+    document.addEventListener('click', (event) => {
+      if (menu.open && !menu.contains(event.target)) menu.open = false;
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && menu.open) {
+        menu.open = false;
+        menu.querySelector('summary')?.focus();
+      }
+    });
+  };
   setTimeout(() => document.querySelectorAll('[data-toast]').forEach(x => { x.style.opacity = '0'; setTimeout(() => x.remove(), 300); }), 3500);
-  document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); initReferencePickers(); centerMobileNav(); initOpportunityPanels(); initSupport(); });
+  document.addEventListener('DOMContentLoaded', () => { reveal(); counters(); window.renderSignalChart(); sizeCompanyTable(); initKadPickers(); initReferencePickers(); centerMobileNav(); initOpportunityPanels(); initSupport(); initAccountMenu(); });
   window.addEventListener('resize', sizeCompanyTable);
 })();

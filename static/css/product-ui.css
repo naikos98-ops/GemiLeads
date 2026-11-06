@@ -154,6 +154,88 @@ body.product-body {
   color: var(--product-ink);
 }
 
+/* Phone account menu (shown only at <=900px, where .product-account is hidden). */
+.product-account-menu {
+  display: none;
+  position: relative;
+  height: 100%;
+}
+
+.product-account-menu > summary {
+  list-style: none;
+  height: 100%;
+  min-width: 52px;
+  display: grid;
+  place-items: center;
+  border-left: 1px solid var(--product-ink);
+  color: var(--product-ink);
+  cursor: pointer;
+}
+
+.product-account-menu > summary::-webkit-details-marker { display: none; }
+
+.product-account-menu > summary:focus-visible {
+  outline: 2px solid var(--product-ink);
+  outline-offset: -4px;
+}
+
+.product-account-menu[open] > summary {
+  box-shadow: inset 0 -3px var(--product-amber);
+}
+
+.product-account-panel {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 60;
+  width: min(280px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--product-ink);
+  border-top: 0;
+  background: var(--product-white);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-meta);
+  font-weight: 600;
+}
+
+.product-account-panel > * {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--product-line);
+}
+
+.product-account-panel > *:last-child { border-bottom: 0; }
+
+.product-account-panel-email {
+  color: var(--product-muted);
+  overflow-wrap: anywhere;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+}
+
+.product-account-panel a {
+  color: #6b21a8;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.product-account-panel form { padding: 0; }
+
+.product-account-panel button {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: var(--product-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
 /* SIDE RAIL NAVIGATION */
 .product-rail {
   position: fixed;
@@ -1984,6 +2066,10 @@ body.product-body {
   .product-rail,
   .product-account {
     display: none;
+  }
+
+  .product-account-menu {
+    display: block;
   }
 
   .product-main {
