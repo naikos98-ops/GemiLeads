@@ -207,7 +207,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     αποθηκευμένα και ξαναρχίζουν» αντί «σε παύση» (δεν παύονται τεχνικά).
   - 41 tests (`test_lifecycle.py`)· **2.639 tests OK**· `check`, `makemigrations --check` καθαρά· κύκλος 0060↔0061 OK.
 
-- **Mobile account menu (2026-11-06, PR 0, branch `claude/mobile-account-menu`, ΟΧΙ στο `main`):** στο ≤900px το
+- **Mobile account menu (2026-11-06, PR #5 merged `930ec0b` με έγκριση Founder, deployed σε production· live assets
+  `v=20261106-account-menu`):** στο ≤900px το
   `.product-account` είναι κρυφό, άρα στο κινητό δεν υπήρχε «Έξοδος» ούτε SUPERADMIN. Νέο `<details
   class="product-account-menu">` στη δεξιά στήλη του topbar (μόνο ≤900px, ίδιο σε legacy και workspace nav): email ·
   SUPERADMIN μόνο για staff/superuser · «Έξοδος» (POST + CSRF). Native, λειτουργεί χωρίς JS· το `app.js` κλείνει με
@@ -2497,7 +2498,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0 και PR 1 ανοιχτά, περιμένουν
+- **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0 merged και deployed (2026-11-06)· PR 1 ανοιχτό, περιμένει
   έγκριση Founder· ακολουθούν PR 2–3. Μετά το merge του PR 1: `backfill_subscription_periods` (dry-run → έγκριση →
   `--apply`), `LIFECYCLE_START_AT` + `LIFECYCLE_EMAILS_ENABLED=1` στο Render, `send_lifecycle_emails --dry-run` → report
   στον Founder πριν την πρώτη πραγματική εκτέλεση. Αποφάσεις Founder (2026-11-06): αυτόματη παύση Radars σε downgrade → ναι (PR 3)·
@@ -2783,6 +2784,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-06 — PR #5 (mobile account menu) merged `930ec0b` και deployed** με έγκριση Founder· live έλεγχος
+  HTTP (assets `20261106-account-menu`, `/dashboard/` → 302). Η διαγραφή του branch έκλεισε προσωρινά το #6 (ήταν η βάση του)·
+  επανήλθε, το #6 βασίζεται πλέον στο `main`. Σε stacked PRs: πρώτα retarget, μετά διαγραφή branch.
 - **2026-11-06 — PR 1: E2 και για social login.** `adapters.py` (`save_user`, ενεργοποίηση στο `pre_social_login`),
   4 tests στο `test_lifecycle.py`.
 - **2026-11-06 — PR 1 Lifecycle θεμέλια + Κύμα 1 + Radar nudge.** Νέα: `subscription_history.py`, `lifecycle.py`,
