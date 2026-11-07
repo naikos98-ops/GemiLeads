@@ -55,7 +55,7 @@
 
 ## 4. Ενεργά development tasks
 
-- **Τηλέφωνο ΓΕΜΗ στα CSV** (μόνο σε branch `claude/csv-gemi-phone`, PR #12 ανοιχτό): νέα στήλη σε όλα τα CSV· το
+- **Τηλέφωνο ΓΕΜΗ στα CSV** (PR #12 merged `108c1fd`, **deployed σε production** [ΕΠΑΛΗΘ. Render deploy success]): νέα στήλη σε όλα τα CSV· το
   τηλέφωνο ατομικών επιχειρήσεων δεν εμφανίζεται πουθενά (CSV, Dossier, Opportunity) [ΕΠΑΛΗΘ. tests].
 - **Radar nudge fix** (PR #10 merged `7ef5689`, **deployed σε production** [ΕΠΑΛΗΘ. Render deploy success]): το μωβ «Radars», το E5 και το
   redirect μετά το checkout εμφανίζονται πλέον και σε όσους έχουν μόνο το αυτόματο Radar χωρίς κριτήρια [ΕΠΑΛΗΘ. tests].

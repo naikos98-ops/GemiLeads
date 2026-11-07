@@ -165,8 +165,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
-- **Τηλέφωνο ΓΕΜΗ στα CSV, κρυφό για ατομικές παντού (2026-11-07, branch `claude/csv-gemi-phone`, ΟΧΙ στο `main`, καμία
-  migration):** αίτημα πελάτη Pro. Νέα στήλη «Τηλέφωνο ΓΕΜΗ» στο dashboard CSV, στο Leads CSV (και digest CSV) και στο
+- **Τηλέφωνο ΓΕΜΗ στα CSV, κρυφό για ατομικές παντού (2026-11-07, PR #12 merged `108c1fd` και deployed με έγκριση
+  Founder, καμία migration):** αίτημα πελάτη Pro. Νέα στήλη «Τηλέφωνο ΓΕΜΗ» στο dashboard CSV, στο Leads CSV (και digest CSV) και στο
   CSV του Radar. Πηγή ίδια με το Dossier (`raw_data["phone"]` μέσω `company_contact`, ποτέ `persons`). Κενό για
   ατομικές επιχειρήσεις (GEMI legalType id 16 ή λεκτικό «ΑΤΟΜΙΚ…») και για άγνωστη νομική μορφή (απόφαση Founder:
   το τηλέφωνο ατομικής είναι συνήθως προσωπικό). Ο ίδιος κανόνας (`company_contact.company_phones`) κρύβει το τηλέφωνο
@@ -2574,8 +2574,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Τηλέφωνο ΓΕΜΗ στα CSV / ατομικές:** έγκριση → merge/deploy του `claude/csv-gemi-phone` → απάντηση στον sanopoulos.
-  Νομικός έλεγχος για το τηλέφωνο εταιρειών στα CSV.
+- **Τηλέφωνο ΓΕΜΗ στα CSV:** deployed· μένει η απάντηση στον sanopoulos και νομικός έλεγχος για το τηλέφωνο εταιρειών
+  στα CSV.
 - **`LIFECYCLE_EMAILS_ENABLED` σε production = `0` (εύρημα 2026-11-07):** το Render Shell έδειξε `'0'`, ενώ είχε οριστεί `1`·
   το `render.yaml` το όριζε `value: "0"` και το Blueprint sync το επανέφερε. Μέχρι να ξαναοριστεί `1` κανένα lifecycle email
   (E2/E4/E8/E10/E15 κ.λπ.) δεν κρατήθηκε ούτε στάλθηκε. Διόρθωση: `sync: false` (branch `claude/render-lifecycle-sync-false`)·
@@ -2870,6 +2870,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-07 — PR #12 (τηλέφωνο ΓΕΜΗ στα CSV, κρυφό για ατομικές) merged `108c1fd` και deployed** με
+  έγκριση Founder· Render deploy success, `/login/` 200.
 - **2026-11-07 — Τηλέφωνο ΓΕΜΗ στα CSV, κρυφό για ατομικές παντού.** Αλλαγές: `gemiapp/company_contact.py`
   (`phone_may_be_shown`, `company_phones`, `phone_withheld`), `models.py` (`gemi_phones`, `gemi_phone_withheld`),
   `views.py` (`_gemi_phone_cell`, `raw_data` στο `.only()`), `templates/companies/detail.html`, νέο
