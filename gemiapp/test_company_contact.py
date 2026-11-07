@@ -79,7 +79,7 @@ class ExtractionTests(TestCase):
 
     def test_the_contact_read_model_uses_only_existing_company_fields_and_a_safe_website_link(self):
         company = Company(
-            raw_data=RECORD, email=" info@example.invalid ", website="https://example.invalid/path",
+            raw_data=RECORD, legal_type="ΙΚΕ", email=" info@example.invalid ", website="https://example.invalid/path",
             address=" ΛΕΩΦΟΡΟΣ ΔΟΚΙΜΗΣ 1 ", postal_code="14561", city="ΚΗΦΙΣΙΑ",
             municipality="ΚΗΦΙΣΙΑΣ", prefecture="ΑΤΤΙΚΗΣ",
         )
@@ -103,7 +103,7 @@ class DossierTests(TestCase):
     def setUp(self):
         self.company = Company.objects.create(
             gemi_number="990000000777", name="ΔΟΚΙΜΗ ΙΚΕ", incorporation_date=timezone.localdate(),
-            prefecture="ΑΤΤΙΚΗΣ", raw_data=copy.deepcopy(RECORD),
+            prefecture="ΑΤΤΙΚΗΣ", legal_type="ΙΚΕ", raw_data=copy.deepcopy(RECORD),
         )
 
     def login(self, entitled=True, name="member"):

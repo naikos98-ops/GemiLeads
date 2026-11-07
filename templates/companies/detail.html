@@ -57,7 +57,11 @@
               {% for phone in company.gemi_phones %}
                 <a href="{{ phone.tel_uri }}" style="color: var(--product-green); font-weight: 700;">☎ {{ phone.display }}</a>{% if not forloop.last %}<br>{% endif %}
               {% empty %}
-                <span style="color: var(--product-muted); font-weight: 400;">Δεν υπάρχει διαθέσιμο τηλέφωνο στο ΓΕΜΗ</span>
+                {% if company.gemi_phone_withheld %}
+                  <span style="color: var(--product-muted); font-weight: 400;">Δεν εμφανίζεται για ατομικές επιχειρήσεις</span>
+                {% else %}
+                  <span style="color: var(--product-muted); font-weight: 400;">Δεν υπάρχει διαθέσιμο τηλέφωνο στο ΓΕΜΗ</span>
+                {% endif %}
               {% endfor %}
             {% else %}
               <span style="color: #775215; font-size: var(--type-small); font-weight: 700;">🔒 Απαιτείται συνδρομή</span>

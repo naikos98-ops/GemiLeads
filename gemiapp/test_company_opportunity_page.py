@@ -296,7 +296,7 @@ class SafetyTests(PageTestCase):
         company = Company.objects.create(
             gemi_number="700300", name="Καθαρή Επωνυμία ΑΕ", incorporation_date=date(2026, 9, 1), address=STREET,
             postal_code="14561", city="ΚΗΦΙΣΙΑ", municipality="ΚΗΦΙΣΙΑΣ", prefecture="ΑΤΤΙΚΗΣ",
-            email=CONTACT_SENTINEL, vat_number=VAT, website="https://sentinel.example.invalid",
+            legal_type="ΑΕ", email=CONTACT_SENTINEL, vat_number=VAT, website="https://sentinel.example.invalid",
             raw_data={"phone": PHONE_SENTINEL, "email": CONTACT_SENTINEL,
                       "persons": [{"personName": PERSON_SENTINEL}], "street": STREET,
                       "html": "<b>raw-payload-marker</b>"},
@@ -540,6 +540,6 @@ class SafetyTests(PageTestCase):
             self.assertEqual(world(), before)
         client.assert_not_called()
         self.assertEqual(UserCompanyLead.objects.count(), 0)  # no legacy lead is created by viewing
-        self.assertEqual([p.tel_uri for p in Company(gemi_number="1", raw_data={"phone": "+30 2109990001"}).gemi_phones],
+        self.assertEqual([p.tel_uri for p in Company(gemi_number="1", legal_type="ΙΚΕ", raw_data={"phone": "+30 2109990001"}).gemi_phones],
                          ["tel:+302109990001"])
         self.assertEqual([p.display for p in extract_company_contact_phones({"phone": "2109990001"})], ["2109990001"])

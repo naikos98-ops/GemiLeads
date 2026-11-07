@@ -326,5 +326,5 @@ class PhoneRegressionTests(TestCase):
     def test_the_deployed_phone_bridge_is_unchanged_by_c4(self):
         self.assertEqual([p.display for p in extract_company_contact_phones({"phone": "2109990001", "persons": [
             {"phone": "6999990002"}]})], ["2109990001"])
-        company = Company(gemi_number="1", raw_data={"phone": "+30 2109990001"})
+        company = Company(gemi_number="1", legal_type="ΙΚΕ", raw_data={"phone": "+30 2109990001"})
         self.assertEqual([p.tel_uri for p in company.gemi_phones], ["tel:+302109990001"])

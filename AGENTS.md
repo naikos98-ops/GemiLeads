@@ -165,6 +165,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
+- **Τηλέφωνο ΓΕΜΗ στα CSV, κρυφό για ατομικές παντού (2026-11-07, branch `claude/csv-gemi-phone`, ΟΧΙ στο `main`, καμία
+  migration):** αίτημα πελάτη Pro. Νέα στήλη «Τηλέφωνο ΓΕΜΗ» στο dashboard CSV, στο Leads CSV (και digest CSV) και στο
+  CSV του Radar. Πηγή ίδια με το Dossier (`raw_data["phone"]` μέσω `company_contact`, ποτέ `persons`). Κενό για
+  ατομικές επιχειρήσεις (GEMI legalType id 16 ή λεκτικό «ΑΤΟΜΙΚ…») και για άγνωστη νομική μορφή (απόφαση Founder:
+  το τηλέφωνο ατομικής είναι συνήθως προσωπικό). Ο ίδιος κανόνας (`company_contact.company_phones`) κρύβει το τηλέφωνο
+  ατομικών και στο Dossier («Δεν εμφανίζεται για ατομικές επιχειρήσεις») και στο contact block της Opportunity. 6 tests
+  (`test_csv_gemi_phone.py`)· 2.692 tests OK, `check`, `makemigrations --check`.
+
 - **Νομικά κείμενα lifecycle/διαγραφής (2026-11-07, PR #9 merged και deployed με έγκριση Founder):** έγκριση
   Founder της πρότασης `docs/legal/LIFECYCLE_AND_DELETION_PROPOSAL.md`, εφαρμογή στα `templates/legal/terms.html`
   (διαγραφή από τις Ρυθμίσεις χωρίς αυτόματη επιστροφή, υπαναχώρηση πριν τη διαγραφή, παύση Radars σε μικρότερο πλάνο,
@@ -2566,6 +2574,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Τηλέφωνο ΓΕΜΗ στα CSV / ατομικές:** έγκριση → merge/deploy του `claude/csv-gemi-phone` → απάντηση στον sanopoulos.
+  Νομικός έλεγχος για το τηλέφωνο εταιρειών στα CSV.
 - **`LIFECYCLE_EMAILS_ENABLED` σε production = `0` (εύρημα 2026-11-07):** το Render Shell έδειξε `'0'`, ενώ είχε οριστεί `1`·
   το `render.yaml` το όριζε `value: "0"` και το Blueprint sync το επανέφερε. Μέχρι να ξαναοριστεί `1` κανένα lifecycle email
   (E2/E4/E8/E10/E15 κ.λπ.) δεν κρατήθηκε ούτε στάλθηκε. Διόρθωση: `sync: false` (branch `claude/render-lifecycle-sync-false`)·
@@ -2860,6 +2870,10 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-07 — Τηλέφωνο ΓΕΜΗ στα CSV, κρυφό για ατομικές παντού.** Αλλαγές: `gemiapp/company_contact.py`
+  (`phone_may_be_shown`, `company_phones`, `phone_withheld`), `models.py` (`gemi_phones`, `gemi_phone_withheld`),
+  `views.py` (`_gemi_phone_cell`, `raw_data` στο `.only()`), `templates/companies/detail.html`, νέο
+  `gemiapp/test_csv_gemi_phone.py`, fixtures τηλεφώνου σε 8 test modules (νομική μορφή ΙΚΕ/ΑΕ).
 - **2026-11-07 — `render.yaml`: `LIFECYCLE_EMAILS_ENABLED` → `sync: false`.** Αφορμή: χειροκίνητο E4 για τον user 16
   επέστρεψε `None`· το Shell έδειξε τη ρύθμιση `0`.
 - **2026-11-07 — PR #9 (νομικά κείμενα lifecycle/διαγραφής) merged και deployed** με έγκριση Founder.

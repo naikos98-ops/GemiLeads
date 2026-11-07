@@ -853,8 +853,14 @@ def lead_list(request):
 
 LEAD_EXPORT_HEADER = [
     "Ημερομηνία", "Αρ. ΓΕΜΗ", "ΑΦΜ", "Επωνυμία", "Νομική μορφή", "Περιφέρεια", "Πόλη",
-    "Κατάσταση lead", "Αγαπημένο", "Ραντάρ", "Email", "Website", "Σημειώσεις",
+    "Κατάσταση lead", "Αγαπημένο", "Ραντάρ", "Τηλέφωνο ΓΕΜΗ", "Email", "Website", "Σημειώσεις",
 ]
+
+
+def _gemi_phone_cell(company):
+    """The company's GEMI contact phone(s) for a CSV cell: the same rule as the Dossier (top-level
+    ``raw_data["phone"]`` only, never ``persons``, empty for sole traders), several numbers joined with " / "."""
+    return " / ".join(phone.display for phone in company.gemi_phones)
 
 
 def _lead_export_row(lead):
@@ -871,6 +877,7 @@ def _lead_export_row(lead):
         lead.get_status_display(),
         "Ναι" if lead.is_favorite else "Όχι",
         radars,
+        _gemi_phone_cell(company),
         company.email,
         company.website,
         lead.notes,
@@ -982,7 +989,7 @@ def radar_export_csv(request, pk):
     writer.writerow([
         "Ημερομηνία match", "Αρ. ΓΕΜΗ", "ΑΦΜ", "Επωνυμία", "Νομική μορφή",
         "Περιφέρεια", "Πόλη", "Κατάσταση lead", "Αγαπημένο", "ΚΑΔ match",
-        "Email", "Website", "Σημειώσεις",
+        "Τηλέφωνο ΓΕΜΗ", "Email", "Website", "Σημειώσεις",
     ])
     for match in matches:
         company = match.company
@@ -997,6 +1004,7 @@ def radar_export_csv(request, pk):
             match.lead.get_status_display(),
             "Ναι" if match.lead.is_favorite else "Όχι",
             ", ".join(match.matched_activity_codes),
+            _gemi_phone_cell(company),
             company.email,
             company.website,
             match.lead.notes,
@@ -1125,11 +1133,11 @@ def export_csv(request):
     response["Content-Disposition"] = 'attachment; filename="gemi-leads-export.csv"'
     response.write("\ufeff")
     writer = csv.writer(response)
-    writer.writerow(["Ημερομηνία", "Αρ. ΓΕΜΗ", "ΑΦΜ", "Επωνυμία", "Νομική μορφή", "Νομός", "Πόλη", "Email", "Website"])
+    writer.writerow(["Ημερομηνία", "Αρ. ΓΕΜΗ", "ΑΦΜ", "Επωνυμία", "Νομική μορφή", "Νομός", "Πόλη", "Τηλέφωνο ΓΕΜΗ", "Email", "Website"])
     companies = _filtered_companies(request).only(
         "incorporation_date", "gemi_number", "vat_number", "name",
-        "legal_type", "prefecture", "city", "email", "website",
+        "legal_type", "prefecture", "city", "email", "website", "raw_data",
     )
     for company in companies[:MAX_EXPORT_ROWS].iterator(chunk_size=1000):
-        writer.writerow([company.incorporation_date, company.gemi_number, company.vat_number, company.name, company.legal_type, company.prefecture, company.city, company.email, company.website])
+        writer.writerow([company.incorporation_date, company.gemi_number, company.vat_number, company.name, company.legal_type, company.prefecture, company.city, _gemi_phone_cell(company), company.email, company.website])
     return response

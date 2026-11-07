@@ -490,7 +490,7 @@ class ParityTests(OpportunityTestCase):
     def test_the_deployed_phone_bridge_is_intact_and_contact_data_is_never_stored(self):
         self.assertEqual([p.display for p in extract_company_contact_phones(
             {"phone": "2109990001", "persons": [{"phone": "6999990002"}]})], ["2109990001"])
-        self.assertEqual([p.tel_uri for p in Company(gemi_number="1", raw_data={"phone": "+30 2109990001"}).gemi_phones],
+        self.assertEqual([p.tel_uri for p in Company(gemi_number="1", legal_type="ΙΚΕ", raw_data={"phone": "+30 2109990001"}).gemi_phones],
                          ["tel:+302109990001"])
         radar = self.radar(**self.everything())
         snapshot(self.company, T0)

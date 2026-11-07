@@ -114,10 +114,18 @@ class Company(models.Model):
     @property
     def gemi_phones(self):
         """The company's contact phone(s) as published by ΓΕΜΗ, read from the stored record's top-level
-        ``phone`` field only (see gemiapp.company_contact). Never from ``persons``, never fetched."""
-        from .company_contact import extract_company_contact_phones
+        ``phone`` field only (see gemiapp.company_contact). Never from ``persons``, never fetched, and
+        empty for a sole trader or an unknown legal form."""
+        from .company_contact import company_phones
 
-        return extract_company_contact_phones(self.raw_data)
+        return company_phones(self)
+
+    @property
+    def gemi_phone_withheld(self):
+        """ΓΕΜΗ has a phone, but it is not shown because this is a sole trader (or the form is unknown)."""
+        from .company_contact import phone_withheld
+
+        return phone_withheld(self)
 
     @property
     def people(self):
