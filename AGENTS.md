@@ -2556,7 +2556,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   `scrub_customer_webhook_payloads --email … --customer …` (dry-run → `--apply`) και διαγραφή από το Superadmin.
   Έγκριση των προτεινόμενων κειμένων Όρων/Απορρήτου. Τώρα που το PR 1 είναι σε production: `backfill_subscription_periods` **εφαρμόστηκε 2026-11-07** (περίοδος
   Pro του user 26 από 31/10· 2 unmapped subscriptions παραλείφθηκαν), `LIFECYCLE_EMAILS_ENABLED=1` **ορίστηκε στο Render 2026-11-07** (από εκεί τα event emails E2/E4/E8/E10
-  φεύγουν ζωντανά)· `LIFECYCLE_START_AT` εκκρεμεί (dry-run: `None`, κανένα χρονικό email), `send_lifecycle_emails --dry-run` → report
+  φεύγουν ζωντανά)· `LIFECYCLE_START_AT=2026-11-07 12:00:00+02:00` (dry-run: τίποτα προς αποστολή), `send_lifecycle_emails --dry-run` → report
   στον Founder πριν την πρώτη πραγματική εκτέλεση. Αποφάσεις Founder (2026-11-06): αυτόματη παύση Radars σε downgrade → ναι (PR 3)·
   E2 για social login → ναι (PR 1)· πεδίο `last_filter_used_at` για E3 → ναι.
 
@@ -2840,6 +2840,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-07 — `LIFECYCLE_START_AT=2026-11-07T12:00+02:00` σε production** (Founder). Dry-run: καμία γραμμή —
+  καμία περίοδος δεν ξεκίνησε μετά την ενεργοποίηση, άρα κανένα E5 ακόμη.
 - **2026-11-07 — `LIFECYCLE_EMAILS_ENABLED=1` σε production** (Founder). Dry-run: `LIFECYCLE_START_AT=None`, κανένα
   χρονικό email, καμία εκκρεμής γραμμή. Event triggers (E2/E4/E8/E10) ενεργά από αυτή τη στιγμή.
 - **2026-11-07 — `backfill_subscription_periods --apply` σε production** (έγκριση Founder, εκτέλεση Founder στο Render
