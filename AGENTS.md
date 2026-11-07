@@ -154,13 +154,61 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 - `gemiapp/forms.py` → το κοινό `INPUT` constant εκπέμπει `rounded-2xl` (16px). Εμφανίζεται στο
   status `<select>` και στο notes `<textarea>` των εγκεκριμένων Settings/Dossier. Είναι μέρος της
   εγκεκριμένης κατάστασης· στις auth/admin σελίδες υπερισχύουν scoped κανόνες.
+- **Radar nudge (εγκεκριμένη εξαίρεση, Founder 2026-11-06 09:04, εκδοχή Α):** το «Radars» στο rail και στο mobile nav
+  παίρνει μωβ «γαλαξιακό» φόντο (`#2a1a5e` + radial-gradients, λευκά αστέρια, υπότιτλος `#d9ccff`) και συνεχές pop
+  `scale(1)→1.05` 1.6s, **μόνο** για `radar_limit > 0` χωρίς ενεργό Radar (`context_processors.radar_nudge`). Χωρίς
+  κίνηση στην τρέχουσα σελίδα και σε `prefers-reduced-motion`. Μόνο αυτό το στοιχείο· οπουδήποτε αλλού ισχύει το
+  Signal Ledger. Αναφορά: `_HQ_State/handoffs/2026-11-06_radar_nudge_purple_reference.html`.
 - `templates/allauth/layouts/entrance.html` → override μόνο εμφάνισης που βάζει τις anonymous σελίδες
   του django-allauth μέσα στο public chrome. Το `manage.html` (signed-in σελίδες allauth) μένει
   στο default του allauth σκόπιμα.
 
 ## Τρέχουσα κατάσταση
 
-- **Mobile account menu (2026-11-06, PR 0, branch `claude/mobile-account-menu`, ΟΧΙ στο `main`):** στο ≤900px το
+- **Lifecycle emails PR 1 — θεμέλια + E2/E4/E5/E8/E10 + Radar nudge (2026-11-06, branch `claude/lifecycle-pr1-foundations`
+  πάνω στο PR 0, ΟΧΙ στο `main`, `LIFECYCLE_EMAILS_ENABLED=0`):**
+  - **Migration `0061_lifecycle_foundations`:** `UserLifecycleProfile` (σταθερό ανώνυμο `ref`, `reminders_enabled`,
+    `do_not_contact`· data step δημιουργεί profile για κάθε υπάρχοντα χρήστη), `SubscriptionPeriod` (append-only,
+    user SET_NULL + `user_ref`, source stripe/complimentary, end_reason, ένα ανοιχτό ανά (user_ref, source)),
+    `LifecycleEmail` (unique `dedupe_key`, queued→sending→sent/failed/skipped, `not_before`, `params`), `ExitSurvey`
+    («Τι δεν σου κάλυψε;»· όχι «Feedback» στο όνομα λόγω του C9 guard).
+  - **Ιστορικό:** `gemiapp/subscription_history.py`, state-based και idempotent· γράφεται από τους υπάρχοντες
+    handlers (`checkout.session.completed`, `customer.subscription.updated/.deleted`) και από grant/revoke complimentary,
+    μέσω `lifecycle_triggers` σε savepoint που δεν σπάει ποτέ το entitlement. Ανοιχτή περίοδος ⇔
+    `has_active_paid_subscription`. Κανένα νέο webhook event. Η λήξη complimentary κλείνει από το ημερήσιο job.
+    `months_paid`, `is_former_paid`. Backfill: `backfill_subscription_periods` (dry-run· `--apply` μόνο μετά από έγκριση).
+  - **Μηχανισμός:** `gemiapp/lifecycle.py` (κράτηση → worker task on_commit → `deliver`), κείμενα στο
+    `gemiapp/lifecycle_content.py`, templates `emails/lifecycle.html/.txt`. Λογαριασμού: πάντα· υπενθυμιστικά:
+    opt-out («Συμβουλές και υπενθυμίσεις» στα Settings + signed link με POST επιβεβαίωση + List-Unsubscribe),
+    do_not_contact (Superadmin, audit), ≤1/ημέρα (το δεύτερο πάει την επόμενη). Ποτέ σε ανενεργούς/suppressed.
+    Γραμμή που κόλλησε σε `sending` δεν ξαναστέλνεται. SMTP failure → failed → retry στο ημερήσιο job (έως 5).
+  - **Triggers:** E2 στην πρώτη επαλήθευση — και σε εγγραφή/ενεργοποίηση μέσω Google/Apple (`SocialAccountAdapter`,
+    απόφαση Founder 2026-11-06: μόνο το καλωσόρισμα, ίδιο dedupe `e2:<id>`)· E4 σε νέο πληρωμένο tier ή αναβάθμιση (όχι ανανέωση/downgrade/complimentary)·
+    E5 ημερήσια (περίοδος ≥24h μετά το `LIFECYCLE_START_AT`, 0 ενεργά Radars)· E8 όταν ορίζεται `active_until` (κουμπί ή
+    Portal)· E10 σε deleted/terminal status (όχι past_due, όχι με complimentary, όχι με do_not_contact).
+  - **Daily job:** `send_lifecycle_emails [--dry-run]`, schedule `30 9 * * *` μόνο όταν το flag είναι 1.
+  - **Checkout:** `success_url` → `/billing/success/` (`checkout_return`): retrieve του session· χωρίς entitlement ακόμη →
+    «Η πληρωμή επιβεβαιώνεται…» (refresh 3s, ~1′)· με entitlement και χωρίς ενεργό Radar → φόρμα Radar με μήνυμα.
+  - **Radar nudge** (βλ. «Γνωστές εξαιρέσεις») + notice στο `/dashboard/`.
+  - Previews: `preview_lifecycle_emails` → `docs/lifecycle-email-previews/`· screenshots `docs/lifecycle-screenshots/`.
+  - **Ευρήματα κώδικα (απαντήσεις BRAIN):** (1) **Δεν υπάρχει πουθενά αυτόματη παύση Radars** σε downgrade ή λήξη. Λήξη:
+    τα Radars μένουν `is_active=True` αλλά το `eligible_radars` τα αγνοεί χωρίς entitlement· ξαναδουλεύουν με νέα
+    συνδρομή. Downgrade (π.χ. 10→5): **όλα μένουν ενεργά και συνεχίζουν να ταιριάζουν** (το `eligible_radars` δεν ελέγχει
+    όριο)· μόνο το `radar_toggle` αρνείται ενεργοποίηση όταν ενεργά ≥ όριο. Άρα το «όσα περισσεύουν μπαίνουν σε παύση»
+    του E7 δεν ισχύει σήμερα. (2) Τα κριτήρια Radar διατηρούνται μετά τη λήξη (σβήνονται μόνο με διαγραφή λογαριασμού).
+    (3) Τα payloads `StripeWebhookEvent` αποθηκεύονται για **κάθε** επαληθευμένο event, και για τα ignored· κατά το σχήμα
+    της Stripe: `checkout.session.completed` → `customer_details` (email, name, address, phone, tax_ids), `customer_email`·
+    `invoice.*` → customer_email/name/address/phone/shipping· `customer.*` → email/name/address/phone· `charge` /
+    `payment_intent` → `billing_details`, `receipt_email`. Η production βάση δεν διαβάστηκε. (4) Το Customer Portal
+    ρυθμίζεται στο Stripe Dashboard· ο κώδικας μόνο ανοίγει session, άρα δεν φαίνεται αν επιτρέπει ακύρωση. Αν ναι, φτάνει
+    ως `subscription.updated` με `cancel_at_period_end` και πυροδοτεί το ίδιο E8. (5) «Χρήση φίλτρων»: τίποτα δεν
+    καταγράφεται server-side (μόνο GA4 `product_search` με συγκατάθεση)· για το E3 χρειάζεται νέο πεδίο — απόφαση.
+  - **Διορθώσεις κειμένου:** E5 «χωρίς φίλτρο» αντί «όλες» (το digest κόβει στις 100)· E10: τα Radars «μένουν
+    αποθηκευμένα και ξαναρχίζουν» αντί «σε παύση» (δεν παύονται τεχνικά).
+  - 41 tests (`test_lifecycle.py`)· **2.639 tests OK**· `check`, `makemigrations --check` καθαρά· κύκλος 0060↔0061 OK.
+
+- **Mobile account menu (2026-11-06, PR #5 merged `930ec0b` με έγκριση Founder, deployed σε production· live assets
+  `v=20261106-account-menu`):** στο ≤900px το
   `.product-account` είναι κρυφό, άρα στο κινητό δεν υπήρχε «Έξοδος» ούτε SUPERADMIN. Νέο `<details
   class="product-account-menu">` στη δεξιά στήλη του topbar (μόνο ≤900px, ίδιο σε legacy και workspace nav): email ·
   SUPERADMIN μόνο για staff/superuser · «Έξοδος» (POST + CSRF). Native, λειτουργεί χωρίς JS· το `app.js` κλείνει με
@@ -2450,8 +2498,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0 (mobile account menu)
-  ανοιχτό, περιμένει έγκριση Founder· ακολουθούν PR 1–3.
+- **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0 merged και deployed (2026-11-06)· PR 1 ανοιχτό, περιμένει
+  έγκριση Founder· ακολουθούν PR 2–3. Μετά το merge του PR 1: `backfill_subscription_periods` (dry-run → έγκριση →
+  `--apply`), `LIFECYCLE_START_AT` + `LIFECYCLE_EMAILS_ENABLED=1` στο Render, `send_lifecycle_emails --dry-run` → report
+  στον Founder πριν την πρώτη πραγματική εκτέλεση. Αποφάσεις Founder (2026-11-06): αυτόματη παύση Radars σε downgrade → ναι (PR 3)·
+  E2 για social login → ναι (PR 1)· πεδίο `last_filter_used_at` για E3 → ναι.
 
 - **Meta Pixel:** ορισμός `META_PIXEL_ID` στο Render (το deploy της 2026-10-31 δεν το πήρε από το `render.yaml`), έλεγχος στο Events Manager (Test Events) και
   automatic advanced matching κλειστό εκεί. Ανοιχτά: νομικός έλεγχος κειμένου απορρήτου, conversion events.
@@ -2733,6 +2784,18 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-06 — PR #5 (mobile account menu) merged `930ec0b` και deployed** με έγκριση Founder· live έλεγχος
+  HTTP (assets `20261106-account-menu`, `/dashboard/` → 302). Η διαγραφή του branch έκλεισε προσωρινά το #6 (ήταν η βάση του)·
+  επανήλθε, το #6 βασίζεται πλέον στο `main`. Σε stacked PRs: πρώτα retarget, μετά διαγραφή branch.
+- **2026-11-06 — PR 1: E2 και για social login.** `adapters.py` (`save_user`, ενεργοποίηση στο `pre_social_login`),
+  4 tests στο `test_lifecycle.py`.
+- **2026-11-06 — PR 1 Lifecycle θεμέλια + Κύμα 1 + Radar nudge.** Νέα: `subscription_history.py`, `lifecycle.py`,
+  `lifecycle_content.py`, `lifecycle_triggers.py`, εντολές `send_lifecycle_emails`, `preview_lifecycle_emails`,
+  `backfill_subscription_periods`, migration `0061`, templates `emails/lifecycle*`, `lifecycle/*`,
+  `billing/checkout_confirming.html`, `test_lifecycle.py`. Αλλαγές: `billing.py`, `views.py`, `urls.py`, `models.py`,
+  `forms.py`, `context_processors.py`, `tasks.py`, `apps.py`, `admin.py`, `superadmin/*`, `settings.py`, `render.yaml`,
+  `.env.example`, `base.html`, `_primary_nav.html`, `dashboard.html`, `settings.html`, `product-ui.css`, migration pins
+  (0060 → 0061) και δύο guards (schedules, nav regex). 2.639 tests OK.
 - **2026-11-06 — PR 0 Mobile account menu.** `templates/base.html`, `static/css/product-ui.css`, `static/js/app.js`,
   `templates/superadmin/base.html` (asset version), `gemiapp/test_mobile_account_menu.py`. 2.598 tests OK, `check` και
   `makemigrations --check` καθαρά. Κανένα merge/deploy.

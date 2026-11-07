@@ -13,6 +13,9 @@ urlpatterns = [
     path("for/insurance/", views.campaign_landing, {"audience": "insurance"}, name="landing_insurance"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("settings/", views.settings_view, name="settings"),
+    path("settings/reminders/", views.settings_reminders, name="settings_reminders"),
+    path("feedback/leaving/", views.churn_feedback, name="churn_feedback"),
+    path("reminders/unsubscribe/<token>/", views.lifecycle_unsubscribe, name="lifecycle_unsubscribe"),
     path("support/", support.support_message_create, name="support_message_create"),
     path("radars/", views.radar_list, name="radar_list"),
     path("radars/new/", views.radar_create, name="radar_create"),
@@ -76,6 +79,7 @@ urlpatterns = [
     path("outreach/unsubscribe/<token>/", views.outreach_unsubscribe, name="outreach_unsubscribe"),
     # Billing / Stripe
     path("pricing/", billing.pricing, name="pricing"),
+    path("billing/success/", billing.checkout_return, name="checkout_return"),
     path("privacy/", views.privacy, name="privacy"),
     path("terms/", views.terms, name="terms"),
     path("api/stripe/create-checkout-session/", billing.create_checkout_session, name="create_checkout_session"),

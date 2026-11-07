@@ -195,6 +195,21 @@
         </div>
       </form>
     </div>
+
+    {% comment %} Reminder emails (gemiapp.lifecycle): independent of the digest above; account emails about the
+       subscription are not affected by this switch. {% endcomment %}
+    <section class="product-settings-panel" aria-labelledby="reminders-title">
+      <p class="product-settings-label">ΣΥΜΒΟΥΛΕΣ ΚΑΙ ΥΠΕΝΘΥΜΙΣΕΙΣ</p>
+      <form method="post" action="{% url 'settings_reminders' %}" class="product-settings-row">
+        {% csrf_token %}
+        <div>
+          <h2 id="reminders-title">Συμβουλές και υπενθυμίσεις: {% if lifecycle_profile.reminders_enabled %}ενεργές{% else %}ανενεργές{% endif %}</h2>
+          <p>Σύντομα email με συμβουλές για να αξιοποιείς το Gemi Leads, π.χ. όταν δεν έχεις στήσει ακόμη Radar. Το πρωινό email και τα email για τη συνδρομή σου δεν επηρεάζονται.</p>
+        </div>
+        <input type="hidden" name="reminders_enabled" value="{% if lifecycle_profile.reminders_enabled %}0{% else %}1{% endif %}">
+        <button type="submit" class="{% if lifecycle_profile.reminders_enabled %}product-text-button{% else %}product-ink-button{% endif %}">{% if lifecycle_profile.reminders_enabled %}Απενεργοποίηση{% else %}Ενεργοποίηση{% endif %}</button>
+      </form>
+    </section>
   </div>
 </div>
 {% endblock %}

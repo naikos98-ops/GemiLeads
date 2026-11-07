@@ -1,0 +1,11 @@
+{% comment %} Shared by the cancellation question (E8) and the account-deletion page. {% endcomment %}
+<fieldset class="product-feedback-reasons">
+  <legend>{{ form.reasons.label }}</legend>
+  {% for choice in form.reasons %}
+  <label>{{ choice.tag }} <span>{{ choice.choice_label }}</span></label>
+  {% endfor %}
+</fieldset>
+<div class="product-feedback-text">
+  <label for="{{ form.text.id_for_label }}">{{ form.text.label }}</label>
+  {{ form.text }}
+</div>

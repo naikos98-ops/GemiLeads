@@ -14,7 +14,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-from .models import StripeWebhookEvent, UserSubscription
+from .lifecycle_triggers import Before, after_stripe_change
+from .models import CustomerRadar, StripeWebhookEvent, UserSubscription
 
 logger = logging.getLogger(__name__)
 
@@ -262,7 +263,7 @@ def create_checkout_session(request):
             "payment_method_types": ["card"],
             "line_items": [{"price": price_id, "quantity": 1}],
             "mode": "subscription",
-            "success_url": domain_url + reverse("dashboard") + "?session_id={CHECKOUT_SESSION_ID}",
+            "success_url": domain_url + reverse("checkout_return") + "?session_id={CHECKOUT_SESSION_ID}",
             "cancel_url": domain_url + reverse("pricing"),
             "client_reference_id": str(request.user.id),
         }
@@ -280,6 +281,45 @@ def create_checkout_session(request):
     except Exception as e:
         logger.error(f"Stripe Checkout Error: {str(e)}")
         return render(request, "pricing.html", {"error": str(e)})
+
+
+CHECKOUT_CONFIRM_POLLS_SESSION_KEY = "checkout_confirm_polls"
+# The confirming page refreshes every 3 s; after ~1 minute it stops and points to Settings instead.
+CHECKOUT_CONFIRM_MAX_POLLS = 20
+
+
+@login_required
+def checkout_return(request):
+    """Stripe's success_url. Sends a new subscriber without a Radar straight to the Radar form.
+
+    The webhook that grants the entitlement may not have arrived yet, so this never trusts the
+    redirect itself: the Checkout Session is retrieved (it must belong to this user and be complete),
+    and until the local entitlement exists a «Η πληρωμή επιβεβαιώνεται…» page refreshes itself.
+    Nothing here writes the subscription: that stays the webhook's job.
+    """
+    session_id = request.GET.get("session_id", "")
+    if not session_id:
+        return redirect("dashboard")
+    try:
+        checkout = _as_plain_dict(stripe.checkout.Session.retrieve(session_id))
+    except Exception as exc:
+        logger.error("Stripe checkout return: could not retrieve session (%s)", type(exc).__name__)
+        return redirect("dashboard")
+    if str(checkout.get("client_reference_id")) != str(request.user.pk) or checkout.get("status") != "complete":
+        return redirect("dashboard")
+
+    sub = UserSubscription.objects.filter(user=request.user).first()
+    if sub is not None and sub.has_entitlement:
+        request.session.pop(CHECKOUT_CONFIRM_POLLS_SESSION_KEY, None)
+        if not CustomerRadar.objects.filter(user=request.user, is_active=True, deleted_at__isnull=True).exists():
+            messages.success(request, "Η πληρωμή ολοκληρώθηκε — φτιάξε το πρώτο σου Radar.")
+            return redirect("radar_create")
+        messages.success(request, "Η πληρωμή ολοκληρώθηκε.")
+        return redirect("dashboard")
+
+    polls = request.session.get(CHECKOUT_CONFIRM_POLLS_SESSION_KEY, 0) + 1
+    request.session[CHECKOUT_CONFIRM_POLLS_SESSION_KEY] = polls
+    return render(request, "billing/checkout_confirming.html", {"refresh": polls <= CHECKOUT_CONFIRM_MAX_POLLS})
 
 
 @login_required
@@ -1204,6 +1244,7 @@ def _handle_checkout_session_completed(event):
 
     with transaction.atomic():
         sub, _ = UserSubscription.objects.get_or_create(user_id=user_id)
+        before = Before.of(sub)
         if stripe_customer_id:
             sub.stripe_customer_id = stripe_customer_id
         if stripe_subscription_id:
@@ -1212,6 +1253,8 @@ def _handle_checkout_session_completed(event):
             if tier:
                 sub.tier = tier
         sub.save()
+        # History + lifecycle reservations (E4). Isolated: never blocks or fails the entitlement write.
+        after_stripe_change(sub, before, at=_stripe_timestamp_to_datetime(event.get("created")))
 
 
 def _stripe_timestamp_to_datetime(value):
@@ -1313,6 +1356,7 @@ def _handle_subscription_updated_or_deleted(event):
     transition_completes_scheduled_downgrade = bool(tier) and bool(sub.scheduled_tier) and tier == sub.scheduled_tier
 
     with transaction.atomic():
+        before = Before.of(sub)
         sub.status = status or ("canceled" if event["type"] == "customer.subscription.deleted" else "inactive")
         if tier:
             sub.tier = tier
@@ -1322,6 +1366,11 @@ def _handle_subscription_updated_or_deleted(event):
             sub.scheduled_change_at = None
             sub.stripe_schedule_id = ""
         sub.save()
+        # History + lifecycle reservations (E4/E8/E10). Isolated: never blocks or fails the entitlement write.
+        after_stripe_change(
+            sub, before, at=_stripe_timestamp_to_datetime(event.get("created")),
+            subscription_payload=subscription, terminal=event["type"] == "customer.subscription.deleted",
+        )
 
 
 def _handle_subscription_schedule_updated(event):

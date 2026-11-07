@@ -212,6 +212,23 @@ def send_verification_email_task(user_id):
     send_verification_email_now(user_id)
 
 
+def send_lifecycle_email_task(row_id):
+    """Send one reserved lifecycle email (gemiapp.lifecycle). Reserved by a webhook/view on commit."""
+    from gemiapp.lifecycle import deliver
+
+    return deliver(int(row_id)).status
+
+
+def send_lifecycle_emails_task():
+    """The daily lifecycle job (after the 09:00 digest): see gemiapp.lifecycle.run_daily."""
+    from gemiapp.lifecycle import run_daily
+
+    report = run_daily()
+    logger.info("Lifecycle emails: sent=%s skipped=%s failed=%s deferred=%s reserved=%s",
+                report.sent, report.skipped, report.failed, report.deferred, report.reserved)
+    return {"sent": report.sent, "skipped": report.skipped, "failed": report.failed}
+
+
 def send_support_notification_task(message_id):
     """Email SUPPORT_INBOX about one stored SupportMessage (gemiapp.support).
 

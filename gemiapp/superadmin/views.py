@@ -54,6 +54,8 @@ from ..models import (
     paid_subscription_q,
 )
 from ..services import digest_email_tag, import_for_date, send_digests
+from ..lifecycle import profile_for
+from ..models import LifecycleEmail, SubscriptionPeriod
 
 
 @superadmin_required
@@ -132,8 +134,25 @@ def user_detail(request, user_id):
         "recent_leads": leads,
         "audit_logs": audit_logs,
         "radar_limit": get_user_radar_limit(target_user),
+        "lifecycle_profile": profile_for(target_user),
+        "subscription_periods": SubscriptionPeriod.objects.filter(user=target_user)[:20],
+        "lifecycle_emails": LifecycleEmail.objects.filter(user=target_user)[:20],
     }
     return render(request, "superadmin/users/detail.html", context)
+
+
+@superadmin_required
+@require_POST
+def user_do_not_contact(request, user_id):
+    """Superadmin-only switch that blocks every reminder email for this user (account emails still go)."""
+    target_user = get_object_or_404(User, pk=user_id)
+    profile = profile_for(target_user)
+    profile.do_not_contact = request.POST.get("do_not_contact") == "1"
+    profile.save(update_fields=["do_not_contact", "updated_at"])
+    log_admin_action(request.user, "set_do_not_contact", target_type="User", target_id=target_user.id,
+                     target_repr=target_user.email, metadata={"do_not_contact": profile.do_not_contact})
+    messages.success(request, f"do_not_contact = {'ναι' if profile.do_not_contact else 'όχι'} για {target_user.email}.")
+    return redirect("superadmin:user_detail", user_id=target_user.id)
 
 
 @superadmin_required

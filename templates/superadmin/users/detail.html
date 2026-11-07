@@ -160,6 +160,36 @@
     </div>
   </div>
 
+  {% comment %} Lifecycle emails & subscription history (gemiapp.lifecycle, gemiapp.subscription_history). {% endcomment %}
+  <div class="grid gap-6 lg:grid-cols-2">
+    <div class="admin-panel">
+      <div class="flex items-center justify-between border-b border-navy-900/5 pb-3">
+        <h3 class="font-extrabold text-navy-950">Lifecycle emails</h3>
+        <form action="{% url 'superadmin:user_do_not_contact' target_user.id %}" method="post">
+          {% csrf_token %}
+          <input type="hidden" name="do_not_contact" value="{% if lifecycle_profile.do_not_contact %}0{% else %}1{% endif %}">
+          <button type="submit" class="admin-btn">{% if lifecycle_profile.do_not_contact %}Άρση do_not_contact{% else %}Ορισμός do_not_contact{% endif %}</button>
+        </form>
+      </div>
+      <p class="text-xs text-navy-700/50">do_not_contact: <b>{{ lifecycle_profile.do_not_contact|yesno:"ναι,όχι" }}</b> · υπενθυμίσεις (επιλογή χρήστη): <b>{{ lifecycle_profile.reminders_enabled|yesno:"ενεργές,ανενεργές" }}</b></p>
+      <div class="space-y-3">
+        {% for e in lifecycle_emails %}
+        <div class="admin-kv"><div><span class="font-bold text-navy-950 block">{{ e.get_kind_display }} · {{ e.get_status_display }}</span><span class="text-xs text-navy-700/50">{{ e.created_at|date:"d/m/Y H:i" }}{% if e.reason %} · {{ e.reason }}{% endif %}</span></div></div>
+        {% empty %}<p class="text-xs text-navy-700/50 py-4 text-center">Κανένα lifecycle email.</p>{% endfor %}
+      </div>
+    </div>
+    <div class="admin-panel">
+      <div class="flex items-center justify-between border-b border-navy-900/5 pb-3">
+        <h3 class="font-extrabold text-navy-950">Ιστορικό συνδρομών</h3>
+      </div>
+      <div class="space-y-3">
+        {% for p in subscription_periods %}
+        <div class="admin-kv"><div><span class="font-bold text-navy-950 block">{{ p.get_source_display }} · {{ p.tier|upper }}</span><span class="text-xs text-navy-700/50">{{ p.started_at|date:"d/m/Y" }} → {% if p.ended_at %}{{ p.ended_at|date:"d/m/Y" }} ({{ p.get_end_reason_display }}){% else %}ανοιχτή{% endif %}</span></div></div>
+        {% empty %}<p class="text-xs text-navy-700/50 py-4 text-center">Καμία περίοδος.</p>{% endfor %}
+      </div>
+    </div>
+  </div>
+
   <!-- User Radars & Recent Leads Grid -->
   <div class="grid gap-6 lg:grid-cols-2">
     <!-- User Radars Card -->

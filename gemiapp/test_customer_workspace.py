@@ -665,6 +665,7 @@ class SafetyTests(WorkspaceTestCase):
         legacy = entitled_user("legacy-nav@example.com")
         self.client.force_login(legacy)
         html = self.client.get(reverse("radar_list")).content.decode()
-        self.assertEqual(re.findall(r'<a href="(/[a-z]*/)" aria-current="page"><span>', html), ["/radars/"])
+        # [^>]*: an entitled account without an active Radar also gets the approved radar-nudge attributes.
+        self.assertEqual(re.findall(r'<a href="(/[a-z]*/)" aria-current="page"[^>]*><span>', html), ["/radars/"])
         mobile = html.split('class="product-mobile-nav"', 1)[1].split("</nav>", 1)[0]
         self.assertEqual(re.findall(r'href="([^"]+)"', mobile), ["/dashboard/", "/radars/", "/leads/", "/settings/"])

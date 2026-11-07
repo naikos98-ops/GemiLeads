@@ -63,3 +63,25 @@ def social_login_providers(request):
         "google_login_enabled": "google" in configured,
         "apple_login_enabled": "apple" in configured,
     }
+
+
+def radar_nudge(request):
+    """Highlight «Radars» for an account that may run Radars (paid or complimentary) but has no active one.
+
+    Approved exception to the Signal Ledger (Founder 2026-11-06): the purple «galaxy» item in the rail and
+    the mobile nav, plus a notice on the dashboard. Disappears with the first active Radar. No queries for
+    anonymous requests; two small ones otherwise.
+    """
+    user = getattr(request, "user", None)
+    if not (user and user.is_authenticated):
+        return {"radar_nudge": False}
+    from .models import CustomerRadar, UserSubscription
+
+    try:
+        sub = UserSubscription.objects.filter(user=user).first()
+        if sub is None or sub.radar_limit <= 0:
+            return {"radar_nudge": False}
+        has_radar = CustomerRadar.objects.filter(user=user, is_active=True, deleted_at__isnull=True).exists()
+    except OperationalError:
+        return {"radar_nudge": False}
+    return {"radar_nudge": not has_radar}

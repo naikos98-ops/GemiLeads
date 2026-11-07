@@ -1,6 +1,8 @@
+import logging
+import uuid
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import DatabaseError, models, transaction
 from django.db.models.functions import Length, Lower
 from django.db.models.lookups import GreaterThan, LessThanOrEqual
 from django.utils import timezone
@@ -2579,6 +2581,135 @@ class SupportMessage(models.Model):
         return f"Support #{self.pk} · {self.get_category_display()} · {self.email}"
 
 
+class UserLifecycleProfile(models.Model):
+    """Per-user lifecycle-email state that is not billing and not the digest.
+
+    ``ref`` is the stable anonymous identifier copied onto every SubscriptionPeriod, so a user's
+    subscription history stays readable (and countable) after the account itself is deleted.
+    ``reminders_enabled`` is the user's own «Συμβουλές και υπενθυμίσεις» switch (independent of the
+    digest); ``do_not_contact`` is set only by a Superadmin and blocks every reminder email.
+    Account emails (welcome, payment, cancellation) ignore both, as the brief requires.
+    """
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="lifecycle_profile")
+    ref = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    reminders_enabled = models.BooleanField("Συμβουλές και υπενθυμίσεις", default=True)
+    do_not_contact = models.BooleanField("Do not contact (υπενθυμίσεις)", default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Lifecycle · {self.user_id}"
+
+
+class SubscriptionPeriod(models.Model):
+    """Append-only history of paid access, one row per continuous stretch on one tier.
+
+    Written only by gemiapp.subscription_history (from the existing Stripe webhook handlers and
+    the Superadmin complimentary grant/revoke). A tier change closes the open row (upgraded /
+    downgraded) and opens a new one; a closed row is never edited again. ``user`` becomes NULL when
+    the account is deleted, ``user_ref`` (UserLifecycleProfile.ref) survives. Nothing reads this
+    for entitlement: has_entitlement / effective_tier / radar_limit stay on UserSubscription.
+    """
+
+    SOURCES = [("stripe", "Stripe"), ("complimentary", "Complimentary")]
+    END_REASONS = [
+        ("canceled", "Ακύρωση"),
+        ("payment_failed", "Αποτυχία πληρωμής"),
+        ("downgraded", "Υποβάθμιση"),
+        ("upgraded", "Αναβάθμιση"),
+        ("refunded", "Επιστροφή χρημάτων"),
+        ("account_deleted", "Διαγραφή λογαριασμού"),
+        ("complimentary_expired", "Λήξη δωρεάν πρόσβασης"),
+        ("unknown", "Άγνωστο"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="subscription_periods")
+    user_ref = models.CharField(max_length=64, db_index=True)
+    source = models.CharField(max_length=20, choices=SOURCES)
+    tier = models.CharField(max_length=20)
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+    end_reason = models.CharField(max_length=30, choices=END_REASONS, blank=True)
+    stripe_subscription_id = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-started_at", "-id"]
+        constraints = [
+            # At most one open period per person and source: the sync is state-based, and this makes a
+            # concurrent duplicate webhook fail loudly instead of writing a second open row.
+            models.UniqueConstraint(
+                fields=["user_ref", "source"], condition=models.Q(ended_at__isnull=True),
+                name="one_open_subscription_period_per_source",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user_ref} · {self.source}:{self.tier} {self.started_at:%Y-%m-%d}→{self.ended_at or '…'}"
+
+
+class LifecycleEmail(models.Model):
+    """The send log of lifecycle emails (E1–E15) and the guarantee that each is sent at most once.
+
+    A row is reserved (status=queued) under a unique ``dedupe_key`` before anything is sent, so a
+    duplicate webhook or a second cron run finds the row and does nothing. The worker claims the
+    row (queued/failed -> sending) with a conditional UPDATE, sends, and records sent / failed /
+    skipped. A row left in ``sending`` (worker died mid-send) is never retried automatically: it may
+    have been delivered, and «at most once» wins over «at least once».
+    """
+
+    KINDS = [(f"e{n}", f"E{n}") for n in range(1, 16)]
+    STATUSES = [
+        ("queued", "Σε αναμονή"),
+        ("sending", "Αποστέλλεται"),
+        ("sent", "Στάλθηκε"),
+        ("failed", "Απέτυχε"),
+        ("skipped", "Παραλείφθηκε"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="lifecycle_emails")
+    kind = models.CharField(max_length=4, choices=KINDS, db_index=True)
+    dedupe_key = models.CharField(max_length=200, unique=True)
+    status = models.CharField(max_length=10, choices=STATUSES, default="queued", db_index=True)
+    reason = models.CharField(max_length=300, blank=True)
+    params = models.JSONField(default=dict, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    not_before = models.DateTimeField(null=True, blank=True)
+    brevo_tag = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["status", "created_at"], name="lifecycle_status_idx")]
+
+    def __str__(self):
+        return f"{self.kind} · {self.dedupe_key} · {self.status}"
+
+
+class ExitSurvey(models.Model):
+    """«Τι δεν σου κάλυψε;» answers, from the cancellation email (E8) and the deletion flow."""
+
+    CONTEXTS = [("cancel", "Ακύρωση συνδρομής"), ("delete", "Διαγραφή λογαριασμού")]
+    REASONS = [
+        ("no_relevant", "Δεν βρήκα καταχωρίσεις που με αφορούν"),
+        ("price", "Η τιμή είναι υψηλή για μένα"),
+        ("no_time", "Δεν είχα χρόνο να το χρησιμοποιήσω"),
+        ("missing_feature", "Μου έλειπε κάποια λειτουργία"),
+        ("other", "Άλλος λόγος"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    user_ref = models.CharField(max_length=64, db_index=True)
+    context = models.CharField(max_length=10, choices=CONTEXTS)
+    reasons = models.JSONField(default=list, blank=True)
+    text = models.TextField(blank=True, max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
@@ -2589,3 +2720,10 @@ def create_user_subscription(sender, instance, created, **kwargs):
         # send_digests iterates DigestPreference, so an account without one is silently
         # unreachable no matter which tier it is on.
         DigestPreference.objects.get_or_create(user=instance)
+        # Also created lazily (gemiapp.lifecycle.profile_for); a missing table (schema rolled back below 0061)
+        # must not break signup, so this runs in its own savepoint and only logs.
+        try:
+            with transaction.atomic():
+                UserLifecycleProfile.objects.get_or_create(user=instance)
+        except DatabaseError:
+            logging.getLogger(__name__).warning("Could not create the lifecycle profile of user %s", instance.pk)

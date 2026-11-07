@@ -27,6 +27,7 @@ from ..models import (
     paid_subscription_q,
 )
 from ..services import digest_email_tag
+from ..lifecycle_triggers import after_complimentary_change
 from ..email_validation import is_undeliverable
 
 logger = logging.getLogger(__name__)
@@ -412,6 +413,7 @@ def grant_complimentary_access(admin_user, target_user, tier, until_datetime=Non
     sub.complimentary_tier = tier
     sub.complimentary_until = until_datetime
     sub.save()
+    after_complimentary_change(sub)
 
     log_admin_action(
         admin_user=admin_user,
@@ -438,6 +440,7 @@ def revoke_complimentary_access(admin_user, target_user):
     sub.complimentary_tier = "none"
     sub.complimentary_until = None
     sub.save()
+    after_complimentary_change(sub)
 
     log_admin_action(
         admin_user=admin_user,

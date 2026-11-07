@@ -84,6 +84,9 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
             existing.is_active = True
             existing.save(update_fields=["is_active"])
             logger.info("Activated unverified account %s via social login.", existing.pk)
+            # The provider just did what the verification link would have done: this is the
+            # account's first verification, so it gets the same E2 welcome (dedupe e2:<id>).
+            _welcome(existing)
 
         sociallogin.connect(request, existing)
 
@@ -113,4 +116,14 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         from .campaigns import queue_analytics_event
 
         queue_analytics_event(request, "sign_up", {"method": sociallogin.account.provider})
+        # Founder decision 2026-11-06: social signups get the E2 welcome too (only the welcome:
+        # E1 never applies, the provider has verified the address).
+        _welcome(user)
         return user
+
+
+def _welcome(user):
+    """Reserve the E2 welcome; enqueue never raises, so signing in is never blocked by it."""
+    from .lifecycle import enqueue
+
+    enqueue("e2", user, f"e2:{user.pk}", {})

@@ -1,0 +1,23 @@
+{% autoescape off %}{{ content.title|upper }}
+
+{{ content.greeting }}
+{% for kind, value in content.blocks %}
+{% if kind == "p" or kind == "notice" %}{{ value }}
+{% elif kind == "list" %}{% for item in value %}- {{ item }}
+{% endfor %}{% elif kind == "steps" %}{% for item in value %}{{ forloop.counter }}. {{ item }}
+{% endfor %}{% endif %}{% endfor %}{% if content.cta_url %}
+{{ content.cta_label }}: {{ content.cta_url }}
+{% endif %}{% for kind, value in content.after %}
+{% if kind == "p" or kind == "notice" %}{{ value }}
+{% elif kind == "list" %}{% for item in value %}- {{ item }}
+{% endfor %}{% endif %}{% endfor %}{% if content.text_link_url %}
+{{ content.text_link_label }} {{ content.text_link_url }}
+{% endif %}
+{{ content.signature.0 }}
+{{ content.signature.1 }}
+
+--
+Στάλθηκε στο {{ user.email }}, τον λογαριασμό σου στο gemileads.gr.{% if content.reminder and content.unsubscribe_url %}
+Διακοπή συμβουλών και υπενθυμίσεων (το πρωινό email δεν αλλάζει): {{ content.unsubscribe_url }}{% endif %}
+GEMI LEADS — προϊόν της NORVA Ι.Κ.Ε.
+{% endautoescape %}
