@@ -2566,6 +2566,10 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **`LIFECYCLE_EMAILS_ENABLED` σε production = `0` (εύρημα 2026-11-07):** το Render Shell έδειξε `'0'`, ενώ είχε οριστεί `1`·
+  το `render.yaml` το όριζε `value: "0"` και το Blueprint sync το επανέφερε. Μέχρι να ξαναοριστεί `1` κανένα lifecycle email
+  (E2/E4/E8/E10/E15 κ.λπ.) δεν κρατήθηκε ούτε στάλθηκε. Διόρθωση: `sync: false` (branch `claude/render-lifecycle-sync-false`)·
+  μετά το merge/deploy ο Founder ορίζει `1` στο Render dashboard και ελέγχει στο Shell.
 - **Radar nudge fix:** deployed· μένει ο έλεγχος με impersonate νέου χρήστη (μωβ «Radars» ορατό).
 - **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0–3 merged και deployed (2026-11-06/07).
   Νομικά κείμενα: εγκρίθηκαν, εφαρμόστηκαν και deployed (PR #9). Για τον πελάτη της 5/11 (η εντολή είναι πλέον σε production):
@@ -2856,6 +2860,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-07 — `render.yaml`: `LIFECYCLE_EMAILS_ENABLED` → `sync: false`.** Αφορμή: χειροκίνητο E4 για τον user 16
+  επέστρεψε `None`· το Shell έδειξε τη ρύθμιση `0`.
 - **2026-11-07 — PR #9 (νομικά κείμενα lifecycle/διαγραφής) merged και deployed** με έγκριση Founder.
 - **2026-11-07 — PR #10 (Radar nudge fix) merged `7ef5689` και deployed** με έγκριση Founder· Render deploy success,
   `/login/` 200.

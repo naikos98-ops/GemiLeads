@@ -46,9 +46,10 @@ services:
         value: info@gemileads.gr
       - key: SUPPORT_INBOX
         value: info@gemileads.gr
-      # Lifecycle emails stay off until the Founder enables them (and sets LIFECYCLE_START_AT).
+      # Set in the Render dashboard only (1 = on). A fixed value here would overwrite the dashboard
+      # value on every Blueprint sync, which silently switched lifecycle emails off in production.
       - key: LIFECYCLE_EMAILS_ENABLED
-        value: "0"
+        sync: false
       - key: LIFECYCLE_START_AT
         sync: false
       - key: LIFECYCLE_WHATS_NEW
