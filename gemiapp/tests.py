@@ -4353,6 +4353,21 @@ class LegalPagesTests(TestCase):
         html = self._get("terms")
         self.assertIn("ανανεώνεται αυτόματα", html)
 
+    @override_settings(LEGAL_BILLING_ACTIVE=True)
+    def test_terms_describe_self_service_deletion_and_the_radar_limit_on_downgrade(self):
+        text = " ".join(self._get("terms").split())
+        self.assertIn("Ρυθμίσεις → Διαγραφή λογαριασμού", text)
+        self.assertIn("χωρίς αυτόματη επιστροφή χρημάτων", text)
+        self.assertIn("τα πιο πρόσφατα μπαίνουν σε παύση", text)
+        self.assertNotIn("Μπορείς να ζητήσεις διαγραφή", text)
+
+    def test_privacy_describes_lifecycle_data_and_retention_after_deletion(self):
+        text = " ".join(self._get("privacy").split())
+        for fact in ("Ιστορικό συνδρομής", "Απαντήσεις αποχώρησης", "Ενδείξεις χρήσης",
+                     "Συμβουλές και υπενθυμίσεις", "μετά τη λήξη πληρωμένης συνδρομής",
+                     "ανώνυμο</b> ιστορικό συνδρομής", "120 ημέρες", "7 Νοεμβρίου 2026"):
+            self.assertIn(fact, text, fact)
+
     def test_privacy_covers_the_processors_actually_in_use(self):
         html = self._get("privacy")
         for processor in ("Render", "Brevo", "Sentry", "Google Analytics", "Cloudflare"):
