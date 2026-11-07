@@ -210,6 +210,17 @@
         <button type="submit" class="{% if lifecycle_profile.reminders_enabled %}product-text-button{% else %}product-ink-button{% endif %}">{% if lifecycle_profile.reminders_enabled %}Απενεργοποίηση{% else %}Ενεργοποίηση{% endif %}</button>
       </form>
     </section>
+
+    <section class="product-settings-panel" aria-labelledby="delete-title">
+      <p class="product-settings-label">ΔΙΑΓΡΑΦΗ ΛΟΓΑΡΙΑΣΜΟΥ</p>
+      <div class="product-settings-row">
+        <div>
+          <h2 id="delete-title">Διαγραφή λογαριασμού</h2>
+          <p>Διαγράφει οριστικά τον λογαριασμό, τα Radars και τα Leads σου. Θα δεις πρώτα τι διαγράφεται και τι κρατάμε.</p>
+        </div>
+        <a href="{% url 'account_delete' %}" class="product-delete-button" style="display:inline-flex;align-items:center;text-decoration:none;">Διαγραφή λογαριασμού</a>
+      </div>
+    </section>
   </div>
 </div>
 {% endblock %}

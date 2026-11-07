@@ -43,6 +43,7 @@ from .models import (
     ImportRun,
     OutreachSuppression,
     UserCompanyLead,
+    UserSubscription,
     get_user_radar_limit,
 )
 from .billing import PENDING_TIER_SESSION_KEY
@@ -571,6 +572,41 @@ def settings_view(request):
         return redirect("settings")
     return render(request, "settings.html", {
         "form": form, "preference": preference, "lifecycle_profile": profile_for(request.user),
+    })
+
+
+@login_required
+def account_delete(request):
+    """Settings → «Διαγραφή λογαριασμού»: what is deleted / kept, optional «Γιατί φεύγεις;», confirmation.
+
+    Password-confirmed; an account with no usable password (social login only) types its email instead.
+    """
+    from django.contrib.auth import logout
+
+    from .account_deletion import AccountDeletionRefused, delete_account
+    from .forms import ExitSurveyForm
+
+    form = ExitSurveyForm(request.POST or None)
+    error = ""
+    has_password = request.user.has_usable_password()
+    sub = UserSubscription.objects.filter(user=request.user).first()
+    if request.method == "POST" and form.is_valid():
+        secret = request.POST.get("confirm", "")
+        confirmed = (request.user.check_password(secret) if has_password
+                     else secret.strip().lower() == (request.user.email or "").lower() and bool(secret.strip()))
+        if not confirmed:
+            error = "Ο κωδικός δεν είναι σωστός." if has_password else "Το email δεν ταιριάζει με τον λογαριασμό σου."
+        else:
+            try:
+                delete_account(request.user, reasons=form.cleaned_data["reasons"], text=form.cleaned_data["text"])
+            except AccountDeletionRefused as exc:
+                error = str(exc)
+            else:
+                logout(request)
+                return render(request, "lifecycle/account_deleted.html")
+    return render(request, "lifecycle/account_delete.html", {
+        "form": form, "error": error, "has_password": has_password,
+        "has_live_subscription": bool(sub and sub.stripe_subscription_id and sub.status not in ("canceled", "incomplete_expired")),
     })
 
 

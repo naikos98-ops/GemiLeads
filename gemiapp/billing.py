@@ -1234,6 +1234,13 @@ def _handle_checkout_session_completed(event):
 
     if not user_id:
         return
+    from django.contrib.auth.models import User
+
+    if not User.objects.filter(pk=user_id).exists():
+        # The account was deleted (gemiapp.account_deletion) before this delivery arrived: nothing to project,
+        # and a retry would never make the user reappear.
+        logger.info("checkout.session.completed for a user that no longer exists; ignored")
+        return
 
     status = None
     tier = None

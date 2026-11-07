@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% block title %}Διαγραφή λογαριασμού · Gemi Leads{% endblock %}
+{% block robots %}noindex, nofollow{% endblock %}
+{% block content %}
+<div class="product-workspace">
+  <div class="product-pagehead">
+    <div>
+      <p class="product-eyebrow">SYSTEM CONFIGURATION</p>
+      <h1>Διαγραφή λογαριασμού</h1>
+    </div>
+  </div>
+
+  <section class="product-settings-panel" aria-labelledby="deleted-title">
+    <p class="product-settings-label">ΤΙ ΔΙΑΓΡΑΦΕΤΑΙ</p>
+    <h2 id="deleted-title" class="product-delete-heading">Οριστικά, χωρίς δυνατότητα επαναφοράς</h2>
+    <ul class="product-delete-list">
+      <li>Ο λογαριασμός σου ({{ user.email }}) και η σύνδεση μέσω Google/Apple, αν υπάρχει.</li>
+      <li>Τα Radars σου, τα Leads, οι σημειώσεις και οι καταστάσεις τους.</li>
+      <li>Οι ρυθμίσεις του email και το ιστορικό αποστολών.</li>
+      <li>Τα μηνύματα που έστειλες από τη «Βοήθεια».</li>
+      <li>Ο οργανισμός σου, αν είσαι το μόνο μέλος του.</li>
+    </ul>
+    <p class="product-settings-label" style="margin-top: 20px;">ΤΙ ΚΡΑΤΑΜΕ</p>
+    <ul class="product-delete-list">
+      <li>Τα στοιχεία των πληρωμών (ποσά, ημερομηνίες, αριθμοί συναλλαγών), όσο το απαιτεί η φορολογική νομοθεσία — χωρίς το όνομα, το email και τη διεύθυνσή σου στη δική μας βάση.</li>
+      <li>Ένα ανώνυμο ιστορικό συνδρομής (πλάνο και διάρκεια), χωρίς στοιχεία που σε ταυτοποιούν.</li>
+    </ul>
+    {% if has_live_subscription %}
+    <div class="product-nudge-notice" style="margin: 20px 0 0;">
+      <p>Η ενεργή συνδρομή σου θα ακυρωθεί αμέσως, χωρίς αυτόματη επιστροφή χρημάτων. Για επιστροφή εντός 14 ημερών γράψε μας πριν τη διαγραφή.</p>
+      <button type="button" class="product-text-button" data-support-open aria-haspopup="dialog" aria-controls="support-dialog">Βοήθεια</button>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="product-settings-panel" aria-labelledby="confirm-title">
+    <form method="post" class="product-feedback-form">
+      {% csrf_token %}
+      <p class="product-settings-label">ΓΙΑΤΙ ΦΕΥΓΕΙΣ; (ΠΡΟΑΙΡΕΤΙΚΟ)</p>
+      {% include "lifecycle/_churn_feedback_fields.html" %}
+      <div class="product-feedback-text">
+        <label id="confirm-title" for="id_confirm">{% if has_password %}Γράψε τον κωδικό σου για επιβεβαίωση{% else %}Γράψε το email σου ({{ user.email }}) για επιβεβαίωση{% endif %}</label>
+        <input id="id_confirm" name="confirm" type="{% if has_password %}password{% else %}email{% endif %}" required autocomplete="{% if has_password %}current-password{% else %}off{% endif %}">
+      </div>
+      {% if error %}<div class="auth-notice error" role="alert">{{ error }}</div>{% endif %}
+      <div class="product-delete-actions">
+        <a href="{% url 'settings' %}" class="product-text-button">Άκυρο</a>
+        <button type="submit" class="product-delete-button">Οριστική διαγραφή λογαριασμού</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

@@ -143,6 +143,29 @@ def user_detail(request, user_id):
 
 @superadmin_required
 @require_POST
+def user_delete_account(request, user_id):
+    """The self-service deletion flow (gemiapp.account_deletion) as an admin action, with AdminAuditLog.
+    Requires typing the user's email; superusers cannot be deleted from here."""
+    from ..account_deletion import AccountDeletionRefused, delete_account
+
+    target_user = get_object_or_404(User, pk=user_id)
+    if target_user.is_superuser or target_user == request.user:
+        messages.error(request, "Δεν επιτρέπεται η διαγραφή αυτού του λογαριασμού από εδώ.")
+        return redirect("superadmin:user_detail", user_id=target_user.id)
+    if request.POST.get("confirm_email", "").strip().lower() != (target_user.email or "").lower():
+        messages.error(request, "Το email επιβεβαίωσης δεν ταιριάζει.")
+        return redirect("superadmin:user_detail", user_id=target_user.id)
+    try:
+        result = delete_account(target_user, actor=request.user)
+    except AccountDeletionRefused as exc:
+        messages.error(request, str(exc))
+        return redirect("superadmin:user_detail", user_id=target_user.id)
+    messages.success(request, f"Ο λογαριασμός διαγράφηκε ({result.user_ref}).")
+    return redirect("superadmin:user_list")
+
+
+@superadmin_required
+@require_POST
 def user_do_not_contact(request, user_id):
     """Superadmin-only switch that blocks every reminder email for this user (account emails still go)."""
     target_user = get_object_or_404(User, pk=user_id)

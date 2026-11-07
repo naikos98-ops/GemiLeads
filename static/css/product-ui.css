@@ -4716,4 +4716,22 @@ body.product-body textarea {
 }
 .product-feedback-reasons ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .product-feedback-text label { display: block; margin-bottom: 6px; font-weight: 700; font-size: var(--type-secondary); }
-.product-feedback-text textarea { width: 100%; box-sizing: border-box; }
+.product-feedback-text textarea,
+.product-feedback-text input {
+  display: block; width: 100%; box-sizing: border-box; padding: 10px 12px; min-height: 44px;
+  border: 1px solid var(--product-ink); background: var(--product-white); color: var(--product-ink); font: inherit;
+}
+.product-feedback-text textarea { min-height: 110px; resize: vertical; }
+.product-feedback-text textarea:focus-visible,
+.product-feedback-text input:focus-visible { outline: 2px solid var(--product-amber); outline-offset: 1px; }
+
+/* Account deletion (Settings → «Διαγραφή λογαριασμού»). Red = compliance/destructive only. */
+.product-delete-heading { margin: 0 0 10px; font-size: var(--type-title); }
+.product-delete-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: var(--type-secondary); }
+.product-delete-actions { display: flex; justify-content: flex-end; align-items: center; gap: 16px; flex-wrap: wrap; }
+.product-delete-button {
+  min-height: 44px; padding: 0 18px; border: 1px solid var(--product-red); background: var(--product-white);
+  color: var(--product-red); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: var(--type-meta); font-weight: 700; cursor: pointer;
+}
+.product-delete-button:hover { background: var(--product-red); color: var(--product-white); }
