@@ -494,6 +494,6 @@ class PageTests(StatusTestCase):
         self.assertEqual(self.post_status(self.owner, "won").status_code, 302)
         self.assertEqual((self.status(), len(mail.outbox)), ("won", 0))  # no notification (D37)
         self.assertNotIn(MARIA_EMAIL, str(Opportunity.objects.filter(pk=self.row.pk).values().get()))
-        self.assertEqual([p.tel_uri for p in Company(gemi_number="1", raw_data={"phone": "+30 2109990001"}).gemi_phones],
+        self.assertEqual([p.tel_uri for p in Company(gemi_number="1", legal_type="ΙΚΕ", raw_data={"phone": "+30 2109990001"}).gemi_phones],
                          ["tel:+302109990001"])
         self.assertEqual([p.display for p in extract_company_contact_phones({"phone": "2109990001"})], ["2109990001"])

@@ -101,3 +101,47 @@ class CsvGemiPhoneTests(TestCase):
         for name, args in (("export_csv", []), ("lead_export_csv", []), ("radar_export_csv", [self.radar.pk])):
             self.assertRedirects(self.client.get(reverse(name, args=args)), reverse("pricing"),
                                  fetch_redirect_response=False)
+
+
+class SoleTraderPhoneRuleTests(TestCase):
+    """The same rule hides a sole trader's phone on the Dossier and in the opportunity contact block."""
+
+    def test_rule(self):
+        from .company_contact import company_contact, phone_may_be_shown, phone_withheld
+
+        company = Company(legal_type="ΙΚΕ", raw_data=_raw("2101234567"))
+        self.assertTrue(phone_may_be_shown(company))
+        self.assertEqual([p.display for p in company_contact(company).phones], ["2101234567"])
+        for sole in (
+            Company(legal_type="ΑΤΟΜΙΚΗ", raw_data=_raw(SOLE_TRADER_PHONE, 16, "ΑΤΟΜΙΚΗ")),
+            Company(legal_type="", raw_data=_raw(SOLE_TRADER_PHONE, 16, "")),
+            Company(legal_type="Ατομική επιχείρηση", raw_data={"phone": SOLE_TRADER_PHONE}),
+            Company(legal_type="", raw_data={"phone": SOLE_TRADER_PHONE}),
+        ):
+            self.assertFalse(phone_may_be_shown(sole))
+            self.assertEqual(sole.gemi_phones, ())
+            self.assertEqual(company_contact(sole).phones, ())
+            self.assertTrue(phone_withheld(sole))
+        self.assertFalse(phone_withheld(Company(legal_type="ΑΤΟΜΙΚΗ", raw_data={})))
+
+    def test_dossier_hides_a_sole_traders_phone(self):
+        user = User.objects.create_user("d@example.com", "d@example.com", "StrongPass123")
+        sub = user.subscription
+        sub.tier, sub.status = "pro", "active"
+        sub.save()
+        self.client.force_login(user)
+        sole = Company.objects.create(
+            gemi_number="8200001", name="ΠΑΠΑΔΟΠΟΥΛΟΣ ΓΕΩΡΓΙΟΣ", incorporation_date=timezone.localdate(),
+            prefecture="ΑΤΤΙΚΗΣ", legal_type="ΑΤΟΜΙΚΗ", raw_data=_raw(SOLE_TRADER_PHONE, 16, "ΑΤΟΜΙΚΗ"),
+        )
+        page = self.client.get(reverse("company_detail", args=[sole.gemi_number])).content.decode()
+        self.assertNotIn(SOLE_TRADER_PHONE, page)
+        self.assertIn("Δεν εμφανίζεται για ατομικές επιχειρήσεις", page)
+
+        ike = Company.objects.create(
+            gemi_number="8200002", name="ΔΟΚΙΜΗ ΙΚΕ", incorporation_date=timezone.localdate(),
+            prefecture="ΑΤΤΙΚΗΣ", legal_type="ΙΚΕ", raw_data=_raw("2101234567"),
+        )
+        page = self.client.get(reverse("company_detail", args=[ike.gemi_number])).content.decode()
+        self.assertIn("tel:2101234567", page)
+        self.assertNotIn("Δεν εμφανίζεται για ατομικές επιχειρήσεις", page)

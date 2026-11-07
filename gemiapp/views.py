@@ -857,27 +857,9 @@ LEAD_EXPORT_HEADER = [
 ]
 
 
-# GEMI legalType id of a sole trader (ΑΤΟΜΙΚΗ).
-SOLE_TRADER_LEGAL_TYPE_ID = "16"
-
-
-def _may_export_gemi_phone(company):
-    """Only a company's phone goes into a file, never a sole trader's: there the "business" phone is
-    usually a natural person's own number. An unknown legal form is treated like a sole trader."""
-    raw = company.raw_data if isinstance(company.raw_data, dict) else {}
-    legal = raw.get("legalType") if isinstance(raw.get("legalType"), dict) else {}
-    source_id = str(legal.get("id") or "").strip()
-    label = normalize_kad_search(company.legal_type or legal.get("descr") or "")
-    if not source_id and not label:
-        return False
-    return source_id != SOLE_TRADER_LEGAL_TYPE_ID and "ΑΤΟΜΙΚ" not in label
-
-
 def _gemi_phone_cell(company):
-    """The company's GEMI contact phone(s) for a CSV cell: same source as the Dossier (top-level
-    ``raw_data["phone"]`` only, never ``persons``), several numbers joined with " / ". Empty for sole traders."""
-    if not _may_export_gemi_phone(company):
-        return ""
+    """The company's GEMI contact phone(s) for a CSV cell: the same rule as the Dossier (top-level
+    ``raw_data["phone"]`` only, never ``persons``, empty for sole traders), several numbers joined with " / "."""
     return " / ".join(phone.display for phone in company.gemi_phones)
 
 

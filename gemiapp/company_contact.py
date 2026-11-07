@@ -6,9 +6,11 @@ publishes the company's contact telephone at one top-level field, ``phone``. Thi
 a pattern search over the JSON -- so no person's number can surface by accident.
 
 Nothing is persisted, logged or fetched: the value is derived on each read from data already stored, and
-opening a Dossier makes no GEMI request. A sole trader's contact phone can still be personal data, which is why
-it stays behind the same subscription gate as the contact email, and why a dedicated, minimised company
-contact layer (explicit source, verification time, retention and privacy semantics) must replace this bridge.
+opening a Dossier makes no GEMI request. A sole trader's contact phone is usually a natural person's own number,
+so it is never shown or exported (Founder decision, 2026-11-07): ``company_phones`` returns nothing for a sole
+trader (GEMI legalType id 16 or an "ΑΤΟΜΙΚ..." label) or for a company whose legal form is unknown. Everything
+else stays behind the same subscription gate as the contact email, and a dedicated, minimised company contact
+layer (explicit source, verification time, retention and privacy semantics) must still replace this bridge.
 
 Normalisation is deliberately minimal: surrounding and repeated whitespace is collapsed, exact duplicates are
 dropped, and a value with no digit at all (e.g. a placeholder) is not a phone. No country code is guessed, no
@@ -18,14 +20,17 @@ number is reformatted and nothing is validated against the outside world. The ``
 
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
 # The only approved source: GEMI's company-level contact telephone.
 APPROVED_PHONE_FIELD = "phone"
+# GEMI legalType id of a sole trader (ΑΤΟΜΙΚΗ).
+SOLE_TRADER_LEGAL_TYPE_ID = "16"
 _COMPANY_CONTACT_MODEL_FIELDS = (
-    "email", "website", "address", "postal_code", "city", "municipality", "prefecture", "raw_data",
+    "email", "website", "address", "postal_code", "city", "municipality", "prefecture", "legal_type", "raw_data",
 )
 
 
@@ -84,6 +89,35 @@ def extract_company_contact_phones(raw_data: Any) -> tuple[CompanyPhone, ...]:
     return tuple(phones.values())
 
 
+def _fold(value: str) -> str:
+    """Upper-case without accents, so "Ατομική" and "ΑΤΟΜΙΚΗ" compare equal."""
+    decomposed = unicodedata.normalize("NFD", value)
+    return "".join(c for c in decomposed if unicodedata.category(c) != "Mn").upper()
+
+
+def phone_may_be_shown(company) -> bool:
+    """False for a sole trader and for a company whose legal form is unknown (fail closed)."""
+    raw = company.raw_data if isinstance(company.raw_data, dict) else {}
+    legal = raw.get("legalType") if isinstance(raw.get("legalType"), dict) else {}
+    source_id = _text(legal.get("id"))
+    label = _fold(_text(company.legal_type) or _text(legal.get("descr")))
+    if not source_id and not label:
+        return False
+    return source_id != SOLE_TRADER_LEGAL_TYPE_ID and "ΑΤΟΜΙΚ" not in label
+
+
+def company_phones(company) -> tuple[CompanyPhone, ...]:
+    """The GEMI contact phones that may be shown or exported for this company; empty for sole traders."""
+    if not phone_may_be_shown(company):
+        return ()
+    return extract_company_contact_phones(company.raw_data)
+
+
+def phone_withheld(company) -> bool:
+    """GEMI publishes a phone, but it is hidden because the company is a sole trader or its form is unknown."""
+    return not phone_may_be_shown(company) and bool(extract_company_contact_phones(company.raw_data))
+
+
 def _text(value: Any) -> str:
     """Collapse whitespace in a scalar display value; never stringify containers or booleans."""
     if value is None or isinstance(value, (bool, dict, list, tuple, set)):
@@ -108,7 +142,7 @@ def company_contact(company) -> CompanyContact:
         if part and part not in address_parts:
             address_parts.append(part)
     return CompanyContact(
-        phones=extract_company_contact_phones(company.raw_data),
+        phones=company_phones(company),
         email=_text(company.email),
         website=website,
         website_href=_website_href(website),
