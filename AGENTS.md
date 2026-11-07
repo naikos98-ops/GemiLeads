@@ -165,8 +165,19 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
-- **Lifecycle PR 3 — κύματα 2–3: E1, E3, E6, E7, E9, E11–E14 (2026-11-06, branch `claude/lifecycle-pr3-reminders` πάνω στο
-  PR 2, ΟΧΙ στο `main`, migration `0062_lifecycle_reminder_signals`: 3 nullable πεδία στο `UserLifecycleProfile`):**
+- **Νομικά κείμενα lifecycle/διαγραφής (2026-11-07, branch `claude/legal-lifecycle-deletion`, ΟΧΙ στο `main`):** έγκριση
+  Founder της πρότασης `docs/legal/LIFECYCLE_AND_DELETION_PROPOSAL.md`, εφαρμογή στα `templates/legal/terms.html`
+  (διαγραφή από τις Ρυθμίσεις χωρίς αυτόματη επιστροφή, υπαναχώρηση πριν τη διαγραφή, παύση Radars σε μικρότερο πλάνο,
+  Radars μετά τη λήξη) και `privacy.html` (ιστορικό συνδρομής, απαντήσεις αποχώρησης, ενδείξεις χρήσης· νομικές βάσεις
+  για email λογαριασμού, υπενθυμίσεις και τα έως δύο email μετά τη λήξη· διατήρηση μετά τη διαγραφή· απεγγραφή 120
+  ημέρες· διαγραφή από τις Ρυθμίσεις). `LEGAL_LAST_UPDATED` → 7 Νοεμβρίου 2026. Νομικός έλεγχος: δεν έχει γίνει.
+  2 tests (`LegalPagesTests`)· **2.683 tests OK**.
+- **Εύρημα 2026-11-07 (Radar nudge / E5):** κάθε εγγραφή (φόρμα και Google/Apple) δημιουργεί αυτόματα ενεργό Radar
+  «Όλες οι νέες επιχειρήσεις» χωρίς κριτήρια. Το nudge και το E5 ελέγχουν «υπάρχει ενεργό Radar», άρα δεν εμφανίζονται
+  σχεδόν ποτέ (π.χ. χρήστης από Σεπτέμβριο που έγινε Pro). Διόρθωση προς έγκριση: να μετράει μόνο Radar με κριτήρια.
+
+- **Lifecycle PR 3 — κύματα 2–3: E1, E3, E6, E7, E9, E11–E14 (2026-11-06, PR #8 merged `0d3d510` με έγκριση
+  Founder, deployed σε production 2026-11-07, migration `0062_lifecycle_reminder_signals`: 3 nullable πεδία στο `UserLifecycleProfile`):**
   κείμενα στο `gemiapp/lifecycle_content_reminders.py`, triggers στο `gemiapp/lifecycle.py` (`TIME_BASED_TRIGGERS`).
   Όλα μετρούν από το `LIFECYCLE_START_AT` και περνούν από την ίδια κράτηση/αποστολή του PR 1.
   - **E1** ανεπιβεβαίωτος ≥24h μετά από εγγραφή μετά την ενεργοποίηση, μία φορά, νέος σύνδεσμος
@@ -2551,10 +2562,10 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0, 1, 2 merged και deployed (2026-11-06/07)· PR 3
-  (E1/E3/E6/E7/E9/E11–E14, #8) ανοιχτό, περιμένει έγκριση Founder. Για τον πελάτη της 5/11 (η εντολή είναι πλέον σε production):
+- **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0–3 merged και deployed (2026-11-06/07).
+  Νομικά κείμενα: εγκρίθηκαν, εφαρμόστηκαν στο branch `claude/legal-lifecycle-deletion` (PR ανοιχτό, περιμένει merge). Για τον πελάτη της 5/11 (η εντολή είναι πλέον σε production):
   `scrub_customer_webhook_payloads --email … --customer …` (dry-run → `--apply`) και διαγραφή από το Superadmin.
-  Έγκριση των προτεινόμενων κειμένων Όρων/Απορρήτου. Τώρα που το PR 1 είναι σε production: `backfill_subscription_periods` **εφαρμόστηκε 2026-11-07** (περίοδος
+  Τώρα που το PR 1 είναι σε production: `backfill_subscription_periods` **εφαρμόστηκε 2026-11-07** (περίοδος
   Pro του user 26 από 31/10· 2 unmapped subscriptions παραλείφθηκαν), `LIFECYCLE_EMAILS_ENABLED=1` **ορίστηκε στο Render 2026-11-07** (από εκεί τα event emails E2/E4/E8/E10
   φεύγουν ζωντανά)· `LIFECYCLE_START_AT=2026-11-07 12:00:00+02:00` (dry-run: τίποτα προς αποστολή), `send_lifecycle_emails --dry-run` → report
   στον Founder πριν την πρώτη πραγματική εκτέλεση. Αποφάσεις Founder (2026-11-06): αυτόματη παύση Radars σε downgrade → ναι (PR 3)·
@@ -2840,6 +2851,10 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-07 — PR #8 (E1/E3/E6/E7/E9/E11–E14, αυτόματη παύση Radars) merged `0d3d510` και deployed** με έγκριση Founder·
+  live: `/reminders/keep/<token>/` απαντά (πριν 404). Η αυτόματη παύση Radars ισχύει πλέον σε production.
+- **2026-11-07 — Νομικά κείμενα lifecycle/διαγραφής** (έγκριση Founder): `terms.html`, `privacy.html`, `LEGAL_LAST_UPDATED`,
+  2 tests· branch `claude/legal-lifecycle-deletion`. 2.683 tests OK.
 - **2026-11-07 — `LIFECYCLE_START_AT=2026-11-07T12:00+02:00` σε production** (Founder). Dry-run: καμία γραμμή —
   καμία περίοδος δεν ξεκίνησε μετά την ενεργοποίηση, άρα κανένα E5 ακόμη.
 - **2026-11-07 — `LIFECYCLE_EMAILS_ENABLED=1` σε production** (Founder). Dry-run: `LIFECYCLE_START_AT=None`, κανένα

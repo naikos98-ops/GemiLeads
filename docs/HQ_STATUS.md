@@ -3,7 +3,7 @@
 Σύντομη κατάσταση για το Claude Project «Gemi Leads | HQ». Η λεπτομερής τεχνική μνήμη είναι το
 [`AGENTS.md`](../AGENTS.md)· αυτό το αρχείο δεν το αντικαθιστά, μόνο το συνοψίζει.
 
-**Τελευταία επαλήθευση:** 2026-11-07 · `main` = `0638af8` · production: δημόσιο HTTP μετά το deploy της self-service διαγραφής (`/settings/delete/` → login)
+**Τελευταία επαλήθευση:** 2026-11-07 · `main` = `0d3d510` · production: δημόσιο HTTP μετά το deploy του lifecycle PR 3 (`/reminders/keep/` απαντά)
 
 Ετικέτες πηγής — κάθε γραμμή δηλώνει από πού προέρχεται:
 
@@ -60,11 +60,11 @@
   **merged `5aafa7d` και deployed σε production 2026-11-07** [ΕΠΑΛΗΘ.: HTTP]· PR 2 self-service διαγραφή + E15
   **merged `0638af8` και deployed 2026-11-07** [ΕΠΑΛΗΘ.: HTTP]· ιστορικό συνδρομών backfilled σε
   production (1 περίοδος) [ΑΝΑΦΟΡΑ: έξοδος εντολής]· `LIFECYCLE_EMAILS_ENABLED=1` σε production από 2026-11-07,
-  `LIFECYCLE_START_AT=2026-11-07 12:00+02:00` [ΑΝΑΦΟΡΑ: dry-run, τίποτα προς αποστολή]· PR 3 E1/E3/E6/E7/E9/E11–E14 (`claude/lifecycle-pr3-reminders`, migration `0062`) [ΜΟΝΟ BRANCH].
-  Νομικό κείμενο: μόνο πρόταση, θέλει έγκριση.
+  `LIFECYCLE_START_AT=2026-11-07 12:00+02:00` [ΑΝΑΦΟΡΑ: dry-run, τίποτα προς αποστολή]· PR 3 E1/E3/E6/E7/E9/E11–E14 + αυτόματη παύση Radars (migration `0062`) **merged `0d3d510` και deployed 2026-11-07** [ΕΠΑΛΗΘ.: HTTP].
+  Νομικά κείμενα: εγκρίθηκαν, στο branch `claude/legal-lifecycle-deletion` [ΜΟΝΟ BRANCH, PR ανοιχτό].
+  **Κίνδυνος:** το auto-created Radar «Όλες οι νέες επιχειρήσεις» κρύβει το Radar nudge και το E5 σχεδόν από όλους [ΕΠΑΛΗΘ.] (repo).
   Αποφάσεις Founder 2026-11-06: αυτόματη παύση Radars σε downgrade (PR 3, τα νεότερα πέρα από το όριο), E2 και για
-  Google/Apple (σε production με το PR 1), πεδίο `last_filter_used_at` για το E3. **Σε production μέχρι το merge του PR 3:**
-  καμία αυτόματη παύση — μετά από 10→5 και τα 10 συνεχίζουν να ταιριάζουν [ΕΠΑΛΗΘ.] (repo).
+  Google/Apple (σε production με το PR 1), πεδίο `last_filter_used_at` για το E3. Η αυτόματη παύση ισχύει πλέον σε production.
 - **Σύνδεση HQ ↔ Claude Code:** αυτό το αρχείο και ο κανόνας στο `AGENTS.md` (branch `docs/hq-status`).
 - **SEO public pages** — worktree `gemi-leads-seo-audit-31a410`: **17 uncommitted αρχεία**, χωρίς commit
   ή push από 2026-09-21. [ΜΟΝΟ BRANCH, τοπικά] Η δουλειά δεν υπάρχει πουθενά αλλού.
