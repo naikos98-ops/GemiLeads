@@ -339,7 +339,7 @@ class DailyJobTests(LifecycleTestCase):
         self.assertEqual(LifecycleEmail.objects.get(kind="e5").dedupe_key, f"e5:{self.period.pk}")
 
     def test_e5_not_with_a_radar_not_before_activation_not_without_start(self):
-        CustomerRadar.objects.create(user=self.user, name="R")
+        CustomerRadar.objects.create(user=self.user, name="R", prefectures=["ΑΤΤΙΚΗΣ"])
         self.daily()
         CustomerRadar.objects.all().delete()
         self.period.started_at = self.start - timedelta(days=1)       # before activation: never retroactive
@@ -349,6 +349,11 @@ class DailyJobTests(LifecycleTestCase):
         self.period.save()
         run_daily()                                                  # no LIFECYCLE_START_AT: nothing time-based
         self.assertEqual(LifecycleEmail.objects.count(), 0)
+
+    def test_e5_still_sent_when_only_the_automatic_radar_exists(self):
+        CustomerRadar.objects.create(user=self.user, name="Όλες οι νέες επιχειρήσεις")   # created at every signup
+        self.daily()
+        self.assertEqual(self.sent_subjects(), ["Το Radar σου δεν έχει στηθεί ακόμα"])
 
     def test_reminder_opt_out_and_do_not_contact_skip(self):
         profile = self.user.lifecycle_profile
@@ -450,7 +455,9 @@ class CheckoutReturnTests(LifecycleTestCase):
         sub.save()
         response = self.get(self.session())
         self.assertRedirects(response, reverse("radar_create"), fetch_redirect_response=False)
-        CustomerRadar.objects.create(user=self.user, name="R")
+        CustomerRadar.objects.create(user=self.user, name="Όλες οι νέες επιχειρήσεις")   # automatic: still the form
+        self.assertRedirects(self.get(self.session()), reverse("radar_create"), fetch_redirect_response=False)
+        CustomerRadar.objects.create(user=self.user, name="R", name_query="καφέ")
         self.assertRedirects(self.get(self.session()), reverse("dashboard"), fetch_redirect_response=False)
 
     def test_someone_elses_or_incomplete_session_goes_to_the_dashboard(self):
@@ -489,12 +496,12 @@ class RadarNudgeTests(TestCase):
         for user in (self.make("paid@example.gr", tier="pro"), self.make("comp@example.gr", complimentary="business")):
             html = self.page(user)
             self.assertEqual(len(nudged_links(html)), 2, user.email)             # rail + mobile nav
-            self.assertIn("Δεν έχεις στήσει Radar ακόμα. Θέλει 2 λεπτά.", html)
+            self.assertIn("Δεν έχεις στήσει ακόμα Radar με τα δικά σου κριτήρια. Θέλει 2 λεπτά.", html)
             self.assertIn(f'href="{reverse("radar_create")}" class="product-ink-button">Φτιάξε Radar', html)
 
     def test_no_nudge_with_an_active_radar_for_free_or_anonymous(self):
         paid = self.make("paid@example.gr", tier="pro")
-        CustomerRadar.objects.create(user=paid, name="R")
+        CustomerRadar.objects.create(user=paid, name="R", legal_types=["ΙΚΕ"])
         free = self.make("free@example.gr")
         for user in (paid, free):
             html = self.page(user)
@@ -505,8 +512,32 @@ class RadarNudgeTests(TestCase):
 
     def test_a_paused_radar_does_not_count_as_set_up(self):
         paid = self.make("paid@example.gr", tier="pro")
-        CustomerRadar.objects.create(user=paid, name="R", is_active=False)
+        CustomerRadar.objects.create(user=paid, name="R", is_active=False, prefectures=["ΑΤΤΙΚΗΣ"])
         self.assertEqual(len(nudged_links(self.page(paid))), 2)
+
+    def test_the_automatic_radar_does_not_hide_the_nudge(self):
+        """Every signup creates an active, criteria-less «Όλες οι νέες επιχειρήσεις» Radar (founder report 2026-11-07:
+        a September user who became Pro saw no purple Radars)."""
+        paid = self.make("sept@example.gr", tier="pro")
+        CustomerRadar.objects.create(user=paid, name="Όλες οι νέες επιχειρήσεις")
+        self.assertEqual(len(nudged_links(self.page(paid))), 2)
+        CustomerRadar.objects.create(user=paid, name="Καφετέριες", name_query="καφέ")
+        self.assertEqual(nudged_links(self.page(paid)), [])
+
+    def test_has_targeted_radar_counts_any_criterion_on_an_active_radar(self):
+        from .models import ActivityCode, has_targeted_radar
+        user = self.make("crit@example.gr", tier="pro")
+        self.assertFalse(has_targeted_radar(user))
+        CustomerRadar.objects.create(user=user, name="Όλες", name_query="   ")
+        self.assertFalse(has_targeted_radar(user))
+        deleted = CustomerRadar.objects.create(user=user, name="Del", prefectures=["ΑΤΤΙΚΗΣ"])
+        deleted.deleted_at, deleted.is_active = timezone.now(), False
+        deleted.save()
+        self.assertFalse(has_targeted_radar(user))
+        code = ActivityCode.objects.create(code="56.10", normalized_code="5610", description="Εστιατόρια")
+        radar = CustomerRadar.objects.create(user=user, name="Codes")
+        radar.activity_codes.add(code)
+        self.assertTrue(has_targeted_radar(user))
 
     def test_workspace_navigation_is_nudged_too(self):
         from .organizations import create_organization

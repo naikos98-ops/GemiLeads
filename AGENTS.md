@@ -156,7 +156,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   εγκεκριμένης κατάστασης· στις auth/admin σελίδες υπερισχύουν scoped κανόνες.
 - **Radar nudge (εγκεκριμένη εξαίρεση, Founder 2026-11-06 09:04, εκδοχή Α):** το «Radars» στο rail και στο mobile nav
   παίρνει μωβ «γαλαξιακό» φόντο (`#2a1a5e` + radial-gradients, λευκά αστέρια, υπότιτλος `#d9ccff`) και συνεχές pop
-  `scale(1)→1.05` 1.6s, **μόνο** για `radar_limit > 0` χωρίς ενεργό Radar (`context_processors.radar_nudge`). Χωρίς
+  `scale(1)→1.05` 1.6s, **μόνο** για `radar_limit > 0` χωρίς ενεργό Radar **με κριτήρια** (`models.has_targeted_radar`, `context_processors.radar_nudge`· το αυτόματο Radar χωρίς κριτήρια «Όλες οι νέες επιχειρήσεις» δεν μετρά). Χωρίς
   κίνηση στην τρέχουσα σελίδα και σε `prefers-reduced-motion`. Μόνο αυτό το στοιχείο· οπουδήποτε αλλού ισχύει το
   Signal Ledger. Αναφορά: `_HQ_State/handoffs/2026-11-06_radar_nudge_purple_reference.html`.
 - `templates/allauth/layouts/entrance.html` → override μόνο εμφάνισης που βάζει τις anonymous σελίδες
@@ -164,6 +164,14 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   στο default του allauth σκόπιμα.
 
 ## Τρέχουσα κατάσταση
+
+- **Radar nudge / E5 / checkout: το αυτόματο Radar δεν μετρά (2026-11-07, branch `claude/radar-nudge-targeted`, ΟΧΙ στο
+  `main`, καμία migration):** κάθε signup (φόρμα και Google/Apple) δημιουργεί ενεργό Radar «Όλες οι νέες επιχειρήσεις»
+  χωρίς κριτήρια, οπότε ο έλεγχος «έχει ενεργό Radar» έκρυβε το μωβ nudge, το E5 και το redirect του checkout στη
+  δημιουργία Radar σχεδόν για όλους. Νέο `models.has_targeted_radar(user)`: ενεργό, μη διαγραμμένο Radar με τουλάχιστον
+  ένα κριτήριο (ΚΑΔ, περιοχή, νομική μορφή ή επωνυμία). Το χρησιμοποιούν `context_processors.radar_nudge`,
+  `billing.checkout_return`, `lifecycle._e5_candidates` και `lifecycle_content.build_e5`. Νέο κείμενο notice στο
+  `/dashboard/`: «Δεν έχεις στήσει ακόμα Radar με τα δικά σου κριτήρια». 2.684 tests OK, `check`, `makemigrations --check`.
 
 - **Lifecycle PR 3 — κύματα 2–3: E1, E3, E6, E7, E9, E11–E14 (2026-11-06, branch `claude/lifecycle-pr3-reminders` πάνω στο
   PR 2, ΟΧΙ στο `main`, migration `0062_lifecycle_reminder_signals`: 3 nullable πεδία στο `UserLifecycleProfile`):**
@@ -2551,6 +2559,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Radar nudge fix:** έγκριση Founder → merge/deploy του `claude/radar-nudge-targeted` → έλεγχος με impersonate νέου χρήστη.
 - **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0, 1, 2 merged και deployed (2026-11-06/07)· PR 3
   (E1/E3/E6/E7/E9/E11–E14, #8) ανοιχτό, περιμένει έγκριση Founder. Για τον πελάτη της 5/11 (η εντολή είναι πλέον σε production):
   `scrub_customer_webhook_payloads --email … --customer …` (dry-run → `--apply`) και διαγραφή από το Superadmin.
@@ -2840,6 +2849,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-07 — Radar nudge/E5/checkout αγνοούν το αυτόματο Radar χωρίς κριτήρια.** Αφορμή: νέος χρήστης με μόνο το
+  «Όλες οι νέες επιχειρήσεις» δεν έβλεπε το μωβ «Radars». Αλλαγές: `models.py`, `context_processors.py`, `billing.py`,
+  `lifecycle.py`, `lifecycle_content.py`, `templates/dashboard.html`, `test_lifecycle.py` (+3 tests).
 - **2026-11-07 — `LIFECYCLE_START_AT=2026-11-07T12:00+02:00` σε production** (Founder). Dry-run: καμία γραμμή —
   καμία περίοδος δεν ξεκίνησε μετά την ενεργοποίηση, άρα κανένα E5 ακόμη.
 - **2026-11-07 — `LIFECYCLE_EMAILS_ENABLED=1` σε production** (Founder). Dry-run: `LIFECYCLE_START_AT=None`, κανένα
