@@ -198,7 +198,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
     **2.666 tests OK**· κύκλος 0061↔0062 OK.
 
 - **Lifecycle PR 2 — self-service διαγραφή λογαριασμού + E15 + καθαρισμός payloads (2026-11-06, branch
-  `claude/lifecycle-pr2-account-deletion`, PR #7 με βάση πλέον το `main`, ΟΧΙ στο `main`, καμία migration):**
+  PR #7 merged `0638af8` με έγκριση Founder, deployed σε production 2026-11-07, καμία migration· τα
+  νομικά κείμενα ΔΕΝ έχουν εφαρμοστεί — μόνο η πρόταση):**
   `gemiapp/account_deletion.py`. Settings → «Διαγραφή λογαριασμού» → `/settings/delete/`: τι διαγράφεται / τι κρατάμε,
   προαιρετικό «Γιατί φεύγεις;» (ίδιο `ExitSurveyForm` με το E8), επιβεβαίωση με κωδικό (μόνο social login: το email).
   Σειρά: (1) ενεργή Stripe συνδρομή → `stripe.Subscription.cancel(prorate=False, invoice_now=False)`· αν η Stripe
@@ -2550,11 +2551,11 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0 και PR 1 merged και deployed (2026-11-06/07)· PR 2
-  (διαγραφή) και PR 3 (E1/E3/E6/E7/E9/E11–E14) ανοιχτά, περιμένουν έγκριση Founder. Για τον πελάτη της 5/11 (μετά το merge του PR 2):
+- **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0, 1, 2 merged και deployed (2026-11-06/07)· PR 3
+  (E1/E3/E6/E7/E9/E11–E14, #8) ανοιχτό, περιμένει έγκριση Founder. Για τον πελάτη της 5/11 (η εντολή είναι πλέον σε production):
   `scrub_customer_webhook_payloads --email … --customer …` (dry-run → `--apply`) και διαγραφή από το Superadmin.
-  Έγκριση των προτεινόμενων κειμένων Όρων/Απορρήτου. Τώρα που το PR 1 είναι σε production: `backfill_subscription_periods` (dry-run → έγκριση →
-  `--apply`), `LIFECYCLE_START_AT` + `LIFECYCLE_EMAILS_ENABLED=1` στο Render, `send_lifecycle_emails --dry-run` → report
+  Έγκριση των προτεινόμενων κειμένων Όρων/Απορρήτου. Τώρα που το PR 1 είναι σε production: `backfill_subscription_periods` (dry-run 2026-11-07: 1 περίοδος,
+  1 χρήστης, 2 unmapped subscriptions, 0 unreadable → έγκριση → `--apply`), `LIFECYCLE_START_AT` + `LIFECYCLE_EMAILS_ENABLED=1` στο Render, `send_lifecycle_emails --dry-run` → report
   στον Founder πριν την πρώτη πραγματική εκτέλεση. Αποφάσεις Founder (2026-11-06): αυτόματη παύση Radars σε downgrade → ναι (PR 3)·
   E2 για social login → ναι (PR 1)· πεδίο `last_filter_used_at` για E3 → ναι.
 
@@ -2838,6 +2839,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-07 — PR #7 (self-service διαγραφή + E15) merged `0638af8` και deployed** με έγκριση Founder· live:
+  `/settings/delete/` 404 → 302 login. Το #8 πέρασε σε βάση `main`. Production dry-run `backfill_subscription_periods`:
+  periods=1 users=1 unmapped_subscriptions=2 (subscription events χωρίς τοπικό ιδιοκτήτη· παραλείπονται).
 - **2026-11-07 — PR #6 (lifecycle θεμέλια, E2/E4/E5/E8/E10, Radar nudge) merged `5aafa7d` και deployed** με έγκριση
   Founder· η `0061` εφαρμόζεται από το `preDeployCommand`. Live έλεγχος HTTP: assets `20261106-lifecycle`, `/billing/success/` και
   `/settings/reminders/` → login redirect. Το #7 πέρασε σε βάση `main` πριν από οποιαδήποτε διαγραφή branch.
