@@ -165,8 +165,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
-- **Radar nudge / E5 / checkout: το αυτόματο Radar δεν μετρά (2026-11-07, branch `claude/radar-nudge-targeted`, ΟΧΙ στο
-  `main`, καμία migration):** κάθε signup (φόρμα και Google/Apple) δημιουργεί ενεργό Radar «Όλες οι νέες επιχειρήσεις»
+- **Radar nudge / E5 / checkout: το αυτόματο Radar δεν μετρά (2026-11-07, PR #10 merged `7ef5689` και deployed με έγκριση
+  Founder, καμία migration):** κάθε signup (φόρμα και Google/Apple) δημιουργεί ενεργό Radar «Όλες οι νέες επιχειρήσεις»
   χωρίς κριτήρια, οπότε ο έλεγχος «έχει ενεργό Radar» έκρυβε το μωβ nudge, το E5 και το redirect του checkout στη
   δημιουργία Radar σχεδόν για όλους. Νέο `models.has_targeted_radar(user)`: ενεργό, μη διαγραμμένο Radar με τουλάχιστον
   ένα κριτήριο (ΚΑΔ, περιοχή, νομική μορφή ή επωνυμία). Το χρησιμοποιούν `context_processors.radar_nudge`,
@@ -2559,7 +2559,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
-- **Radar nudge fix:** έγκριση Founder → merge/deploy του `claude/radar-nudge-targeted` → έλεγχος με impersonate νέου χρήστη.
+- **Radar nudge fix:** deployed· μένει ο έλεγχος με impersonate νέου χρήστη (μωβ «Radars» ορατό).
 - **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0, 1, 2 merged και deployed (2026-11-06/07)· PR 3
   (E1/E3/E6/E7/E9/E11–E14, #8) ανοιχτό, περιμένει έγκριση Founder. Για τον πελάτη της 5/11 (η εντολή είναι πλέον σε production):
   `scrub_customer_webhook_payloads --email … --customer …` (dry-run → `--apply`) και διαγραφή από το Superadmin.
@@ -2849,6 +2849,8 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-07 — PR #10 (Radar nudge fix) merged `7ef5689` και deployed** με έγκριση Founder· Render deploy success,
+  `/login/` 200.
 - **2026-11-07 — Radar nudge/E5/checkout αγνοούν το αυτόματο Radar χωρίς κριτήρια.** Αφορμή: νέος χρήστης με μόνο το
   «Όλες οι νέες επιχειρήσεις» δεν έβλεπε το μωβ «Radars». Αλλαγές: `models.py`, `context_processors.py`, `billing.py`,
   `lifecycle.py`, `lifecycle_content.py`, `templates/dashboard.html`, `test_lifecycle.py` (+3 tests).
