@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from django.db import transaction
 
 from .lifecycle import enqueue
+from .radar_limits import pause_radars_over_limit
 from .subscription_history import TIER_RANK, sync_complimentary_period, sync_stripe_period
 
 logger = logging.getLogger(__name__)
@@ -27,10 +28,20 @@ class Before:
     paid: bool
     tier: str
     active_until: object
+    radar_limit: int = 0
 
     @classmethod
     def of(cls, sub):
-        return cls(paid=sub.has_active_paid_subscription, tier=sub.tier, active_until=sub.active_until)
+        return cls(paid=sub.has_active_paid_subscription, tier=sub.tier, active_until=sub.active_until,
+                   radar_limit=sub.radar_limit)
+
+
+def _pause_over_limit(sub, previous_limit):
+    try:
+        return pause_radars_over_limit(sub.user, previous_limit=previous_limit, new_limit=sub.radar_limit)
+    except Exception:
+        logger.exception("Could not enforce the Radar limit for subscription %s", sub.pk)
+        return []
 
 
 def after_stripe_change(sub, before: Before, *, at=None, subscription_payload=None, terminal=False):
@@ -42,6 +53,8 @@ def after_stripe_change(sub, before: Before, *, at=None, subscription_payload=No
         logger.exception("Could not record subscription history for subscription %s", sub.pk)
 
     user = sub.user
+    # A lower allowance (downgrade at the period boundary) pauses the newest Radars beyond it.
+    _pause_over_limit(sub, before.radar_limit)
     # E4: first paid tier, or a strictly higher one. Renewals and downgrades never qualify.
     if sub.has_active_paid_subscription and (
         not before.paid or TIER_RANK.get(sub.tier, 0) > TIER_RANK.get(before.tier, 0)
@@ -58,10 +71,13 @@ def after_stripe_change(sub, before: Before, *, at=None, subscription_payload=No
     return change
 
 
-def after_complimentary_change(sub):
+def after_complimentary_change(sub, *, previous_limit=None):
+    change = None
     try:
         with transaction.atomic():
-            return sync_complimentary_period(sub)
+            change = sync_complimentary_period(sub)
     except Exception:
         logger.exception("Could not record complimentary history for subscription %s", sub.pk)
-        return None
+    if previous_limit is not None:
+        _pause_over_limit(sub, previous_limit)
+    return change

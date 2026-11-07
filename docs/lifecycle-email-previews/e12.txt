@@ -1,0 +1,18 @@
+ΝΑ ΣΥΝΕΧΊΣΩ ΝΑ ΣΟΥ ΓΡΆΦΩ;
+
+Γεια σου Μαρία,
+
+Έχεις καιρό να μπεις στο Gemi Leads, οπότε σε ρωτάω πριν σου ξαναστείλω συμβουλές και υπενθυμίσεις.
+
+Αν θες να συνεχίσουν, πάτα το κουμπί. Αν δεν το πατήσεις μέσα σε 14 μέρες, σταματώ να τις στέλνω. Το πρωινό email δεν αλλάζει.
+
+Ναι, κράτα με: http://localhost:8000/reminders/keep/eyJ1IjoxMn0:1xPElW:6sWmCADBtDmHGXdrJaDmnJI-W8OALiMl6inElma01vQ/
+
+Νίκος
+Gemi Leads
+
+--
+Στάλθηκε στο preview-e12@example.gr, τον λογαριασμό σου στο gemileads.gr.
+Διακοπή συμβουλών και υπενθυμίσεων (το πρωινό email δεν αλλάζει): http://localhost:8000/reminders/unsubscribe/eyJ1IjoxMn0:1xPElW:JgMmgVk0yNRkI-VjYoyBlryanGIMa3AmHPdk6oQZgYY/
+GEMI LEADS — προϊόν της NORVA Ι.Κ.Ε.
+

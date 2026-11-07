@@ -94,6 +94,26 @@ def user_from_unsubscribe_token(token):
     return User.objects.filter(pk=data.get("u")).first()
 
 
+KEEP_SALT = "lifecycle-keep"
+KEEP_MAX_AGE = timedelta(days=60)
+CLICK_EVENTS = ("click", "clicked", "unique_clicked")
+
+
+def keep_url(user) -> str:
+    token = signing.dumps({"u": user.pk}, salt=KEEP_SALT)
+    return f"{settings.BASE_URL.rstrip('/')}{reverse('lifecycle_keep', kwargs={'token': token})}"
+
+
+def user_from_keep_token(token):
+    from django.contrib.auth.models import User
+
+    try:
+        data = signing.loads(token, salt=KEEP_SALT, max_age=KEEP_MAX_AGE.total_seconds())
+    except signing.BadSignature:
+        return None
+    return User.objects.filter(pk=data.get("u")).first()
+
+
 # --- reservation ---------------------------------------------------------------------------------
 
 def reserve(kind: str, user, dedupe_key: str, params: dict | None = None, *, not_before=None):
@@ -264,7 +284,129 @@ def _e5_candidates(now, start_at):
         yield Candidate("e5", user, f"e5:{period.pk}", {"period_id": period.pk})
 
 
-TIME_BASED_TRIGGERS = (_e5_candidates,)
+def _e1_candidates(now, start_at):
+    """E1: signed up after activation, still unverified 24h later. Once."""
+    from django.contrib.auth.models import User
+
+    for user in User.objects.filter(is_active=False, date_joined__gte=start_at,
+                                    date_joined__lte=now - timedelta(hours=24)).exclude(email=""):
+        yield Candidate("e1", user, f"e1:{user.pk}")
+
+
+def _e3_candidates(now, start_at):
+    """E3: Free, 48h after the welcome (E2 = first verification, only ever after activation), no filter used."""
+    rows = LifecycleEmail.objects.filter(kind="e2", status="sent", sent_at__gte=start_at,
+                                         sent_at__lte=now - timedelta(hours=48), user__isnull=False).select_related("user")
+    for row in rows:
+        user = row.user
+        sub = getattr(user, "subscription", None)
+        if sub is None or sub.radar_limit > 0 or profile_for(user).last_filter_used_at:
+            continue
+        yield Candidate("e3", user, f"e3:{user.pk}")
+
+
+def _e6_candidates(now, start_at):
+    """E6: a Radar active for >= 7 days (counted from activation at the earliest) with no match. Once per Radar."""
+    radars = CustomerRadar.objects.filter(is_active=True, deleted_at__isnull=True, matches__isnull=True,
+                                          monitor_from__lte=now - timedelta(days=7)).select_related("user")
+    for radar in radars:
+        if max(radar.monitor_from, start_at) > now - timedelta(days=7):
+            continue
+        sub = getattr(radar.user, "subscription", None)
+        if sub is None or not sub.has_entitlement:
+            continue
+        yield Candidate("e6", radar.user, f"e6:{radar.pk}", {"radar_id": radar.pk})
+
+
+def _e9_candidates(now, start_at):
+    """E9: three days before a scheduled end that E8 announced (E8 rows only exist after activation)."""
+    from .models import UserSubscription
+
+    for sub in UserSubscription.objects.filter(active_until__gt=now, active_until__lte=now + timedelta(days=3, hours=12)) \
+            .select_related("user"):
+        key = f"{sub.stripe_subscription_id}:{sub.active_until.date().isoformat()}"
+        if LifecycleEmail.objects.filter(dedupe_key=f"e8:{key}").exists():
+            yield Candidate("e9", sub.user, f"e9:{key}")
+
+
+def inactivity_start(user):
+    """The last sign of life: last login or last click in one of our emails (opens are unreliable)."""
+    from .models import EmailEngagementEvent
+
+    last_click = EmailEngagementEvent.objects.filter(email__iexact=user.email, event_type__in=CLICK_EVENTS) \
+        .order_by("-received_at").values_list("received_at", flat=True).first()
+    marks = [m for m in (user.last_login, last_click, user.date_joined) if m]
+    return max(marks) if marks else None
+
+
+def _inactive_users(now, start_at, days):
+    from django.contrib.auth.models import User
+
+    for user in User.objects.filter(is_active=True).exclude(email=""):
+        start = inactivity_start(user)
+        if start is None:
+            continue
+        if now - max(start, start_at) >= timedelta(days=days):
+            yield user, start
+
+
+def _e11_candidates(now, start_at):
+    """E11: 7 days without login or click (measured from activation at the earliest). Once per inactivity period."""
+    for user, start in _inactive_users(now, start_at, 7):
+        yield Candidate("e11", user, f"e11:{user.pk}:{start.date().isoformat()}")
+
+
+def _e12_candidates(now, start_at):
+    """E12: 30 days of the same inactivity period, after its E11 went out."""
+    for user, start in _inactive_users(now, start_at, 30):
+        period_key = f"{user.pk}:{start.date().isoformat()}"
+        if LifecycleEmail.objects.filter(dedupe_key=f"e11:{period_key}", status="sent").exists():
+            yield Candidate("e12", user, f"e12:{period_key}")
+
+
+def _ended_paid_periods(now, start_at, days):
+    from .subscription_history import is_former_paid
+
+    for period in SubscriptionPeriod.objects.filter(source="stripe", user__isnull=False, ended_at__gte=start_at,
+                                                    ended_at__lte=now - timedelta(days=days)) \
+            .exclude(end_reason__in=["upgraded", "downgraded", "account_deleted"]).select_related("user"):
+        if is_former_paid(period.user) and not profile_for(period.user).do_not_contact:
+            yield period
+
+
+def _e13_candidates(now, start_at):
+    for period in _ended_paid_periods(now, start_at, 14):
+        yield Candidate("e13", period.user, f"e13:{period.pk}", {"period_id": period.pk})
+
+
+def _e14_candidates(now, start_at):
+    from .lifecycle_content_reminders import whats_new_items
+
+    if not whats_new_items():
+        return
+    for period in _ended_paid_periods(now, start_at, 60):
+        yield Candidate("e14", period.user, f"e14:{period.pk}", {"period_id": period.pk})
+
+
+def stop_unanswered_reminders(now, *, dry_run=False):
+    """E12 follow-up: no «Ναι, κράτα με» and no login within 14 days of the question => reminders stop.
+    The digest is untouched; only reminders_enabled changes (and is restored by the keep link)."""
+    stopped = []
+    for row in LifecycleEmail.objects.filter(kind="e12", status="sent", sent_at__lte=now - timedelta(days=14),
+                                             user__isnull=False).select_related("user"):
+        user, profile = row.user, profile_for(row.user)
+        answered = (profile.kept_at and profile.kept_at >= row.sent_at) or (user.last_login and user.last_login >= row.sent_at)
+        if answered or not profile.reminders_enabled or (profile.reminders_stopped_at and profile.reminders_stopped_at >= row.sent_at):
+            continue
+        stopped.append(user)
+        if not dry_run:
+            profile.reminders_enabled, profile.reminders_stopped_at = False, now
+            profile.save(update_fields=["reminders_enabled", "reminders_stopped_at", "updated_at"])
+    return stopped
+
+
+TIME_BASED_TRIGGERS = (_e1_candidates, _e3_candidates, _e5_candidates, _e6_candidates, _e9_candidates,
+                       _e11_candidates, _e12_candidates, _e13_candidates, _e14_candidates)
 
 
 def time_based_candidates(now):
@@ -311,6 +453,10 @@ def run_daily(*, now=None, dry_run=False) -> DailyReport:
     lapsed = sweep_expired_complimentary(now=now, dry_run=dry_run)
     for period in lapsed:
         report.lines.append(f"{'[dry-run] ' if dry_run else ''}complimentary period {period.pk} κλείνει (λήξη)")
+
+    if lifecycle_start_at() is not None:
+        for user in stop_unanswered_reminders(now, dry_run=dry_run):
+            report.lines.append(f"{'[dry-run] ' if dry_run else ''}υπενθυμίσεις σταματούν για user {user.pk} (E12 χωρίς απάντηση)")
 
     for candidate in time_based_candidates(now):
         report.lines.append(f"{'[dry-run] ' if dry_run else ''}{candidate.kind.upper()} → user {candidate.user.pk} "

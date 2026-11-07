@@ -272,6 +272,11 @@ SUPPORT_INBOX = os.getenv("SUPPORT_INBOX", "info@gemileads.gr")
 # something that happened before. Without it, no time-based email is ever produced.
 LIFECYCLE_EMAILS_ENABLED = os.getenv("LIFECYCLE_EMAILS_ENABLED", "0") == "1"
 LIFECYCLE_START_AT = os.getenv("LIFECYCLE_START_AT", "").strip()
+# E14 «Τι νέο έχει το Gemi Leads»: 2–3 real changes, written by the Founder, separated by "|". Empty => E14 is not sent.
+LIFECYCLE_WHATS_NEW = os.getenv("LIFECYCLE_WHATS_NEW", "").strip()
+# When an entitlement change lowers the Radar limit, pause the newest active Radars beyond it
+# (gemiapp/radar_limits.py). Independent of the lifecycle emails; 0 restores the old behaviour.
+RADAR_AUTO_PAUSE_ON_DOWNGRADE = os.getenv("RADAR_AUTO_PAUSE_ON_DOWNGRADE", "1") == "1"
 # The sender for error mail, which is what AdminEmailHandler puts on an operator alert. Django's default is
 # root@localhost: the Brevo relay accepted it and returned success, then dropped the message, so the alert
 # tested in production never arrived and nothing reported a failure. Defaults to the address the digests

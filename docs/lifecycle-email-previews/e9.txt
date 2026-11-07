@@ -1,0 +1,22 @@
+Η ΣΥΝΔΡΟΜΉ ΣΟΥ ΛΉΓΕΙ ΣΕ 3 ΜΈΡΕΣ
+
+Γεια σου Μαρία,
+
+Στις 09/11/2026 η συνδρομή σου λήγει και περνάς στο Free. Από τότε σταματούν:
+
+- Τα Radars: δεν ελέγχουν πλέον τις νέες καταχωρίσεις.
+- Τα ταιριάσματα των Radars στο πρωινό email.
+- Η εξαγωγή σε CSV.
+
+Κρατάς τη λίστα με τα φίλτρα, το ημερήσιο email και τα Leads που έχεις ήδη. Τα Radars μένουν αποθηκευμένα με τα κριτήριά τους.
+
+Συνέχιση συνδρομής: http://localhost:8000/settings/
+
+Νίκος
+Gemi Leads
+
+--
+Στάλθηκε στο preview-e9@example.gr, τον λογαριασμό σου στο gemileads.gr.
+Διακοπή συμβουλών και υπενθυμίσεων (το πρωινό email δεν αλλάζει): http://localhost:8000/reminders/unsubscribe/eyJ1Ijo5fQ:1xPElW:ZFiGGQB5SdsoECPUrW0nuGSXNI2QtOoNeHwPQVFbDPQ/
+GEMI LEADS — προϊόν της NORVA Ι.Κ.Ε.
+

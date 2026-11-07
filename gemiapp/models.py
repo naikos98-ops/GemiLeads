@@ -2595,6 +2595,12 @@ class UserLifecycleProfile(models.Model):
     ref = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     reminders_enabled = models.BooleanField("Συμβουλές και υπενθυμίσεις", default=True)
     do_not_contact = models.BooleanField("Do not contact (υπενθυμίσεις)", default=False)
+    # E3: first time the dashboard was used with a filter (ΚΑΔ, νομός, ...). Nothing else records filter use.
+    last_filter_used_at = models.DateTimeField(null=True, blank=True)
+    # E12: «Ναι, κράτα με» -- the last time the user asked to keep receiving reminders.
+    kept_at = models.DateTimeField(null=True, blank=True)
+    # E12: reminders were switched off because the question went unanswered for 14 days.
+    reminders_stopped_at = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

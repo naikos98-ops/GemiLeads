@@ -1,0 +1,16 @@
+ΤΟ RADAR ΣΟΥ ΘΑ ΕΊΧΕ ΒΡΕΙ 24 ΝΈΕΣ ΚΑΤΑΧΩΡΊΣΕΙΣ
+
+Γεια σου Μαρία,
+
+Από τότε που έληξε η συνδρομή σου: 24 νέες καταχωρίσεις με τα κριτήρια των Radars σου. Τα Radars είναι ακόμη αποθηκευμένα — με νέα συνδρομή ξαναρχίζουν να τις ελέγχουν.
+
+Δες τα πλάνα: http://localhost:8000/pricing/
+
+Νίκος
+Gemi Leads
+
+--
+Στάλθηκε στο preview-e13@example.gr, τον λογαριασμό σου στο gemileads.gr.
+Διακοπή συμβουλών και υπενθυμίσεων (το πρωινό email δεν αλλάζει): http://localhost:8000/reminders/unsubscribe/eyJ1IjoxM30:1xPElW:lNFKMswvwm861Byi5DSB3S6PeDS8VZB20FizP0pSvgA/
+GEMI LEADS — προϊόν της NORVA Ι.Κ.Ε.
+

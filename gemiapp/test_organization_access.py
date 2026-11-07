@@ -397,7 +397,7 @@ class SafetyTests(LiveAccessTestCase):
         self.assertFalse([n for n in names if "Access" in n or "Permission" in n or "Assign" in n])
         loader = MigrationLoader(None, ignore_no_migrations=True)
         self.assertEqual(max(name for app, name in loader.disk_migrations if app == "gemiapp"),
-                         "0061_lifecycle_foundations")
+                         "0062_lifecycle_reminder_signals")
 
     def test_the_legacy_product_and_billing_are_untouched(self):
         legacy_user = entitled_user("legacy-g5@example.com")

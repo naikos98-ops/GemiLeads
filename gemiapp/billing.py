@@ -14,6 +14,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+from .lifecycle import enqueue as enqueue_lifecycle
 from .lifecycle_triggers import Before, after_stripe_change
 from .models import CustomerRadar, StripeWebhookEvent, UserSubscription
 
@@ -1428,6 +1429,8 @@ def _handle_subscription_schedule_updated(event):
         sub.scheduled_change_at = scheduled_change_at
         sub.stripe_schedule_id = schedule.get("id") or ""
         sub.save()
+        # E7 «Στις [ημ/νία] περνάς στο [πλάνο]»: reserved once per schedule; never raises into the handler.
+        enqueue_lifecycle("e7", sub.user, f"e7:{sub.stripe_schedule_id}", {})
 
 
 def _handle_subscription_schedule_released(event):

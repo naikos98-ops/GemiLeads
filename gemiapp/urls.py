@@ -17,6 +17,7 @@ urlpatterns = [
     path("settings/delete/", views.account_delete, name="account_delete"),
     path("feedback/leaving/", views.churn_feedback, name="churn_feedback"),
     path("reminders/unsubscribe/<token>/", views.lifecycle_unsubscribe, name="lifecycle_unsubscribe"),
+    path("reminders/keep/<token>/", views.lifecycle_keep, name="lifecycle_keep"),
     path("support/", support.support_message_create, name="support_message_create"),
     path("radars/", views.radar_list, name="radar_list"),
     path("radars/new/", views.radar_create, name="radar_create"),

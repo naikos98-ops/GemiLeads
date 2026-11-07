@@ -1,0 +1,16 @@
+12 ΝΈΕΣ ΚΑΤΑΧΩΡΊΣΕΙΣ ΑΥΤΉ ΤΗΝ ΕΒΔΟΜΆΔΑ
+
+Γεια σου Μαρία,
+
+Τις τελευταίες 7 μέρες: 12 νέες καταχωρίσεις. Με φίλτρο ΚΑΔ και νομού έδρας βλέπεις μόνο όσες σε αφορούν.
+
+Άνοιξε τη λίστα: http://localhost:8000/dashboard/
+
+Νίκος
+Gemi Leads
+
+--
+Στάλθηκε στο preview-e11@example.gr, τον λογαριασμό σου στο gemileads.gr.
+Διακοπή συμβουλών και υπενθυμίσεων (το πρωινό email δεν αλλάζει): http://localhost:8000/reminders/unsubscribe/eyJ1IjoxMX0:1xPElW:fcCmKOSy1ij1mqU-4JAY1QlQJUaP2d40JNUXTwBZWTM/
+GEMI LEADS — προϊόν της NORVA Ι.Κ.Ε.
+
