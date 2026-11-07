@@ -55,6 +55,8 @@
 
 ## 4. Ενεργά development tasks
 
+- **Radar nudge fix** (μόνο σε branch `claude/radar-nudge-targeted`, PR ανοιχτό): το μωβ «Radars», το E5 και το
+  redirect μετά το checkout εμφανίζονται πλέον και σε όσους έχουν μόνο το αυτόματο Radar χωρίς κριτήρια [ΕΠΑΛΗΘ. tests].
 - **Lifecycle emails + Radar nudge + διαγραφή λογαριασμού** (brief BRAIN 2026-11-06): PR 0 mobile account menu
   **merged `930ec0b` και deployed σε production** [ΕΠΑΛΗΘ.] και PR 1 θεμέλια/E2/E4/E5/E8/E10/nudge (migration `0061`, `LIFECYCLE_EMAILS_ENABLED=0`)
   **merged `5aafa7d` και deployed σε production 2026-11-07** [ΕΠΑΛΗΘ.: HTTP]· PR 2 self-service διαγραφή + E15

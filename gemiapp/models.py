@@ -395,6 +395,19 @@ def effective_tier_q(tier, prefix="subscription__", now=None):
     )
 
 
+def has_targeted_radar(user) -> bool:
+    """True when the account has an active Radar with at least one criterion.
+
+    Every signup creates an active, criteria-less Radar «Όλες οι νέες επιχειρήσεις» (it feeds the daily digest), so
+    «has an active Radar» says nothing about whether the customer has set up targeting. The Radar nudge, the E5
+    reminder and the post-checkout redirect ask this question instead. One query.
+    """
+    radars = (CustomerRadar.objects.filter(user=user, is_active=True, deleted_at__isnull=True)
+              .annotate(code_count=models.Count("activity_codes"))
+              .only("pk", "name_query", "prefectures", "legal_types"))
+    return any(r.code_count or r.prefectures or r.legal_types or (r.name_query or "").strip() for r in radars)
+
+
 def get_user_radar_limit(user):
     try:
         return user.subscription.radar_limit

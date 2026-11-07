@@ -18,7 +18,7 @@ from django.conf import settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import CustomerRadar, SubscriptionPeriod, UserSubscription
+from .models import SubscriptionPeriod, UserSubscription, has_targeted_radar
 
 TIER_NAMES = {"pro": "Pro", "business": "Business", "enterprise": "Enterprise", "custom": "Custom"}
 SIGNATURE = ("Νίκος", "Gemi Leads")
@@ -67,10 +67,6 @@ class EmailContent:
 
 def _subscription(user):
     return UserSubscription.objects.filter(user=user).first()
-
-
-def _active_radar_count(user) -> int:
-    return CustomerRadar.objects.filter(user=user, is_active=True, deleted_at__isnull=True).count()
 
 
 # --- E2 · welcome after first verification (text: brief 2026-11-04, unchanged apart from layout) ------
@@ -150,7 +146,7 @@ def build_e5(user, params, now):
 
     period = SubscriptionPeriod.objects.filter(pk=params.get("period_id"), user=user, ended_at__isnull=True).first()
     sub = _subscription(user)
-    if period is None or sub is None or sub.radar_limit <= 0 or _active_radar_count(user):
+    if period is None or sub is None or sub.radar_limit <= 0 or has_targeted_radar(user):
         return None
     return EmailContent(
         kind="e5",
