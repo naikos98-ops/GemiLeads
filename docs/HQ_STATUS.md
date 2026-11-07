@@ -59,7 +59,8 @@
   **merged `930ec0b` και deployed σε production** [ΕΠΑΛΗΘ.] και PR 1 θεμέλια/E2/E4/E5/E8/E10/nudge (migration `0061`, `LIFECYCLE_EMAILS_ENABLED=0`)
   **merged `5aafa7d` και deployed σε production 2026-11-07** [ΕΠΑΛΗΘ.: HTTP]· PR 2 self-service διαγραφή + E15
   **merged `0638af8` και deployed 2026-11-07** [ΕΠΑΛΗΘ.: HTTP]· ιστορικό συνδρομών backfilled σε
-  production (1 περίοδος) [ΑΝΑΦΟΡΑ: έξοδος εντολής]· PR 3 E1/E3/E6/E7/E9/E11–E14 (`claude/lifecycle-pr3-reminders`, migration `0062`) [ΜΟΝΟ BRANCH].
+  production (1 περίοδος) [ΑΝΑΦΟΡΑ: έξοδος εντολής]· `LIFECYCLE_EMAILS_ENABLED=1` σε production από 2026-11-07,
+  `LIFECYCLE_START_AT` όχι ακόμη [ΑΝΑΦΟΡΑ: dry-run]· PR 3 E1/E3/E6/E7/E9/E11–E14 (`claude/lifecycle-pr3-reminders`, migration `0062`) [ΜΟΝΟ BRANCH].
   Νομικό κείμενο: μόνο πρόταση, θέλει έγκριση.
   Αποφάσεις Founder 2026-11-06: αυτόματη παύση Radars σε downgrade (PR 3, τα νεότερα πέρα από το όριο), E2 και για
   Google/Apple (σε production με το PR 1), πεδίο `last_filter_used_at` για το E3. **Σε production μέχρι το merge του PR 3:**
