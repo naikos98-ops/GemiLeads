@@ -16,7 +16,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from .lifecycle import enqueue as enqueue_lifecycle
 from .lifecycle_triggers import Before, after_stripe_change
-from .models import CustomerRadar, StripeWebhookEvent, UserSubscription
+from .models import StripeWebhookEvent, UserSubscription, has_targeted_radar
 
 logger = logging.getLogger(__name__)
 
@@ -312,7 +312,7 @@ def checkout_return(request):
     sub = UserSubscription.objects.filter(user=request.user).first()
     if sub is not None and sub.has_entitlement:
         request.session.pop(CHECKOUT_CONFIRM_POLLS_SESSION_KEY, None)
-        if not CustomerRadar.objects.filter(user=request.user, is_active=True, deleted_at__isnull=True).exists():
+        if not has_targeted_radar(request.user):
             messages.success(request, "Η πληρωμή ολοκληρώθηκε — φτιάξε το πρώτο σου Radar.")
             return redirect("radar_create")
         messages.success(request, "Η πληρωμή ολοκληρώθηκε.")

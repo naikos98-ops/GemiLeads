@@ -156,7 +156,7 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
   εγκεκριμένης κατάστασης· στις auth/admin σελίδες υπερισχύουν scoped κανόνες.
 - **Radar nudge (εγκεκριμένη εξαίρεση, Founder 2026-11-06 09:04, εκδοχή Α):** το «Radars» στο rail και στο mobile nav
   παίρνει μωβ «γαλαξιακό» φόντο (`#2a1a5e` + radial-gradients, λευκά αστέρια, υπότιτλος `#d9ccff`) και συνεχές pop
-  `scale(1)→1.05` 1.6s, **μόνο** για `radar_limit > 0` χωρίς ενεργό Radar (`context_processors.radar_nudge`). Χωρίς
+  `scale(1)→1.05` 1.6s, **μόνο** για `radar_limit > 0` χωρίς ενεργό Radar **με κριτήρια** (`models.has_targeted_radar`, `context_processors.radar_nudge`· το αυτόματο Radar χωρίς κριτήρια «Όλες οι νέες επιχειρήσεις» δεν μετρά). Χωρίς
   κίνηση στην τρέχουσα σελίδα και σε `prefers-reduced-motion`. Μόνο αυτό το στοιχείο· οπουδήποτε αλλού ισχύει το
   Signal Ledger. Αναφορά: `_HQ_State/handoffs/2026-11-06_radar_nudge_purple_reference.html`.
 - `templates/allauth/layouts/entrance.html` → override μόνο εμφάνισης που βάζει τις anonymous σελίδες
@@ -165,16 +165,20 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τρέχουσα κατάσταση
 
-- **Νομικά κείμενα lifecycle/διαγραφής (2026-11-07, branch `claude/legal-lifecycle-deletion`, ΟΧΙ στο `main`):** έγκριση
+- **Νομικά κείμενα lifecycle/διαγραφής (2026-11-07, PR #9 merged και deployed με έγκριση Founder):** έγκριση
   Founder της πρότασης `docs/legal/LIFECYCLE_AND_DELETION_PROPOSAL.md`, εφαρμογή στα `templates/legal/terms.html`
   (διαγραφή από τις Ρυθμίσεις χωρίς αυτόματη επιστροφή, υπαναχώρηση πριν τη διαγραφή, παύση Radars σε μικρότερο πλάνο,
   Radars μετά τη λήξη) και `privacy.html` (ιστορικό συνδρομής, απαντήσεις αποχώρησης, ενδείξεις χρήσης· νομικές βάσεις
   για email λογαριασμού, υπενθυμίσεις και τα έως δύο email μετά τη λήξη· διατήρηση μετά τη διαγραφή· απεγγραφή 120
   ημέρες· διαγραφή από τις Ρυθμίσεις). `LEGAL_LAST_UPDATED` → 7 Νοεμβρίου 2026. Νομικός έλεγχος: δεν έχει γίνει.
   2 tests (`LegalPagesTests`)· **2.683 tests OK**.
-- **Εύρημα 2026-11-07 (Radar nudge / E5):** κάθε εγγραφή (φόρμα και Google/Apple) δημιουργεί αυτόματα ενεργό Radar
-  «Όλες οι νέες επιχειρήσεις» χωρίς κριτήρια. Το nudge και το E5 ελέγχουν «υπάρχει ενεργό Radar», άρα δεν εμφανίζονται
-  σχεδόν ποτέ (π.χ. χρήστης από Σεπτέμβριο που έγινε Pro). Διόρθωση προς έγκριση: να μετράει μόνο Radar με κριτήρια.
+- **Radar nudge / E5 / checkout: το αυτόματο Radar δεν μετρά (2026-11-07, PR #10 merged `7ef5689` και deployed με έγκριση
+  Founder, καμία migration):** κάθε signup (φόρμα και Google/Apple) δημιουργεί ενεργό Radar «Όλες οι νέες επιχειρήσεις»
+  χωρίς κριτήρια, οπότε ο έλεγχος «έχει ενεργό Radar» έκρυβε το μωβ nudge, το E5 και το redirect του checkout στη
+  δημιουργία Radar σχεδόν για όλους. Νέο `models.has_targeted_radar(user)`: ενεργό, μη διαγραμμένο Radar με τουλάχιστον
+  ένα κριτήριο (ΚΑΔ, περιοχή, νομική μορφή ή επωνυμία). Το χρησιμοποιούν `context_processors.radar_nudge`,
+  `billing.checkout_return`, `lifecycle._e5_candidates` και `lifecycle_content.build_e5`. Νέο κείμενο notice στο
+  `/dashboard/`: «Δεν έχεις στήσει ακόμα Radar με τα δικά σου κριτήρια». 2.684 tests OK, `check`, `makemigrations --check`.
 
 - **Lifecycle PR 3 — κύματα 2–3: E1, E3, E6, E7, E9, E11–E14 (2026-11-06, PR #8 merged `0d3d510` με έγκριση
   Founder, deployed σε production 2026-11-07, migration `0062_lifecycle_reminder_signals`: 3 nullable πεδία στο `UserLifecycleProfile`):**
@@ -2562,8 +2566,9 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Τι απομένει
 
+- **Radar nudge fix:** deployed· μένει ο έλεγχος με impersonate νέου χρήστη (μωβ «Radars» ορατό).
 - **Lifecycle emails / Radar nudge / διαγραφή λογαριασμού (brief BRAIN 2026-11-06):** PR 0–3 merged και deployed (2026-11-06/07).
-  Νομικά κείμενα: εγκρίθηκαν, εφαρμόστηκαν στο branch `claude/legal-lifecycle-deletion` (PR ανοιχτό, περιμένει merge). Για τον πελάτη της 5/11 (η εντολή είναι πλέον σε production):
+  Νομικά κείμενα: εγκρίθηκαν, εφαρμόστηκαν και deployed (PR #9). Για τον πελάτη της 5/11 (η εντολή είναι πλέον σε production):
   `scrub_customer_webhook_payloads --email … --customer …` (dry-run → `--apply`) και διαγραφή από το Superadmin.
   Τώρα που το PR 1 είναι σε production: `backfill_subscription_periods` **εφαρμόστηκε 2026-11-07** (περίοδος
   Pro του user 26 από 31/10· 2 unmapped subscriptions παραλείφθηκαν), `LIFECYCLE_EMAILS_ENABLED=1` **ορίστηκε στο Render 2026-11-07** (από εκεί τα event emails E2/E4/E8/E10
@@ -2851,6 +2856,12 @@ test -s static/css/product-ui.css && grep -q "body.product-body" static/css/prod
 
 ## Ιστορικό εργασιών
 
+- **2026-11-07 — PR #9 (νομικά κείμενα lifecycle/διαγραφής) merged και deployed** με έγκριση Founder.
+- **2026-11-07 — PR #10 (Radar nudge fix) merged `7ef5689` και deployed** με έγκριση Founder· Render deploy success,
+  `/login/` 200.
+- **2026-11-07 — Radar nudge/E5/checkout αγνοούν το αυτόματο Radar χωρίς κριτήρια.** Αφορμή: νέος χρήστης με μόνο το
+  «Όλες οι νέες επιχειρήσεις» δεν έβλεπε το μωβ «Radars». Αλλαγές: `models.py`, `context_processors.py`, `billing.py`,
+  `lifecycle.py`, `lifecycle_content.py`, `templates/dashboard.html`, `test_lifecycle.py` (+3 tests).
 - **2026-11-07 — PR #8 (E1/E3/E6/E7/E9/E11–E14, αυτόματη παύση Radars) merged `0d3d510` και deployed** με έγκριση Founder·
   live: `/reminders/keep/<token>/` απαντά (πριν 404). Η αυτόματη παύση Radars ισχύει πλέον σε production.
 - **2026-11-07 — Νομικά κείμενα lifecycle/διαγραφής** (έγκριση Founder): `terms.html`, `privacy.html`, `LEGAL_LAST_UPDATED`,

@@ -38,7 +38,7 @@ from django.utils.dateparse import parse_datetime
 
 from .email_deliverability import is_email_delivery_suppressed
 from .email_headers import user_reply_to
-from .models import CustomerRadar, LifecycleEmail, SubscriptionPeriod, UserLifecycleProfile
+from .models import CustomerRadar, LifecycleEmail, SubscriptionPeriod, UserLifecycleProfile, has_targeted_radar
 
 logger = logging.getLogger(__name__)
 
@@ -279,7 +279,7 @@ def _e5_candidates(now, start_at):
         sub = getattr(user, "subscription", None)
         if sub is None or sub.radar_limit <= 0:
             continue
-        if CustomerRadar.objects.filter(user=user, is_active=True, deleted_at__isnull=True).exists():
+        if has_targeted_radar(user):
             continue
         yield Candidate("e5", user, f"e5:{period.pk}", {"period_id": period.pk})
 
